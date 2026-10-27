@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --ink: #182230;
+  --muted: #67758a;
+  --line: #e4e9f2;
+  --brand: #1677ff;
+  --warn: #d46b08;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+header {
+  padding: 36px 24px 28px;
+  background: linear-gradient(135deg, #0b3d91, #1677ff);
+  color: #fff;
+}
+header .inner, main, footer { max-width: 1040px; margin: 0 auto; }
+h1 { margin: 0 0 8px; font-size: 28px; }
+.subtitle { margin: 0; opacity: .85; font-size: 14px; }
+main { padding: 24px; }
+.summary {
+  background: #e8f1ff;
+  border: 1px solid #c9ddff;
+  color: #0b3d91;
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+.map-wrap {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 20px;
+}
+#map { height: 360px; border-radius: 10px; }
+.hint { margin: 8px 4px 0; color: var(--muted); font-size: 12px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 16px;
+}
+.rank {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+}
+.card h2 { margin: 0; font-size: 19px; }
+.score { color: var(--brand); margin-left: 8px; font-size: 15px; }
+.addr { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+.bars { display: grid; gap: 6px; margin-bottom: 12px; }
+.bar {
+  display: grid;
+  grid-template-columns: 42px 1fr 40px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.track { height: 8px; background: #eef2f8; border-radius: 999px; overflow: hidden; }
+.fill { height: 100%; background: linear-gradient(90deg, #69b1ff, #1677ff); border-radius: 999px; }
+ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.7; }
+.risks { color: var(--warn); }
+.links { margin-top: 10px; font-size: 13px; }
+a { color: var(--brand); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.warnings {
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #8a4b00;
+  margin-bottom: 16px;
+}
+.disclaimer {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  border-top: 1px dashed var(--line);
+  margin-top: 22px;
+  padding-top: 14px;
+}
+footer { padding: 0 24px 32px; color: var(--muted); font-size: 12px; }
+@media (max-width: 640px) {
+  .card { grid-template-columns: 1fr; }
+  #map { height: 260px; }
+}
+</style>
+</head>
+<body>
+<header><div class="inner"><h1>__TITLE__</h1><p class="subtitle">__SUBTITLE__</p></div></header>
+<main>
+__MAP_SECTION__
+__BODY__
+</main>
+<footer>由 seekdb · amap-location-recommendation 生成</footer>
+__MAP_SCRIPT__
+</body>
+</html>
