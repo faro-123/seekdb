@@ -158,6 +158,50 @@ int TableItem::deep_copy_json_table_def(const ObJsonTableDef& jt_def, ObIRawExpr
   return ret;
 }
 
+int TableItem::deep_copy_file_table_def(const ObFileTableDef &ft_def, ObIAllocator *allocator)
+{
+  int ret = OB_SUCCESS;
+  ObFileTableDef *tmp_def = nullptr;
+  if (OB_ISNULL(allocator)) {
+    ret = OB_ERR_UNEXPECTED;
+  } else if (OB_ISNULL(tmp_def = static_cast<ObFileTableDef *>(allocator->alloc(sizeof(ObFileTableDef))))) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else {
+    tmp_def = new (tmp_def) ObFileTableDef();
+    if (OB_FAIL(tmp_def->deep_copy(ft_def, allocator))) {
+    } else {
+      file_table_def_ = tmp_def;
+    }
+  }
+  return ret;
+}
+
+int ObFileTableDef::deep_copy(const ObFileTableDef &other, ObIAllocator *allocator)
+{
+  int ret = OB_SUCCESS;
+  path_ = other.path_;
+  format_ = other.format_;
+  json_format_ = other.json_format_;
+  has_header_ = other.has_header_;
+  sample_size_ = other.sample_size_;
+  columns_.reuse();
+  for (int64_t i = 0; OB_SUCC(ret) && i < other.columns_.count(); ++i) {
+    const ObFileTableColumnDef *src = other.columns_.at(i);
+    ObFileTableColumnDef *dst = nullptr;
+    if (OB_ISNULL(src)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (OB_ISNULL(dst = static_cast<ObFileTableColumnDef *>(allocator->alloc(sizeof(ObFileTableColumnDef))))) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+    } else {
+      dst = new (dst) ObFileTableColumnDef();
+      *dst = *src;
+      if (OB_FAIL(columns_.push_back(dst))) {
+      }
+    }
+  }
+  return ret;
+}
+
 int TableItem::deep_copy(ObIRawExprCopier &expr_copier,
                          const TableItem &other,
                          ObIAllocator* allocator)
@@ -194,6 +238,8 @@ int TableItem::deep_copy(ObIRawExprCopier &expr_copier,
   } else if (OB_FAIL(part_names_.assign(other.part_names_))) {
   } else if (is_values_table() &&
              OB_FAIL(deep_copy_values_table_def(*other.values_table_def_, expr_copier, allocator))) {
+  } else if (is_file_table() &&
+             OB_FAIL(deep_copy_file_table_def(*other.file_table_def_, allocator))) {
   } else { /* do nothing */ }
   if (OB_SUCC(ret)) {
     if (OB_ISNULL(other.sample_info_)) {

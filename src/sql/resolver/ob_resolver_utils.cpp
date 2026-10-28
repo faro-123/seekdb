@@ -242,6 +242,31 @@ int ObResolverUtils::check_json_table_column_exists(const TableItem &table_item,
   return ret;
 }
 
+int ObResolverUtils::check_file_table_column_exist(const TableItem &table_item,
+                                                   const ObString &column_name)
+{
+  int ret = OB_SUCCESS;
+  bool exists = false;
+  if (OB_UNLIKELY(!table_item.is_file_table()) || OB_ISNULL(table_item.file_table_def_)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid file table item", K(ret));
+  } else {
+    const ObFileTableDef *file_table_def = table_item.file_table_def_;
+    for (int64_t i = 0; OB_SUCC(ret) && !exists && i < file_table_def->columns_.count(); ++i) {
+      const ObFileTableColumnDef *column_def = file_table_def->columns_.at(i);
+      if (OB_ISNULL(column_def)) {
+        ret = OB_ERR_UNEXPECTED;
+      } else if (ObCharset::case_insensitive_equal(column_def->name_, column_name)) {
+        exists = true;
+      }
+    }
+    if (OB_SUCC(ret) && !exists) {
+      ret = OB_ERR_BAD_FIELD_ERROR;
+    }
+  }
+  return ret;
+}
+
 int ObResolverUtils::collect_schema_version(share::schema::ObSchemaGetterGuard &schema_guard,
                                             const ObSQLSessionInfo *session_info,
                                             ObRawExpr *expr,

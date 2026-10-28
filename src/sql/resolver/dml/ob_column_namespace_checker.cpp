@@ -325,6 +325,11 @@ int ObColumnNamespaceChecker::check_column_exists(const TableItem &table_item, c
                                                                 col_name,
                                                                 is_exist))) {
     }
+  } else if (table_item.is_file_table()) {
+    if (OB_FAIL(ObResolverUtils::check_file_table_column_exist(table_item, col_name))) {
+    } else {
+      is_exist = true;
+    }
   } else if (table_item.is_values_table()) {
     ObSEArray<ObColumnRefRawExpr *, 4> values_desc;
     if (OB_ISNULL(dml_stmt_)) {

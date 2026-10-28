@@ -32,6 +32,7 @@
 #include "sql/resolver/dml/ob_stmt_expr_visitor.h"
 #include "data_plane/access/ob_tablet_scan.h"
 #include "query/vector/ob_vector_index_param.h"
+#include "sql/engine/basic/ob_file_scan_utils.h"
 
 namespace oceanbase
 {
@@ -129,6 +130,47 @@ struct ObValuesTableDef {
                        K(access_type_), K(is_const_), K(column_types_));
 };
 
+enum class FileTableFormat
+{
+  INVALID = 0,
+  CSV,
+  JSON,
+  PARQUET,
+  GLOB,
+};
+
+struct ObFileTableColumnDef
+{
+  ObFileTableColumnDef()
+    : name_(), file_type_(FileColumnType::INVALID), data_type_(), nullable_(true),
+      output_column_idx_(common::OB_INVALID_INDEX) {}
+  TO_STRING_KV(K_(name), "file_type", static_cast<int64_t>(file_type_), K_(data_type),
+               K_(nullable), K_(output_column_idx));
+  common::ObString name_;
+  FileColumnType file_type_;
+  ObDataType data_type_;
+  bool nullable_;
+  // index of this column in the table function's output columns scanned by the
+  // executor, OB_INVALID_INDEX if the column is not referenced and can be pruned
+  int64_t output_column_idx_;
+};
+
+struct ObFileTableDef
+{
+  ObFileTableDef()
+    : path_(), format_(FileTableFormat::INVALID), json_format_(), has_header_(true),
+      sample_size_(-1), columns_() {}
+  int deep_copy(const ObFileTableDef &other, ObIAllocator *allocator);
+  TO_STRING_KV(K_(path), "format", static_cast<int64_t>(format_), K_(json_format),
+               K_(has_header), K_(sample_size), K_(columns));
+  common::ObString path_;
+  FileTableFormat format_;
+  common::ObString json_format_;
+  bool has_header_;
+  int64_t sample_size_;
+  common::ObSEArray<ObFileTableColumnDef*, 8, common::ModulePageAllocator, true> columns_;
+};
+
 struct TableItem
 {
   TableItem()
@@ -155,6 +197,7 @@ struct TableItem
     json_table_def_ = nullptr;
     table_type_ = MAX_TABLE_TYPE;
     values_table_def_ = NULL;
+    file_table_def_ = nullptr;
     sample_info_ = nullptr;
   }
 
@@ -190,6 +233,7 @@ struct TableItem
     JSON_TABLE,
     VALUES_TABLE,
     LATERAL_TABLE,
+    FILE_TABLE,
   };
 
   /**
@@ -224,6 +268,8 @@ struct TableItem
   bool is_function_table() const { return FUNCTION_TABLE == type_; }
   bool is_json_table() const { return JSON_TABLE == type_; }  // json_table_def_->table_type_ == MulModeTableType::OB_ORA_JSON_TABLE_TYPE
   bool is_values_table() const { return VALUES_TABLE == type_; }//used to mark values statement: values row(1,2), row(3,4);
+  bool is_file_table() const { return FILE_TABLE == type_; }
+  ObFileTableDef *get_file_table_def() { return file_table_def_; }
 
   bool is_lateral_table() const { return LATERAL_TABLE == type_; }
   bool is_extended_all_or_user_sys_view() const
@@ -260,6 +306,7 @@ struct TableItem
 
   ObJsonTableDef* get_json_table_def() { return json_table_def_; }
   int deep_copy_json_table_def(const ObJsonTableDef& jt_def, ObIRawExprCopier &expr_copier, ObIAllocator* allocator);
+  int deep_copy_file_table_def(const ObFileTableDef &ft_def, ObIAllocator *allocator);
   int deep_copy_values_table_def(const ObValuesTableDef& table_def,
                                  ObIRawExprCopier &expr_copier,
                                  ObIAllocator* allocator);
@@ -303,6 +350,8 @@ struct TableItem
   ObJsonTableDef *json_table_def_;
   // values table
   ObValuesTableDef *values_table_def_;
+  // file table (read_csv/read_json/read_parquet/glob)
+  ObFileTableDef *file_table_def_;
   // sample scan infos
   SampleInfo *sample_info_;
 };

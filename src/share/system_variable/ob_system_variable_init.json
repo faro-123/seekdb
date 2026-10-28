@@ -10975,5 +10975,18 @@
     "info_cn": "",
     "background_cn": "",
     "ref_url": ""
+  },
+  "enable_file_sql": {
+    "id": 10754,
+    "name": "enable_file_sql",
+    "default_value": "0",
+    "base_value": "0",
+    "data_type": "bool",
+    "info": "enable querying local files with the read_csv/read_json/read_parquet/glob table functions and exporting query results with COPY",
+    "flags": "SESSION | NEED_SERIALIZE | INFLUENCE_PLAN",
+    "publish_version": "1.0.0.0",
+    "info_cn": "开启后可以使用 read_csv/read_json/read_parquet/glob 表函数查询本地文件，并使用 COPY 导出查询结果",
+    "background_cn": "",
+    "ref_url": ""
   }
 }

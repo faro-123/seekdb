@@ -44,7 +44,10 @@ public:
         escaped_cht_(),
         cs_type_(CS_TYPE_INVALID),
         is_overwrite_(false),
-        external_properties_()
+        external_properties_(),
+        has_header_(false),
+        has_null_str_(false),
+        null_str_()
   {
   }
   virtual ~ObLogSelectInto() {}
@@ -108,6 +111,12 @@ public:
   {
     external_properties_.assign_ptr(external_properties.ptr(), external_properties.length());
   }
+  inline void set_has_header(bool has_header) { has_header_ = has_header; }
+  inline bool get_has_header() const { return has_header_; }
+  inline void set_has_null_str(bool has_null_str) { has_null_str_ = has_null_str; }
+  inline bool get_has_null_str() const { return has_null_str_; }
+  inline void set_null_str(const common::ObObj &null_str) { null_str_ = null_str; }
+  inline common::ObObj get_null_str() const { return null_str_; }
   inline ObItemType get_into_type() const
   {
     return into_type_;
@@ -188,6 +197,9 @@ private:
   common::ObCollationType cs_type_;
   bool is_overwrite_;
   common::ObString external_properties_;
+  bool has_header_;
+  bool has_null_str_;
+  common::ObObj null_str_;
 };
 }
 }

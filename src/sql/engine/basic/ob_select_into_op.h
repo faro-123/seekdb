@@ -71,7 +71,11 @@ public:
       parallel_(1),
       buffer_size_(DEFAULT_BUFFER_SIZE),
       is_overwrite_(false),
-      external_properties_(alloc)
+      external_properties_(alloc),
+      has_header_(false),
+      has_null_str_(false),
+      null_str_(),
+      header_names_(alloc)
   {
   }
 
@@ -91,6 +95,10 @@ public:
   int64_t buffer_size_;
   bool is_overwrite_;
   ObExternalFileFormat::StringData external_properties_;
+  bool has_header_;
+  bool has_null_str_;
+  common::ObObj null_str_;
+  common::ObFixedArray<common::ObString, common::ObIAllocator> header_names_;
   static const int64_t DEFAULT_MAX_FILE_SIZE = 256LL * 1024 * 1024;
   static const int64_t DEFAULT_BUFFER_SIZE = 1LL * 1024 * 1024;
 };
@@ -102,6 +110,7 @@ public:
     : ObOperator(exec_ctx, spec, input),
       top_limit_cnt_(INT64_MAX),
       is_first_(true),
+      header_written_(false),
       field_str_(),
       line_str_(),
       cs_type_(CS_TYPE_INVALID),
@@ -211,6 +220,7 @@ private:
                          ObString &str,
                          ObCollationType coll_type);
   int print_field(const ObObj &obj, ObCsvFileWriter &data_writer);
+  int write_header(ObExternalFileWriter *data_writer);
   int print_lob_field(const ObObj &obj,
                       const ObExpr &expr,
                       const ObDatum &datum,
@@ -266,6 +276,7 @@ private:
 private:
   int64_t top_limit_cnt_;
   bool is_first_;
+  bool header_written_;
   ObObj field_str_;
   ObObj line_str_;
   ObObj file_name_;

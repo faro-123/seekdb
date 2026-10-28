@@ -147,6 +147,8 @@ public:
                                            ObResolverParams &params,
                                            const ObString &column_name,
                                            bool& exists);
+  static int check_file_table_column_exist(const TableItem &table_item,
+                                           const ObString &column_name);
 
   static int collect_schema_version(share::schema::ObSchemaGetterGuard &schema_guard,
                                     const ObSQLSessionInfo *session_info,

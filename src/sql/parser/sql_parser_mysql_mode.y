@@ -40,8 +40,22 @@
 #include "../../../src/sql/parser/sql_parser_mysql_mode_lex.h"
 #include "../../../src/sql/parser/sql_parser_base.h"
 
-#define GEN_EXPLAN_STMT(no_use, explain_stmt, explain_type, display_type, stmt, into_table, set_statement_id) \
-  (void)(no_use); \
+// the arguments of the file table functions and the COPY statement are used at
+// resolve time, they must not be replaced by the fast parser parameters
+static void mark_file_sql_literal(ParseNode *node)
+{
+  if (NULL != node) {
+    if (T_VARCHAR == node->type_ || T_CHAR == node->type_ || T_INT == node->type_
+        || T_NUMBER == node->type_ || T_DOUBLE == node->type_) {
+      node->is_hidden_const_ = 1;
+    }
+    for (int32_t i = 0; i < node->num_child_; ++i) {
+      mark_file_sql_literal(node->children_[i]);
+    }
+  }
+}
+
+#define GEN_EXPLAN_STMT(explain_kind, explain_stmt, explain_type, display_type, stmt, into_table, set_statement_id) \
   ParseNode *type_node = NULL; \
   ParseNode *display_node = NULL; \
   if (0 != explain_type) { \
@@ -50,8 +64,15 @@
   if (0 != display_type) { \
     malloc_terminal_node(display_node, result->malloc_pool_, display_type); \
   } \
-  malloc_non_terminal_node(explain_stmt, result->malloc_pool_, T_EXPLAIN, 5, \
-                           type_node, display_node, into_table, set_statement_id, stmt);
+  if (NULL != (explain_kind) && T_INT == (explain_kind)->type_ && 1 == (explain_kind)->value_ \
+      && NULL == type_node && NULL == display_node \
+      && NULL == (into_table) && NULL == (set_statement_id) \
+      && NULL != (stmt) && T_SELECT == (stmt)->type_) { \
+    malloc_non_terminal_node(explain_stmt, result->malloc_pool_, T_DESCRIBE_SELECT, 1, (stmt)); \
+  } else { \
+    malloc_non_terminal_node(explain_stmt, result->malloc_pool_, T_EXPLAIN, 5, \
+                             type_node, display_node, into_table, set_statement_id, stmt); \
+  }
 %}
 
 %destructor {destroy_tree($$);}<node>
@@ -290,7 +311,7 @@ END_P SET_VAR DELIMITER
         FIELD_OPTIONALLY_ENCLOSED_BY FIELD_DELIMITER FIELD_ENCLOSED_BY FILE_EXTENSION
 
         GENERAL GEOMETRY GEOMCOLLECTION GEOMETRYCOLLECTION GET_FORMAT GLOBAL GRANTS GROUP_CONCAT GROUPING
-        GLOBAL_ALIAS
+        GLOBAL_ALIAS GLOB
 
         HASH HEAP HELP HISTOGRAM HOUR HIDDEN HYBRID HYBRID_HIST HYBRID_SEARCH
 
@@ -337,6 +358,7 @@ END_P SET_VAR DELIMITER
         REWRITE ROLLBACK ROLLUP ROUTINE ROW ROWID ROW_COUNT ROW_FORMAT ROWS RTREE
         RUN RECYCLEBIN REPLICATION ROTATE ROW_NUMBER RUDUNDANT RECURSIVE RANDOM REDO_TRANSPORT_OPTIONS
         RANK READ_ONLY RECOVERY REJECT ROLE
+        READ_CSV READ_JSON READ_PARQUET
 
         SAMPLE SAVEPOINT SCALARS SCHEMA_NAME SCN SCOPE SCORE SECOND SECURITY SEED
         SEMISTRUCT_ENCODING_TYPE SERIAL SERIALIZABLE SESSION SESSION_USER SET_TP SHARE SHARED SHUTDOWN SIGNED
@@ -498,6 +520,8 @@ END_P SET_VAR DELIMITER
 %type <node> skip_index_type opt_skip_index_type_list
 %type <node> vec_index_params vec_index_param vec_index_param_value opt_with_vector_index_parameters
 %type <node> json_table_expr unnest_expr mock_jt_on_error_on_empty jt_column_list json_table_column_def
+%type <node> file_table_expr file_table_func file_table_arg_list
+%type <node> copy_stmt copy_options copy_option_list copy_option
 %type <node> json_table_ordinality_column_def json_table_exists_column_def json_table_value_column_def json_table_nested_column_def
 %type <node> opt_value_on_empty_or_error_or_mismatch opt_on_mismatch
 %type <node> table_values_clause table_values_clause_with_order_by_and_limit values_row_list row_value
@@ -582,6 +606,7 @@ stmt:
   | drop_table_stmt         { $$ = $1; check_question_mark($$, result); }
   | drop_view_stmt          { $$ = $1; check_question_mark($$, result); }
   | explain_stmt            { $$ = $1; question_mark_issue($$, result); }
+  | copy_stmt               { $$ = $1; question_mark_issue($$, result); }
   | create_outline_stmt     { $$ = $1; question_mark_issue($$, result); }
   | alter_outline_stmt      { $$ = $1; question_mark_issue($$, result); }
   | drop_outline_stmt       { $$ = $1; check_question_mark($$, result); }
@@ -10835,6 +10860,10 @@ tbl_name
 {
   $$ = $1;
 }
+| file_table_expr
+{
+  $$ = $1;
+}
 | '(' table_references ')'
 {
   $$ = $2;
@@ -12306,8 +12335,18 @@ explain_or_desc relation_factor opt_desc_column_option
 
 explain_or_desc:
 EXPLAIN {$$ = NULL;}
-| DESCRIBE {$$ = NULL;}
-| DESC  {$$ = NULL;}
+| DESCRIBE
+{
+  malloc_terminal_node($$, result->malloc_pool_, T_INT);
+  $$->value_ = 1; // describes the result columns of the statement
+  $$->is_hidden_const_ = 1;
+}
+| DESC
+{
+  malloc_terminal_node($$, result->malloc_pool_, T_INT);
+  $$->value_ = 1; // describes the result columns of the statement
+  $$->is_hidden_const_ = 1;
+}
 ;
 
 explainable_stmt:
@@ -12315,6 +12354,58 @@ select_stmt         { $$ = $1; }
 | delete_stmt         { $$ = $1; }
 | insert_stmt         { $$ = $1; }
 | update_stmt         { $$ = $1; }
+;
+
+/*===========================================================
+*
+*  COPY statement
+*
+*============================================================*/
+
+copy_stmt:
+COPY '(' select_stmt ')' TO STRING_VALUE copy_options
+{
+  mark_file_sql_literal($6);
+  mark_file_sql_literal($7);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_COPY_STMT, 3, $3, $6, $7);
+}
+| COPY relation_factor TO STRING_VALUE copy_options
+{
+  mark_file_sql_literal($4);
+  mark_file_sql_literal($5);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_COPY_STMT, 3, $2, $4, $5);
+}
+;
+
+copy_options:
+'(' copy_option_list ')' { $$ = $2; }
+| /*empty*/ { $$ = NULL; }
+;
+
+copy_option_list:
+copy_option
+{
+  malloc_list_node($$, result->malloc_pool_, T_EXPR_LIST, 2, 1, $1);
+}
+| copy_option_list ',' copy_option
+{
+  push_back_list(result->malloc_pool_, result, $$, $1, $3);
+}
+;
+
+copy_option:
+relation_name
+{
+  $$ = $1;
+}
+| relation_name simple_expr
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_OP_EQ, 2, $1, $2);
+}
+| relation_name COMP_EQ simple_expr
+{
+  malloc_non_terminal_node($$, result->malloc_pool_, T_OP_EQ, 2, $1, $3);
+}
 ;
 
 format_name:
@@ -16665,6 +16756,68 @@ mock_jt_on_error_on_empty:
   err_node->value_ = 3;
   err_node->is_hidden_const_ = 1;
   malloc_non_terminal_node($$, result->malloc_pool_, T_LINK_NODE, 2, err_node, emp_node);
+}
+;
+
+/*===========================================================
+*
+*  FILE TABLE (read_csv/read_json/read_parquet/glob)
+*
+*============================================================*/
+
+file_table_expr:
+file_table_func '(' file_table_arg_list ')' relation_name
+{
+  mark_file_sql_literal($3);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_FILE_TABLE_EXPRESSION, 3, $1, $3, $5);
+}
+| file_table_func '(' file_table_arg_list ')' AS relation_name
+{
+  mark_file_sql_literal($3);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_FILE_TABLE_EXPRESSION, 3, $1, $3, $6);
+}
+| file_table_func '(' file_table_arg_list ')'
+{
+  mark_file_sql_literal($3);
+  malloc_non_terminal_node($$, result->malloc_pool_, T_FILE_TABLE_EXPRESSION, 3, $1, $3, NULL);
+}
+;
+
+file_table_func:
+READ_CSV
+{
+  malloc_terminal_node($$, result->malloc_pool_, T_INT);
+  $$->value_ = 0; // FILE_TABLE_FORMAT_CSV
+  $$->is_hidden_const_ = 1;
+}
+| READ_JSON
+{
+  malloc_terminal_node($$, result->malloc_pool_, T_INT);
+  $$->value_ = 1; // FILE_TABLE_FORMAT_JSON
+  $$->is_hidden_const_ = 1;
+}
+| READ_PARQUET
+{
+  malloc_terminal_node($$, result->malloc_pool_, T_INT);
+  $$->value_ = 2; // FILE_TABLE_FORMAT_PARQUET
+  $$->is_hidden_const_ = 1;
+}
+| GLOB
+{
+  malloc_terminal_node($$, result->malloc_pool_, T_INT);
+  $$->value_ = 3; // FILE_TABLE_FORMAT_GLOB
+  $$->is_hidden_const_ = 1;
+}
+;
+
+file_table_arg_list:
+expr
+{
+  malloc_list_node($$, result->malloc_pool_, T_EXPR_LIST, 2, 1, $1);
+}
+| file_table_arg_list ',' expr
+{
+  push_back_list(result->malloc_pool_, result, $$, $1, $3);
 }
 ;
 

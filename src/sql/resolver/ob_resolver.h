@@ -47,6 +47,10 @@ private:
 
   template <typename SelectResolverType>
   int select_stmt_resolver_func(ObResolverParams &params, const ParseNode &parse_tree, ObStmt *&stmt);
+  // rewrite "describe select ..." into a select over the inferred file schema
+  int resolve_describe_select(const ParseNode &parse_tree, const ParseNode *&meta_select);
+  // resolve "copy (query) to 'path' (options)" into a select into statement
+  int resolve_copy_stmt(const ParseNode &parse_tree, ObStmt *&stmt);
 private:
   // data members
   ObResolverParams params_;

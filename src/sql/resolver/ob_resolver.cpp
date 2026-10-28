@@ -24,6 +24,9 @@
 #include "sql/resolver/dml/ob_delete_resolver.h"
 #include "sql/resolver/tcl/ob_start_trans_resolver.h"
 #include "sql/resolver/tcl/ob_end_trans_resolver.h"
+#include "sql/parser/ob_parser.h"
+#include "lib/string/ob_sql_string.h"
+#include "sql/engine/basic/ob_file_scan_utils.h"
 #include "sql/resolver/prepare/ob_prepare_resolver.h"
 #include "sql/resolver/prepare/ob_execute_resolver.h"
 #include "sql/resolver/prepare/ob_deallocate_resolver.h"
@@ -137,6 +140,332 @@ int ObResolver::select_stmt_resolver_func(ObResolverParams &params, const ParseN
   return ret;
 }
 
+namespace {
+
+int append_sql_string_literal(common::ObSqlString &sql, const char *str, const int64_t len)
+{
+  int ret = OB_SUCCESS;
+  if (OB_FAIL(sql.append("'"))) {
+  } else {
+    int64_t begin = 0;
+    for (int64_t i = 0; OB_SUCC(ret) && i < len; ++i) {
+      if ('\'' == str[i]) {
+        if (i > begin && OB_FAIL(sql.append(str + begin, i - begin))) {
+        } else if (OB_FAIL(sql.append("''"))) {
+        } else {
+          begin = i + 1;
+        }
+      }
+    }
+    if (OB_SUCC(ret) && begin < len && OB_FAIL(sql.append(str + begin, len - begin))) {
+    } else if (OB_SUCC(ret) && OB_FAIL(sql.append("'"))) {
+    }
+  }
+  return ret;
+}
+
+int append_sql_string_literal(common::ObSqlString &sql, const common::ObString &value)
+{
+  return append_sql_string_literal(sql, value.ptr(), value.length());
+}
+
+const char *describe_type_name(const ObObjType type)
+{
+  switch (type) {
+  case ObTinyIntType:
+  case ObUTinyIntType:
+    return "BOOLEAN";
+  case ObIntType:
+  case ObInt32Type:
+  case ObUInt32Type:
+  case ObUInt64Type:
+    return "BIGINT";
+  case ObDoubleType:
+  case ObFloatType:
+    return "DOUBLE";
+  case ObDateType:
+    return "DATE";
+  case ObDateTimeType:
+  case ObTimestampType:
+    return "DATETIME";
+  default:
+    return "VARCHAR";
+  }
+}
+
+} // namespace
+
+int ObResolver::resolve_describe_select(const ParseNode &parse_tree,
+                                        const ParseNode *&meta_select)
+{
+  int ret = OB_SUCCESS;
+  const ParseNode *child = NULL;
+  meta_select = NULL;
+  if (T_DESCRIBE_SELECT != parse_tree.type_ || 1 != parse_tree.num_child_) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid describe select statement", K(parse_tree.type_), K(parse_tree.num_child_));
+  } else if (OB_ISNULL(child = parse_tree.children_[0])) {
+    ret = OB_ERR_UNEXPECTED;
+  } else {
+    ObStmt *inner_stmt = NULL;
+    ObResolver sub_resolver(params_);
+    if (OB_FAIL(sub_resolver.resolve(IS_NOT_PREPARED_STMT, *child, inner_stmt))) {
+    } else if (OB_ISNULL(inner_stmt) || OB_UNLIKELY(!inner_stmt->is_select_stmt())) {
+      ret = OB_ERR_UNEXPECTED;
+    } else {
+      ObSelectStmt *select_stmt = static_cast<ObSelectStmt *>(inner_stmt);
+      common::ObSqlString sql;
+      for (int64_t i = 0; OB_SUCC(ret) && i < select_stmt->get_select_item_size(); ++i) {
+        const SelectItem &item = select_stmt->get_select_item(i);
+        ObString column_name = item.alias_name_;
+        const char *type_name = "VARCHAR";
+        bool nullable = true;
+        if (column_name.empty()) {
+          column_name = item.expr_name_;
+        }
+        if (OB_NOT_NULL(item.expr_) && item.expr_->is_column_ref_expr()) {
+          ObColumnRefRawExpr *col_expr = static_cast<ObColumnRefRawExpr *>(item.expr_);
+          const TableItem *table_item = select_stmt->get_table_item_by_id(col_expr->get_table_id());
+          if (OB_NOT_NULL(table_item) && table_item->is_file_table()
+              && OB_NOT_NULL(table_item->file_table_def_)) {
+            const int64_t idx = static_cast<int64_t>(col_expr->get_column_id()) - OB_APP_MIN_COLUMN_ID;
+            if (OB_UNLIKELY(idx < 0) || idx >= table_item->file_table_def_->columns_.count()) {
+              ret = OB_ERR_UNEXPECTED;
+            } else {
+              const ObFileTableColumnDef *column_def = table_item->file_table_def_->columns_.at(idx);
+              if (OB_ISNULL(column_def)) {
+                ret = OB_ERR_UNEXPECTED;
+              } else {
+                type_name = ObFileScanUtils::type_name(column_def->file_type_);
+                nullable = column_def->nullable_;
+                if (column_name.empty()) {
+                  column_name = column_def->name_;
+                }
+              }
+            }
+          }
+        } else if (OB_NOT_NULL(item.expr_)) {
+          type_name = describe_type_name(item.expr_->get_result_type().get_type());
+          nullable = !item.expr_->get_result_type().has_result_flag(NOT_NULL_FLAG);
+        }
+        if (OB_FAIL(ret)) {
+        } else if (OB_FAIL(sql.append(0 == i ? "select " : " union all select "))) {
+        } else if (OB_FAIL(append_sql_string_literal(sql, column_name))) {
+        } else if (OB_FAIL(sql.append(" as `column_name`, "))) {
+        } else if (OB_FAIL(sql.append("'"))) {
+        } else if (OB_FAIL(sql.append(type_name))) {
+        } else if (OB_FAIL(sql.append("' as `column_type`, "))) {
+        } else if (OB_FAIL(sql.append(nullable ? "'YES'" : "'NO'"))) {
+        } else if (OB_FAIL(sql.append(" as `null`, null as `key`, null as `default`, null as `extra`"))) {
+        }
+      }
+      if (OB_SUCC(ret) && 0 == select_stmt->get_select_item_size()) {
+        ret = OB_ERR_UNEXPECTED;
+      }
+      if (OB_FAIL(ret)) {
+      } else {
+        ParseResult parse_result;
+        ObParser parser(*params_.allocator_, params_.session_info_->get_sql_mode());
+        if (OB_FAIL(parser.parse(sql.string(), parse_result))) {
+        } else if (OB_ISNULL(parse_result.result_tree_)
+                   || 1 != parse_result.result_tree_->num_child_
+                   || OB_ISNULL(parse_result.result_tree_->children_)
+                   || OB_ISNULL(parse_result.result_tree_->children_[0])) {
+          ret = OB_ERR_UNEXPECTED;
+        } else {
+          meta_select = parse_result.result_tree_->children_[0];
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+namespace {
+
+int get_copy_option_name(const ParseNode *name_node, common::ObString &name)
+{
+  int ret = OB_SUCCESS;
+  if (OB_ISNULL(name_node)) {
+    ret = OB_ERR_PARSER_SYNTAX;
+  } else if (T_IDENT == name_node->type_) {
+    name.assign_ptr(name_node->str_value_, static_cast<int32_t>(name_node->str_len_));
+  } else if (T_COLUMN_REF == name_node->type_ && 3 == name_node->num_child_
+             && OB_NOT_NULL(name_node->children_[2])) {
+    name.assign_ptr(name_node->children_[2]->str_value_,
+                    static_cast<int32_t>(name_node->children_[2]->str_len_));
+  } else {
+    ret = OB_ERR_PARSER_SYNTAX;
+  }
+  return ret;
+}
+
+int get_copy_option_value(const ParseNode *value_node, common::ObString &value)
+{
+  int ret = OB_SUCCESS;
+  if (OB_ISNULL(value_node)) {
+    ret = OB_ERR_PARSER_SYNTAX;
+  } else if (T_CHAR == value_node->type_ || T_VARCHAR == value_node->type_) {
+    value.assign_ptr(value_node->str_value_, static_cast<int32_t>(value_node->str_len_));
+  } else if (T_COLUMN_REF == value_node->type_) {
+    if (OB_FAIL(get_copy_option_name(value_node, value))) {
+    }
+  } else {
+    ret = OB_ERR_PARSER_SYNTAX;
+  }
+  return ret;
+}
+
+int parse_copy_options(const ParseNode *options_node, ObSelectIntoItem &into_item)
+{
+  int ret = OB_SUCCESS;
+  if (NULL == options_node) {
+    // use the default options
+  } else if (T_EXPR_LIST != options_node->type_) {
+    ret = OB_ERR_UNEXPECTED;
+  } else {
+    for (int64_t i = 0; OB_SUCC(ret) && i < options_node->num_child_; ++i) {
+      const ParseNode *option = options_node->children_[i];
+      const ParseNode *name_node = NULL;
+      const ParseNode *value_node = NULL;
+      if (OB_ISNULL(option)) {
+        ret = OB_ERR_UNEXPECTED;
+      } else if (T_IDENT == option->type_ || T_COLUMN_REF == option->type_) {
+        // a bare flag, e.g. "header"
+        name_node = option;
+      } else if (T_OP_EQ == option->type_ && 2 == option->num_child_) {
+        name_node = option->children_[0];
+        value_node = option->children_[1];
+      } else {
+        ret = OB_ERR_PARSER_SYNTAX;
+      }
+      ObString name;
+      if (OB_FAIL(ret)) {
+      } else if (OB_FAIL(get_copy_option_name(name_node, name))) {
+      } else if (0 == name.case_compare("format")) {
+        ObString value;
+        if (NULL == value_node) {
+          ret = OB_ERR_PARSER_SYNTAX;
+        } else if (OB_FAIL(get_copy_option_value(value_node, value))) {
+        } else if (0 != value.case_compare("csv")) {
+          ret = OB_NOT_SUPPORTED;
+          LOG_USER_ERROR(OB_NOT_SUPPORTED, "the copy file format, only csv is supported");
+        }
+      } else if (0 == name.case_compare("header")) {
+        if (NULL == value_node) {
+          into_item.has_header_ = true;
+        } else if (T_BOOL == value_node->type_) {
+          into_item.has_header_ = (0 != value_node->value_);
+        } else {
+          ret = OB_ERR_PARSER_SYNTAX;
+        }
+      } else if (0 == name.case_compare("nullstr")) {
+        ObString value;
+        if (NULL == value_node) {
+          ret = OB_ERR_PARSER_SYNTAX;
+        } else if (OB_FAIL(get_copy_option_value(value_node, value))) {
+        } else {
+          into_item.has_null_str_ = true;
+          into_item.null_str_.set_varchar(value);
+          into_item.null_str_.set_collation_type(into_item.cs_type_);
+        }
+      } else if (0 == name.case_compare("delimiter") || 0 == name.case_compare("sep")) {
+        ObString value;
+        if (NULL == value_node) {
+          ret = OB_ERR_PARSER_SYNTAX;
+        } else if (OB_FAIL(get_copy_option_value(value_node, value))) {
+        } else if (1 != value.length()) {
+          ret = OB_NOT_SUPPORTED;
+          LOG_USER_ERROR(OB_NOT_SUPPORTED, "a multi-byte delimiter");
+        } else {
+          into_item.field_str_.set_varchar(value);
+          into_item.field_str_.set_collation_type(into_item.cs_type_);
+        }
+      } else {
+        ret = OB_NOT_SUPPORTED;
+        LOG_USER_ERROR(OB_NOT_SUPPORTED, "the copy option");
+      }
+    }
+  }
+  return ret;
+}
+
+} // namespace
+
+int ObResolver::resolve_copy_stmt(const ParseNode &parse_tree, ObStmt *&stmt)
+{
+  int ret = OB_SUCCESS;
+  const ParseNode *query_node = NULL;
+  const ParseNode *path_node = NULL;
+  const ParseNode *options_node = NULL;
+  ObStmt *inner_stmt = NULL;
+  stmt = NULL;
+  if (T_COPY_STMT != parse_tree.type_ || 3 != parse_tree.num_child_) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid copy statement", K(parse_tree.type_), K(parse_tree.num_child_));
+  } else if (OB_ISNULL(params_.session_info_) || OB_ISNULL(params_.allocator_)) {
+    ret = OB_NOT_INIT;
+  } else {
+    query_node = parse_tree.children_[0];
+    path_node = parse_tree.children_[1];
+    options_node = parse_tree.children_[2];
+    bool enable_file_sql = false;
+    if (OB_FAIL(params_.session_info_->get_enable_file_sql(enable_file_sql))) {
+    } else if (!enable_file_sql) {
+      ret = OB_NOT_SUPPORTED;
+      LOG_USER_ERROR(OB_NOT_SUPPORTED, "exporting query results to a local file, enable_file_sql is OFF");
+    } else if (OB_ISNULL(query_node) || T_SELECT != query_node->type_) {
+      ret = OB_NOT_SUPPORTED;
+      LOG_USER_ERROR(OB_NOT_SUPPORTED, "copy from a table, only copy (query) to a file is supported");
+    } else if (OB_ISNULL(path_node)
+               || (T_VARCHAR != path_node->type_ && T_CHAR != path_node->type_)) {
+      ret = OB_ERR_UNEXPECTED;
+    }
+  }
+  if (OB_SUCC(ret)) {
+    ObResolver sub_resolver(params_);
+    if (OB_FAIL(sub_resolver.resolve(IS_NOT_PREPARED_STMT, *query_node, inner_stmt))) {
+    } else if (OB_ISNULL(inner_stmt) || OB_UNLIKELY(!inner_stmt->is_select_stmt())) {
+      ret = OB_ERR_UNEXPECTED;
+    }
+  }
+  ObSelectStmt *select_stmt = static_cast<ObSelectStmt *>(inner_stmt);
+  ObSelectIntoItem *into_item = NULL;
+  if (OB_SUCC(ret)) {
+    if (OB_NOT_NULL(select_stmt->get_select_into())) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (OB_ISNULL(into_item = static_cast<ObSelectIntoItem *>(
+                         params_.allocator_->alloc(sizeof(ObSelectIntoItem))))) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+    } else {
+      static const char CSV_ENCLOSE_CHAR = '"';
+      const ObCollationType cs_type = params_.session_info_->get_local_collation_connection();
+      new (into_item) ObSelectIntoItem();
+      into_item->into_type_ = T_INTO_OUTFILE;
+      into_item->outfile_name_.set_varchar(ObString(path_node->str_len_, path_node->str_value_));
+      into_item->outfile_name_.set_collation_type(cs_type);
+      into_item->field_str_.set_varchar(",");
+      into_item->field_str_.set_collation_type(cs_type);
+      into_item->line_str_.set_varchar("\n");
+      into_item->line_str_.set_collation_type(cs_type);
+      into_item->closed_cht_.meta_.set_char();
+      into_item->closed_cht_.set_char_value(&CSV_ENCLOSE_CHAR, 1);
+      into_item->closed_cht_.set_collation_type(cs_type);
+      // the values are enclosed explicitly, do not escape them
+      into_item->escaped_cht_.set_char_value(NULL, 0);
+      into_item->is_optional_ = true;
+      into_item->is_single_ = true;
+      into_item->cs_type_ = cs_type;
+      if (OB_FAIL(parse_copy_options(options_node, *into_item))) {
+      } else {
+        select_stmt->set_select_into(into_item);
+        stmt = select_stmt;
+      }
+    }
+  }
+  return ret;
+}
+
 int ObResolver::resolve(IsPrepared if_prepared, const ParseNode &parse_tree, ObStmt *&stmt)
 {
 #define REGISTER_STMT_RESOLVER(name)                                   \
@@ -146,7 +475,7 @@ int ObResolver::resolve(IsPrepared if_prepared, const ParseNode &parse_tree, ObS
 
 #define REGISTER_SELECT_STMT_RESOLVER(name)                                   \
   do {                                                                        \
-    ret = select_stmt_resolver_func<Ob##name##Resolver>(params_, parse_tree, stmt); \
+    ret = select_stmt_resolver_func<Ob##name##Resolver>(params_, *real_parse_tree, stmt); \
   } while (0)
   ACTIVE_SESSION_FLAG_SETTER_GUARD(in_resolve);
   int ret = OB_SUCCESS;
@@ -163,16 +492,23 @@ int ObResolver::resolve(IsPrepared if_prepared, const ParseNode &parse_tree, ObS
     real_parse_tree = &parse_tree;
   }
 
+  if (OB_SUCC(ret) && T_DESCRIBE_SELECT == real_parse_tree->type_) {
+    if (OB_FAIL(resolve_describe_select(*real_parse_tree, real_parse_tree))) {
+    }
+  }
+
   if (OB_SUCC(ret)) {
-    params_.resolver_scope_stmt_type_ = parse_tree.type_;
+    const ObItemType stmt_item_type = (T_COPY_STMT == real_parse_tree->type_)
+                                      ? T_SELECT : real_parse_tree->type_;
+    params_.resolver_scope_stmt_type_ = stmt_item_type;
     params_.session_info_->set_stmt_type(
-      ObResolverUtils::get_stmt_type_by_item_type(parse_tree.type_));
+      ObResolverUtils::get_stmt_type_by_item_type(stmt_item_type));
     ObExecContext *exec_ctx = params_.session_info_->get_cur_exec_ctx();
     if (exec_ctx != nullptr && exec_ctx->get_sql_ctx() != nullptr) {
       //save the current stmt type on my context,
       //some other modules may need to get the current SQL stmt type through its context
       ObSqlCtx *sql_ctx = exec_ctx->get_sql_ctx();
-      sql_ctx->stmt_type_ = ObResolverUtils::get_stmt_type_by_item_type(parse_tree.type_);
+      sql_ctx->stmt_type_ = ObResolverUtils::get_stmt_type_by_item_type(stmt_item_type);
     }
 
     switch (real_parse_tree->type_) {
@@ -474,6 +810,11 @@ int ObResolver::resolve(IsPrepared if_prepared, const ParseNode &parse_tree, ObS
       }
       case T_EXPLAIN: {
         REGISTER_STMT_RESOLVER(Explain);
+        break;
+      }
+      case T_COPY_STMT: {
+        if (OB_FAIL(resolve_copy_stmt(*real_parse_tree, stmt))) {
+        }
         break;
       }
       case T_ALTER_SYSTEM_SET: {
