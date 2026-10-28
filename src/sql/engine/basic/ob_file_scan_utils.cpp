@@ -943,13 +943,15 @@ int ObFileScanUtils::parse_date(const common::ObString &value, int32_t &days)
   return ret;
 }
 
-int ObFileScanUtils::parse_datetime(const common::ObString &value, int64_t &micros)
+int ObFileScanUtils::parse_datetime(const common::ObString &value, int64_t &micros,
+                                    int32_t *frac_digits)
 {
   int ret = OB_SUCCESS;
   int64_t begin = 0;
   int64_t end = value.length();
   trim_value(value.ptr(), value.length(), begin, end);
   int32_t days = 0;
+  int32_t seen_digits = 0;
   if (end - begin < 10 || OB_FAIL(parse_date(common::ObString(10, value.ptr() + begin), days))) {
     ret = OB_ERR_UNEXPECTED;
   } else {
@@ -981,7 +983,7 @@ int ObFileScanUtils::parse_datetime(const common::ObString &value, int64_t &micr
               pos += 2;
               if (pos < end && '.' == value.ptr()[pos]) {
                 ++pos;
-                int64_t digits = 0;
+                int32_t digits = 0;
                 while (pos < end && value.ptr()[pos] >= '0' && value.ptr()[pos] <= '9') {
                   if (digits < 6) {
                     fraction = fraction * 10 + (value.ptr()[pos] - '0');
@@ -989,6 +991,7 @@ int ObFileScanUtils::parse_datetime(const common::ObString &value, int64_t &micr
                   }
                   ++pos;
                 }
+                seen_digits = digits;
                 while (digits < 6) {
                   fraction *= 10;
                   ++digits;
@@ -1004,15 +1007,20 @@ int ObFileScanUtils::parse_datetime(const common::ObString &value, int64_t &micr
     } else {
       micros = static_cast<int64_t>(days) * 24 * 3600 * 1000000
                + hour * 3600 * 1000000 + minute * 60 * 1000000 + second * 1000000 + fraction;
+      if (NULL != frac_digits) {
+        *frac_digits = seen_digits;
+      }
     }
   }
   return ret;
 }
 
-int ObFileScanUtils::infer_string_type(const common::ObString &value, FileColumnType &type)
+int ObFileScanUtils::infer_string_type(const common::ObString &value, FileColumnType &type,
+                                       int32_t &scale)
 {
   int ret = OB_SUCCESS;
   FileColumnType observed = FileColumnType::VARCHAR;
+  int32_t observed_scale = 0;
   if (value.empty()) {
     // an empty text is not a value
   } else if (is_true_literal(value) || is_false_literal(value)) {
@@ -1029,11 +1037,15 @@ int ObFileScanUtils::infer_string_type(const common::ObString &value, FileColumn
       observed = FileColumnType::DOUBLE;
     } else if (OB_SUCCESS == (probe_ret = parse_date(value, days))) {
       observed = FileColumnType::DATE;
-    } else if (OB_SUCCESS == (probe_ret = parse_datetime(value, micros))) {
+    } else if (OB_SUCCESS == (probe_ret = parse_datetime(value, micros, &observed_scale))) {
       observed = FileColumnType::DATETIME;
     } else {
       observed = FileColumnType::VARCHAR;
     }
+  }
+  // the column prints the same number of fractional second digits as the file
+  if (FileColumnType::DATETIME == observed && observed_scale > scale) {
+    scale = observed_scale;
   }
   if (FileColumnType::INVALID == type) {
     type = observed;
@@ -1206,7 +1218,7 @@ int ObFileScanUtils::infer_csv_schema(const common::ObString &full_path,
           const common::ObString &value = fields.at(i);
           if (value.empty()) {
             nullables.at(i) = true;
-          } else if (OB_FAIL(infer_string_type(value, meta.at(i).type_))) {
+          } else if (OB_FAIL(infer_string_type(value, meta.at(i).type_, meta.at(i).scale_))) {
           }
         }
       }
@@ -1226,7 +1238,7 @@ int ObFileScanUtils::infer_csv_schema(const common::ObString &full_path,
         const common::ObString &value = fields.at(i);
         if (value.empty()) {
           nullables.at(i) = true;
-        } else if (OB_FAIL(infer_string_type(value, meta.at(i).type_))) {
+        } else if (OB_FAIL(infer_string_type(value, meta.at(i).type_, meta.at(i).scale_))) {
         }
       }
     }
@@ -1296,7 +1308,7 @@ int ObFileScanUtils::infer_json_schema(const common::ObString &full_path,
               observed = FileColumnType::DOUBLE;
             } else {
               observed = FileColumnType::INVALID;
-              if (OB_FAIL(infer_string_type(kv.str_, observed))) {
+              if (OB_FAIL(infer_string_type(kv.str_, observed, col.scale_))) {
                 break;
               }
             }

@@ -4003,7 +4003,8 @@ int get_file_glob_full_path(const ObString &pattern, ObIAllocator &alloc, ObStri
   return ret;
 }
 
-int file_type_to_data_type(const FileColumnType file_type, ObDataType &data_type)
+int file_type_to_data_type(const FileColumnType file_type, const int32_t scale,
+                           ObDataType &data_type)
 {
   int ret = OB_SUCCESS;
   switch (file_type) {
@@ -4025,7 +4026,11 @@ int file_type_to_data_type(const FileColumnType file_type, ObDataType &data_type
     break;
   case FileColumnType::DATETIME:
     data_type.set_obj_type(ObDateTimeType);
-    data_type.set_accuracy(ObAccuracy::DDL_DEFAULT_ACCURACY[ObDateTimeType]);
+    // keep the fractional second precision observed in the file so a value
+    // like "2026-08-01 10:11:12" is not printed as "...12.000000"
+    data_type.set_accuracy(ObAccuracy(
+        ObAccuracy::DDL_DEFAULT_ACCURACY[ObDateTimeType].get_precision(),
+        static_cast<ObScale>(scale < 0 ? 0 : (scale > 6 ? 6 : scale))));
     break;
   case FileColumnType::VARCHAR:
     data_type.set_obj_type(ObVarcharType);
@@ -4251,7 +4256,8 @@ int ObDMLResolver::resolve_file_table_item(const ParseNode &parse_tree, TableIte
     } else if (OB_ISNULL(column_def = new (buf) ObFileTableColumnDef())) {
       ret = OB_ERR_UNEXPECTED;
     } else if (OB_FAIL(ob_write_string(*allocator_, columns.at(i).name_, column_def->name_))) {
-    } else if (OB_FAIL(file_type_to_data_type(columns.at(i).type_, column_def->data_type_))) {
+    } else if (OB_FAIL(file_type_to_data_type(columns.at(i).type_, columns.at(i).scale_,
+                                              column_def->data_type_))) {
     } else {
       column_def->file_type_ = columns.at(i).type_;
       column_def->nullable_ = columns.at(i).nullable_;

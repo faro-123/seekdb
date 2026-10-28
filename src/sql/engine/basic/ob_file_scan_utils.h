@@ -53,10 +53,12 @@ enum class FileColumnType : int32_t
 
 struct FileColumnMeta
 {
-  FileColumnMeta() : name_(), type_(FileColumnType::INVALID), nullable_(true) {}
+  FileColumnMeta() : name_(), type_(FileColumnType::INVALID), nullable_(true), scale_(0) {}
   common::ObString name_;
   FileColumnType type_;
   bool nullable_;
+  // fractional second precision observed for DATETIME columns
+  int32_t scale_;
 };
 
 // one scanned cell, the concrete member depends on the column type
@@ -102,8 +104,9 @@ public:
   static int infer_parquet_schema(const common::ObString &full_path,
                                   common::ObIAllocator &alloc,
                                   common::ObIArray<FileColumnMeta> &columns);
-  // merge an observed value into the column type
-  static int infer_string_type(const common::ObString &value, FileColumnType &type);
+  // merge an observed value into the column type, scale tracks the fractional
+  // second digits of DATETIME values so the column keeps the file's precision
+  static int infer_string_type(const common::ObString &value, FileColumnType &type, int32_t &scale);
   static bool is_true_literal(const common::ObString &value);
   static bool is_false_literal(const common::ObString &value);
   static int parse_int64(const common::ObString &value, int64_t &val);
@@ -111,8 +114,10 @@ public:
   static int parse_bool(const common::ObString &value, bool &val);
   // "YYYY-MM-DD" to days since 1970-01-01
   static int parse_date(const common::ObString &value, int32_t &days);
-  // "YYYY-MM-DD[ T]HH:MM:SS[.ffffff]" to microseconds since 1970-01-01
-  static int parse_datetime(const common::ObString &value, int64_t &micros);
+  // "YYYY-MM-DD[ T]HH:MM:SS[.ffffff]" to microseconds since 1970-01-01,
+  // frac_digits receives the number of fractional second digits in the text
+  static int parse_datetime(const common::ObString &value, int64_t &micros,
+                            int32_t *frac_digits = NULL);
   // convert a raw text value to the target column type
   static int convert_cell(const common::ObString &raw, FileColumnType type, FileCell &cell);
   // read the whole content of a local file
