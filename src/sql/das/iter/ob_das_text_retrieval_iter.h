@@ -101,6 +101,7 @@ protected:
   int get_next_row_inner();
   int fill_token_doc_cnt();
   int fill_token_weight();
+  int fill_bm25_consts();
   int project_relevance_expr();
   int batch_project_relevance_expr(const int64_t &count);
   int gen_default_inv_idx_scan_range(const ObString &query_token, ObNewRange &scan_range);
@@ -151,6 +152,8 @@ protected:
   bool need_inv_idx_agg_;
   bool inv_idx_agg_evaluated_;
   bool need_inv_idx_agg_reset_;
+  // token doc count and token weight are constant within one query token scan
+  bool bm25_const_filled_;
   bool is_inited_;
 };
 
