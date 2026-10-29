@@ -382,7 +382,14 @@ int ObFTRangeDict::find_first_char_range(const ObString &single_word, ObIFTDict 
 {
   int ret = OB_SUCCESS;
   bool found = false;
-  for (int i = 0; OB_SUCC(ret) && !found && i < range_dicts_.size(); ++i) {
+  int64_t begin = 0;
+  int64_t end = range_dicts_.size();
+  if (use_first_byte_index_ && !single_word.empty()) {
+    const uint8_t first_byte = static_cast<uint8_t>(single_word.ptr()[0]);
+    begin = first_byte_begin_[first_byte];
+    end = first_byte_end_[first_byte] + 1;
+  }
+  for (int64_t i = begin; OB_SUCC(ret) && !found && i < end; ++i) {
     if (ObCharset::strcmp(ObCollationType::CS_TYPE_UTF8MB4_BIN,
                           range_dicts_[i].start_.get_word(),
                           single_word)
@@ -398,6 +405,57 @@ int ObFTRangeDict::find_first_char_range(const ObString &single_word, ObIFTDict 
   if (!found) {
     // not found, dis match
     ret = OB_ENTRY_NOT_EXIST;
+  }
+  return ret;
+}
+
+int ObFTRangeDict::build_first_byte_index()
+{
+  int ret = OB_SUCCESS;
+  const int64_t range_cnt = range_dicts_.size();
+  bool ordered = range_cnt > 0;
+  use_first_byte_index_ = false;
+
+  for (int64_t i = 1; ordered && i < range_cnt; ++i) {
+    if (ObCharset::strcmp(ObCollationType::CS_TYPE_UTF8MB4_BIN,
+                          range_dicts_[i - 1].end_.get_word(),
+                          range_dicts_[i].start_.get_word())
+        >= 0) {
+      ordered = false;
+    }
+  }
+
+  if (!ordered) {
+    // ranges are not sorted and disjoint, keep the full scan
+  } else {
+    for (int64_t b = 0; OB_SUCC(ret) && b < FIRST_BYTE_SLOTS; ++b) {
+      const char cur_byte = static_cast<char>(b);
+      const char next_byte = static_cast<char>(b + 1);
+      const ObString cur_word(1, &cur_byte);
+      const ObString next_word(1, &next_byte);
+      const bool is_last_byte = (FIRST_BYTE_SLOTS - 1 == b);
+      int64_t begin = range_cnt;
+      int64_t end = -1;
+      for (int64_t i = 0; i < range_cnt; ++i) {
+        if (range_cnt == begin
+            && ObCharset::strcmp(ObCollationType::CS_TYPE_UTF8MB4_BIN,
+                                 range_dicts_[i].end_.get_word(),
+                                 cur_word)
+                   >= 0) {
+          begin = i;
+        }
+        if (is_last_byte
+            || ObCharset::strcmp(ObCollationType::CS_TYPE_UTF8MB4_BIN,
+                                 range_dicts_[i].start_.get_word(),
+                                 next_word)
+                   < 0) {
+          end = i;
+        }
+      }
+      first_byte_begin_[b] = static_cast<int32_t>(begin);
+      first_byte_end_[b] = static_cast<int32_t>(end);
+    }
+    use_first_byte_index_ = true;
   }
   return ret;
 }
@@ -421,6 +479,9 @@ int ObFTRangeDict::build_dict_from_cache(const ObFTCacheRangeContainer &range_co
       if (OB_FAIL(range_dicts_.push_back(range))) {
       }
     }
+  }
+  if (OB_FAIL(ret)) {
+  } else if (OB_FAIL(build_first_byte_index())) {
   }
   return ret;
 }

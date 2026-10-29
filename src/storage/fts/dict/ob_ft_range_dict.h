@@ -39,7 +39,8 @@ public:
                 ObFTCacheRangeContainer *range_container,
                 const ObFTDictDesc &desc)
       : is_inited_(false), desc_(desc), range_alloc_(lib::ObMemAttr("Range Dict")),
-        range_dicts_(&range_alloc_), range_container_(range_container)
+        range_dicts_(&range_alloc_), range_container_(range_container),
+        use_first_byte_index_(false)
   {
   }
   ~ObFTRangeDict() override{};
@@ -99,13 +100,21 @@ private:
 
   int find_first_char_range(const ObString &single_word, ObIFTDict *&dict) const;
 
+  int build_first_byte_index();
+
 private:
   static constexpr int DEFAULT_KEY_PER_RANGE = 50000; // by estimated
+  static constexpr int FIRST_BYTE_SLOTS = 256;
   bool is_inited_;
   ObFTDictDesc desc_;
   ObArenaAllocator range_alloc_;
   ObVector<ObFTRange, ObArenaAllocator> range_dicts_;
   ObFTCacheRangeContainer *range_container_; // only used to read cache
+  // Looking up a range happens once per character. Ranges are sorted and disjoint,
+  // so the leading byte of the word pins down the only candidates.
+  int32_t first_byte_begin_[FIRST_BYTE_SLOTS];
+  int32_t first_byte_end_[FIRST_BYTE_SLOTS];
+  bool use_first_byte_index_;
 
 private:
   DISALLOW_COPY_AND_ASSIGN(ObFTRangeDict);

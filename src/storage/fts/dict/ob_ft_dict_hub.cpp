@@ -18,6 +18,7 @@
 
 #include "storage/fts/dict/ob_ft_dict_hub.h"
 
+#include "lib/atomic/ob_atomic.h"
 #include "lib/ob_errno.h"
 #include "lib/oblog/ob_log_module.h"
 #include "lib/utility/ob_macro_utils.h"
@@ -43,9 +44,142 @@ int ObFTDictHub::init()
 int ObFTDictHub::destroy()
 {
   int ret = OB_SUCCESS;
+  lib::ObMutexGuard guard(bundle_lock_);
+  destroy_ik_dict_bundle();
   is_inited_ = false;
   return ret;
 }
+
+int ObFTDictHub::get_ik_dict_bundle(const ObIKDictBundle *&bundle)
+{
+  int ret = OB_SUCCESS;
+  bundle = nullptr;
+  if (!is_inited_) {
+    ret = OB_NOT_INIT;
+  } else {
+    const ObIKDictBundle *tmp = ATOMIC_LOAD(&ik_bundle_);
+    if (OB_ISNULL(tmp)) {
+      lib::ObMutexGuard guard(bundle_lock_);
+      if (OB_ISNULL(tmp = ATOMIC_LOAD(&ik_bundle_))) {
+        if (OB_FAIL(build_ik_dict_bundle(tmp))) {
+        }
+      }
+    }
+    if (OB_SUCC(ret)) {
+      bundle = tmp;
+    }
+  }
+  return ret;
+}
+
+int ObFTDictHub::build_ik_dict_bundle(const ObIKDictBundle *&bundle)
+{
+  int ret = OB_SUCCESS;
+  static const ObFTDictDesc MAIN_DESC("main_dict",
+                                      ObFTDictType::DICT_IK_MAIN,
+                                      ObCharsetType::CHARSET_UTF8MB4,
+                                      ObCollationType::CS_TYPE_UTF8MB4_BIN);
+  static const ObFTDictDesc QUAN_DESC("quan_dict",
+                                      ObFTDictType::DICT_IK_QUAN,
+                                      ObCharsetType::CHARSET_UTF8MB4,
+                                      ObCollationType::CS_TYPE_UTF8MB4_BIN);
+  static const ObFTDictDesc STOP_DESC("stopword",
+                                      ObFTDictType::DICT_IK_STOP,
+                                      ObCharsetType::CHARSET_UTF8MB4,
+                                      ObCollationType::CS_TYPE_UTF8MB4_BIN);
+  ObIKDictBundle *tmp = nullptr;
+  bundle = nullptr;
+
+  if (OB_ISNULL(tmp = OB_NEWx(ObIKDictBundle, &bundle_alloc_))) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else if (OB_ISNULL(tmp->cache_main_ = OB_NEWx(ObFTCacheRangeContainer, &bundle_alloc_, bundle_alloc_))
+             || OB_ISNULL(tmp->cache_quan_ = OB_NEWx(ObFTCacheRangeContainer, &bundle_alloc_, bundle_alloc_))
+             || OB_ISNULL(tmp->cache_stop_ = OB_NEWx(ObFTCacheRangeContainer, &bundle_alloc_, bundle_alloc_))) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else if (OB_FAIL(load_or_build_cache(MAIN_DESC, *tmp->cache_main_))) {
+  } else if (OB_FAIL(open_range_dict(MAIN_DESC, *tmp->cache_main_, tmp->dict_main_))) {
+  } else if (OB_FAIL(load_or_build_cache(QUAN_DESC, *tmp->cache_quan_))) {
+  } else if (OB_FAIL(open_range_dict(QUAN_DESC, *tmp->cache_quan_, tmp->dict_quan_))) {
+  } else if (OB_FAIL(load_or_build_cache(STOP_DESC, *tmp->cache_stop_))) {
+  } else if (OB_FAIL(open_range_dict(STOP_DESC, *tmp->cache_stop_, tmp->dict_stop_))) {
+  } else {
+    ATOMIC_STORE(&ik_bundle_, tmp);
+    bundle = tmp;
+    LOG_INFO("succeeded to share built-in IK dictionaries", KP(tmp));
+  }
+
+  if (OB_FAIL(ret) && OB_NOT_NULL(tmp)) {
+    free_ik_dict_bundle(tmp);
+  }
+  return ret;
+}
+
+int ObFTDictHub::load_or_build_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &container)
+{
+  int ret = OB_SUCCESS;
+  if (OB_FAIL(load_cache(desc, container))) {
+    if (OB_ENTRY_NOT_EXIST == ret) {
+      if (OB_FAIL(build_cache(desc, container))) {
+      }
+    }
+  }
+  return ret;
+}
+
+int ObFTDictHub::open_range_dict(const ObFTDictDesc &desc,
+                                 ObFTCacheRangeContainer &container,
+                                 ObIFTDict *&dict)
+{
+  int ret = OB_SUCCESS;
+  ObFTRangeDict *range_dict = nullptr;
+  dict = nullptr;
+  if (OB_ISNULL(range_dict = OB_NEWx(ObFTRangeDict, &bundle_alloc_, bundle_alloc_, &container, desc))) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else if (OB_FAIL(range_dict->init())) {
+  } else {
+    dict = range_dict;
+  }
+  if (OB_FAIL(ret) && OB_NOT_NULL(range_dict)) {
+    OB_DELETEx(ObFTRangeDict, &bundle_alloc_, range_dict);
+  }
+  return ret;
+}
+
+void ObFTDictHub::destroy_ik_dict_bundle()
+{
+  ObIKDictBundle *bundle = const_cast<ObIKDictBundle *>(ATOMIC_LOAD(&ik_bundle_));
+  ATOMIC_STORE(&ik_bundle_, static_cast<const ObIKDictBundle *>(nullptr));
+  if (OB_NOT_NULL(bundle)) {
+    free_ik_dict_bundle(bundle);
+  }
+}
+
+void ObFTDictHub::free_ik_dict_bundle(ObIKDictBundle *bundle)
+{
+  if (OB_NOT_NULL(bundle)) {
+    if (OB_NOT_NULL(bundle->dict_main_)) {
+      bundle->dict_main_->~ObIFTDict();
+    }
+    if (OB_NOT_NULL(bundle->dict_quan_)) {
+      bundle->dict_quan_->~ObIFTDict();
+    }
+    if (OB_NOT_NULL(bundle->dict_stop_)) {
+      bundle->dict_stop_->~ObIFTDict();
+    }
+    if (OB_NOT_NULL(bundle->cache_main_)) {
+      bundle->cache_main_->~ObFTCacheRangeContainer();
+    }
+    if (OB_NOT_NULL(bundle->cache_quan_)) {
+      bundle->cache_quan_->~ObFTCacheRangeContainer();
+    }
+    if (OB_NOT_NULL(bundle->cache_stop_)) {
+      bundle->cache_stop_->~ObFTCacheRangeContainer();
+    }
+    bundle->~ObIKDictBundle();
+  }
+  bundle_alloc_.reset();
+}
+
 int ObFTDictHub::build_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &container)
 {
   int ret = OB_SUCCESS;
