@@ -1,0 +1,22 @@
+# Fulltext boolean COUNT: duplicate tokens, empty/NULL queries, thresholds, Boolean mode and DML.
+--disable_query_log
+--result_format 3
+DROP DATABASE IF EXISTS fts4_edge;
+CREATE DATABASE fts4_edge;
+USE fts4_edge;
+CREATE TABLE docs (id INT PRIMARY KEY, body VARCHAR(255), FULLTEXT INDEX fti(body) WITH PARSER beng);
+INSERT INTO docs VALUES (1,'database database search'),(2,'database performance'),(3,'performance search'),(4,'the and of'),(5,''),(6,NULL),(7,'database');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('database search');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('database database');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('missing');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('the and of');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST(NULL);
+SELECT COUNT(DISTINCT id) FROM docs WHERE MATCH(body) AGAINST('database search');
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('database search') > 0;
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('database search') > 0.5;
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('database' IN BOOLEAN MODE);
+UPDATE docs SET body='search performance' WHERE id=2;
+DELETE FROM docs WHERE id=3;
+SELECT COUNT(*) FROM docs WHERE MATCH(body) AGAINST('database search');
+DROP DATABASE fts4_edge;

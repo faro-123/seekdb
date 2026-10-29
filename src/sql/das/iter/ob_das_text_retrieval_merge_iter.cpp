@@ -624,9 +624,7 @@ int ObDASTextRetrievalMergeIter::init_total_doc_cnt_param(
   int ret = OB_SUCCESS;
   const ObDASScanCtDef *ctdef = ir_ctdef_->get_doc_agg_ctdef();
   ObDASScanRtDef *rtdef = ir_rtdef_->get_doc_agg_rtdef();
-  if (!ir_ctdef_->need_calc_relevance()) {
-    // no need to do total doc cnt
-  } else if (OB_ISNULL(ctdef) || OB_ISNULL(rtdef)) {
+  if (OB_ISNULL(ctdef) || OB_ISNULL(rtdef)) {
     ret = OB_ERR_UNEXPECTED;
   } else {
     ObTableScanParam &scan_param = whole_doc_agg_param_;
@@ -1365,6 +1363,7 @@ int ObDASTRTaatIter::inner_load_next_hashmap()
         }
       } else {
         if (OB_FAIL(map->set_refactored(doc_id, 1, 0/*overwrite*/))) {
+          if (OB_HASH_EXIST == ret) { ret = OB_SUCCESS; }
         }
       }
     }
