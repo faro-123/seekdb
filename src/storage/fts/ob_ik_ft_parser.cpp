@@ -28,6 +28,7 @@
 #include "storage/fts/dict/ob_ft_dict.h"
 #include "storage/fts/dict/ob_ft_dict_def.h"
 #include "storage/fts/dict/ob_ft_dict_hub.h"
+#include "storage/fts/dict/ob_ft_range_dict.h"
 #include "storage/fts/ik/ob_ik_arbitrator.h"
 #include "storage/fts/ik/ob_ik_cjk_processor.h"
 #include "storage/fts/ik/ob_ik_letter_processor.h"
@@ -51,7 +52,7 @@ int ObIKFTParser::init(const ObFTParserParam &param)
       ret = OB_INVALID_ARGUMENT;
     } else if (CS_TYPE_INVALID == (coll_type_ = ObCharset::collation_type(param.cs_->name))) {
       ret = OB_INVALID_ARGUMENT;
-    } else if (OB_FAIL(init_dict())) {
+    } else if (OB_FAIL(init_dict(param))) {
     } else if (OB_FAIL(init_ctx(param))) {
     } else if (OB_FAIL(init_segmenter(param))) {
     }
@@ -227,19 +228,59 @@ int ObIKFTParserDesc::get_add_word_flag(ObAddWordFlag &flag) const
   return ret;
 }
 
-int ObIKFTParser::init_dict()
+int ObIKFTParser::init_dict(const ObFTParserParam &param)
 {
   int ret = OB_SUCCESS;
-  const ObIKDictBundle *bundle = nullptr;
+  ObIFTDict *tmp_dict = nullptr;
+
   if (OB_ISNULL(hub_)) {
     ret = OB_ERR_UNEXPECTED;
-  } else if (OB_FAIL(hub_->get_ik_dict_bundle(bundle))) {
-  } else if (OB_ISNULL(bundle)) {
-    ret = OB_ERR_UNEXPECTED;
+  }
+
+  ObFTRangeDict *dict = nullptr;
+  ObFTDictDesc main_dict_desc("main_dict",
+                              ObFTDictType::DICT_IK_MAIN,
+                              ObCharsetType::CHARSET_UTF8MB4,
+                              ObCollationType::CS_TYPE_UTF8MB4_BIN);
+
+  ObFTDictDesc quan_dict_desc("quan_dict",
+                              ObFTDictType::DICT_IK_QUAN,
+                              ObCharsetType::CHARSET_UTF8MB4,
+                              ObCollationType::CS_TYPE_UTF8MB4_BIN);
+
+  ObFTDictDesc stopword_dict_desc("stopword",
+                                  ObFTDictType::DICT_IK_STOP,
+                                  ObCharsetType::CHARSET_UTF8MB4,
+                                  ObCollationType::CS_TYPE_UTF8MB4_BIN);
+
+  if (should_read_newest_table()) {
+    // clear dict cache, always false now
   } else {
-    dict_main_ = &bundle->main_dict();
-    dict_quan_ = &bundle->quan_dict();
-    dict_stop_ = &bundle->stop_dict();
+    if (OB_FAIL(init_single_dict(main_dict_desc, cache_main_))) {
+    } else if (OB_FAIL(init_single_dict(quan_dict_desc, cache_quan_))) {
+    } else if (OB_FAIL(init_single_dict(stopword_dict_desc, cache_stop_))) {
+    }
+  }
+
+  if (OB_FAIL(ret)) {
+    // already logged.
+  } else if (OB_FAIL(build_dict_from_cache(main_dict_desc, cache_main_, dict_main_))) {
+  } else if (OB_FAIL(build_dict_from_cache(quan_dict_desc, cache_quan_, dict_quan_))) {
+  } else if (OB_FAIL(build_dict_from_cache(stopword_dict_desc, cache_stop_, dict_stop_))) {
+  }
+
+  return ret;
+}
+
+int ObIKFTParser::init_single_dict(ObFTDictDesc desc, ObFTCacheRangeContainer &container)
+{
+  int ret = OB_SUCCESS;
+  if (OB_FAIL(hub_->load_cache(desc, container))) {
+    if (OB_ENTRY_NOT_EXIST == ret) {
+      if (OB_FAIL(hub_->build_cache(desc, container))) {
+      }
+    } else {
+    }
   }
   return ret;
 }
@@ -321,11 +362,42 @@ void ObIKFTParser::reset()
   }
   segmenters_.clear();
 
-  dict_main_ = nullptr;
-  dict_quan_ = nullptr;
-  dict_stop_ = nullptr;
+  cache_main_.reset();
+  cache_quan_.reset();
+  cache_stop_.reset();
+
+  if (!OB_ISNULL(dict_main_)) {
+    dict_main_->~ObIFTDict();
+    allocator_.free(dict_main_);
+  }
+  if (!OB_ISNULL(dict_quan_)) {
+    dict_quan_->~ObIFTDict();
+    allocator_.free(dict_quan_);
+  }
+  if (!OB_ISNULL(dict_stop_)) {
+    dict_stop_->~ObIFTDict();
+    allocator_.free(dict_stop_);
+  }
 
   is_inited_ = false;
+}
+
+bool ObIKFTParser::should_read_newest_table() const { return false; }
+int ObIKFTParser::build_dict_from_cache(const ObFTDictDesc &desc,
+                                        ObFTCacheRangeContainer &container,
+                                        ObIFTDict *&dict)
+{
+  int ret = OB_SUCCESS;
+  if (OB_ISNULL(hub_)) {
+    ret = OB_ERR_UNEXPECTED;
+  } else if (OB_ISNULL(dict = OB_NEWx(ObFTRangeDict, &allocator_, allocator_, &container, desc))) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else if (OB_FAIL(dict->init())) {
+  }
+  if (OB_FAIL(ret)) {
+    OB_DELETEx(ObIFTDict, &allocator_, dict);
+  }
+  return ret;
 }
 
 } //  namespace storage

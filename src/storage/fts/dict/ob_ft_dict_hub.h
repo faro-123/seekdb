@@ -17,10 +17,8 @@
 #ifndef _OCEANBASE_STORAGE_FTS_DICT_OB_FT_DICT_HUB_H_
 #define _OCEANBASE_STORAGE_FTS_DICT_OB_FT_DICT_HUB_H_
 
-#include "lib/allocator/page_arena.h"
 #include "lib/charset/ob_charset.h"
 #include "lib/lock/ob_bucket_lock.h"
-#include "lib/lock/ob_mutex.h"
 #include "storage/fts/dict/ob_ft_dict_def.h"
 
 namespace oceanbase
@@ -29,48 +27,6 @@ namespace storage
 {
 // typedef uint64_t ObFTTableID;
 // typedef ObFTTableID ObFTDictTableID;
-
-class ObIFTDict;
-class ObFTCacheRangeContainer;
-
-/**
- * @class ObIKDictBundle
- * @brief The three built-in IK dictionaries, opened once and shared by every parser.
- *
- * The dictionaries are read-only and never refreshed at runtime, so the DAT readers
- * and their KV cache handles can outlive a single parse. Building them per parser
- * instance dominated the segmentation cost of short documents.
- */
-class ObIKDictBundle
-{
-public:
-  ObIKDictBundle()
-      : cache_main_(nullptr),
-        cache_quan_(nullptr),
-        cache_stop_(nullptr),
-        dict_main_(nullptr),
-        dict_quan_(nullptr),
-        dict_stop_(nullptr)
-  {
-  }
-  ~ObIKDictBundle() = default;
-
-  const ObIFTDict &main_dict() const { return *dict_main_; }
-  const ObIFTDict &quan_dict() const { return *dict_quan_; }
-  const ObIFTDict &stop_dict() const { return *dict_stop_; }
-
-private:
-  // pin the cache entries the DAT readers point into
-  ObFTCacheRangeContainer *cache_main_;
-  ObFTCacheRangeContainer *cache_quan_;
-  ObFTCacheRangeContainer *cache_stop_;
-  ObIFTDict *dict_main_;
-  ObIFTDict *dict_quan_;
-  ObIFTDict *dict_stop_;
-
-  friend class ObFTDictHub;
-  DISALLOW_COPY_AND_ASSIGN(ObIKDictBundle);
-};
 
 class ObFTDictInfo
 {
@@ -140,15 +96,7 @@ class ObFTCacheRangeContainer;
 class ObFTDictHub
 {
 public:
-  ObFTDictHub()
-      : is_inited_(false),
-        dict_map_(),
-        rw_dict_lock_(),
-        bundle_lock_(),
-        bundle_alloc_(lib::ObMemAttr("FtDictBundle")),
-        ik_bundle_(nullptr)
-  {
-  }
+  ObFTDictHub() : is_inited_(false), dict_map_(), rw_dict_lock_() {}
   ~ObFTDictHub() {}
 
   int init();
@@ -159,37 +107,17 @@ public:
 
   int load_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &container);
 
-  /**
-   * @brief get the shared, read-only IK dictionaries, building them on first use
-   * @param[out] bundle valid for the lifetime of the hub, never null on OB_SUCCESS
-   */
-  int get_ik_dict_bundle(const ObIKDictBundle *&bundle);
-
 private:
   int get_dict_info(const ObFTDictInfoKey &key, ObFTDictInfo &info);
 
   int put_dict_info(const ObFTDictInfoKey &key, const ObFTDictInfo &info);
 
-  int build_ik_dict_bundle(const ObIKDictBundle *&bundle);
-
-  int load_or_build_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &container);
-
-  int open_range_dict(const ObFTDictDesc &desc,
-                      ObFTCacheRangeContainer &container,
-                      ObIFTDict *&dict);
-
-  void destroy_ik_dict_bundle();
-
-  void free_ik_dict_bundle(ObIKDictBundle *bundle);
 
 private:
   bool is_inited_;
   // holds info of dict
   hash::ObHashMap<ObFTDictInfoKey, ObFTDictInfo> dict_map_;
   ObBucketLock rw_dict_lock_;
-  lib::ObMutex bundle_lock_;
-  ObArenaAllocator bundle_alloc_;
-  const ObIKDictBundle *ik_bundle_;
 };
 
 } //  namespace storage

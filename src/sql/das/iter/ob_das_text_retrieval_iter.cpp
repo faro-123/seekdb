@@ -48,7 +48,6 @@ ObDASTextRetrievalIter::ObDASTextRetrievalIter()
     need_inv_idx_agg_(false),
     inv_idx_agg_evaluated_(false),
     need_inv_idx_agg_reset_(false),
-    bm25_const_filled_(false),
     is_inited_(false)
 {
 }
@@ -57,7 +56,6 @@ int ObDASTextRetrievalIter::set_query_token(const ObString &query_token)
 {
   int ret = OB_SUCCESS;
   ObNewRange inv_idx_scan_range;
-  bm25_const_filled_ = false;
   if (OB_FAIL(check_inv_idx_scan_and_agg_param())) {
   } else {
     const ExprFixedArray *exprs = &(ir_ctdef_->get_inv_idx_scan_ctdef()->pd_expr_spec_.access_exprs_);
@@ -83,7 +81,6 @@ int ObDASTextRetrievalIter::set_query_token_and_rangekey(const ObString &query_t
   int ret = OB_SUCCESS;
   ObNewRange inv_idx_scan_range;
   ObNewRange inv_idx_agg_scan_range;
-  bm25_const_filled_ = false;
   if (OB_FAIL(check_inv_idx_scan_and_agg_param())) {
   } else {
     const ExprFixedArray *exprs = &(ir_ctdef_->get_inv_idx_scan_ctdef()->pd_expr_spec_.access_exprs_);
@@ -231,12 +228,10 @@ int ObDASTextRetrievalIter::inner_reuse()
         }
         inv_idx_agg_evaluated_ = false;
         token_doc_cnt_ = 0;
-        bm25_const_filled_ = false;
       }
     } else {
       inv_idx_agg_evaluated_ = false;
       token_doc_cnt_ = 0;
-      bm25_const_filled_ = false;
     }
 
   }
@@ -274,7 +269,6 @@ int ObDASTextRetrievalIter::inner_release()
   need_inv_idx_agg_ = false;
   inv_idx_agg_evaluated_ = false;
   need_inv_idx_agg_reset_ = false;
-  bm25_const_filled_ = false;
   is_inited_ = false;
   return ret;
 }
@@ -340,7 +334,8 @@ int ObDASTextRetrievalIter::inner_get_next_row()
         *inv_idx_scan_param_.output_exprs_));
     if (ir_ctdef_->need_calc_relevance()) {
       clear_row_wise_evaluated_flag();
-      if (!bm25_const_filled_ && OB_FAIL(fill_bm25_consts())) {
+      if (OB_FAIL(fill_token_doc_cnt())) {
+      } else if (OB_FAIL(fill_token_weight())) {
       } else if (OB_FAIL(project_relevance_expr())) {
       }
     }
@@ -381,7 +376,8 @@ int ObDASTextRetrievalIter::inner_get_next_rows(int64_t &count, int64_t capacity
       const ObBitVector *skip = NULL;
       PRINT_VECTORIZED_ROWS(SQL, DEBUG, *ctx, *inv_idx_scan_param_.output_exprs_, count, skip);
       clear_batch_wise_evaluated_flag(count);
-      if (!bm25_const_filled_ && OB_FAIL(fill_bm25_consts())) {
+      if (OB_FAIL(fill_token_doc_cnt())) {
+      } else if (OB_FAIL(fill_token_weight())) {
       } else if (OB_FAIL(batch_project_relevance_expr(count))) {
       }
     }
@@ -664,17 +660,6 @@ int ObDASTextRetrievalIter::fill_token_weight()
         token_weight_expr_->locate_datum_for_write(*ir_rtdef_->eval_ctx_);
     token_weight_datum.set_double(
         sql::ObExprBM25::query_token_weight(token_doc_cnt_, total_doc_cnt));
-  }
-  return ret;
-}
-
-int ObDASTextRetrievalIter::fill_bm25_consts()
-{
-  int ret = OB_SUCCESS;
-  if (OB_FAIL(fill_token_doc_cnt())) {
-  } else if (OB_FAIL(fill_token_weight())) {
-  } else {
-    bm25_const_filled_ = true;
   }
   return ret;
 }
