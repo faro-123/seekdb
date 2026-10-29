@@ -224,14 +224,10 @@ int ObExprTokenize::construct_ft_parser_inner_name(const ObString &input_str, To
   int ret = OB_SUCCESS;
   storage::ObFTParser parser;
 
-  char *parser_name_buf = nullptr;
-  if (OB_ISNULL(parser_name_buf
-                = static_cast<char *>(param.allocator_.alloc(storage::OB_FT_PARSER_NAME_LENGTH)))) {
-    ret = OB_ALLOCATE_MEMORY_FAILED;
-  } else if (OB_FAIL(parser.init(input_str))) {
-  } else if (OB_FAIL(parser.serialize_to_str(parser_name_buf, storage::OB_FT_PARSER_NAME_LENGTH))) {
+  if (OB_FAIL(parser.init(input_str))) {
+  } else if (OB_FAIL(parser.serialize_to_str(param.parser_name_buf_, sizeof(param.parser_name_buf_)))) {
   } else {
-    param.parser_name_ = ObString::make_string(parser_name_buf);
+    param.parser_name_ = ObString::make_string(param.parser_name_buf_);
   }
   return ret;
 }
