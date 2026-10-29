@@ -108,6 +108,11 @@ bool match_pattern(const char *pattern, const char *name)
   if (NULL == pattern || NULL == name) {
     return false;
   }
+  // A leading dot must be requested explicitly. In particular, broad globs
+  // must not include AppleDouble resource files alongside the data files.
+  if ('.' == name[0] && '.' != pattern[0]) {
+    return false;
+  }
   const char *star = NULL;
   const char *match = NULL;
   while (*name != '\0') {
@@ -1587,7 +1592,10 @@ int ObFileScanner::init_glob()
       if (match_pattern(pattern_buf, name)) {
         common::ObString full;
         char buf[PATH_MAX + 1];
-        const int64_t full_len = snprintf(buf, sizeof(buf), "%s\\%s", dir_buf, name);
+        const int64_t full_len = snprintf(buf, sizeof(buf), "%s/%s", dir_buf, name);
+        for (int64_t i = 0; i < full_len && i < sizeof(buf) - 1; ++i) {
+          if ('\\' == buf[i]) { buf[i] = '/'; }
+        }
         if (OB_FAIL(ob_write_string(*alloc_, common::ObString(full_len, buf), full))) {
         } else if (OB_FAIL(glob_files_.push_back(full))) {
         }

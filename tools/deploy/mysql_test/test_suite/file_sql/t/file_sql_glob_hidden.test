@@ -1,0 +1,21 @@
+# Broad globs must ignore dotfiles introduced by archive extraction.
+--source mysql_test/test_suite/file_sql/include/copy_file_sql_data.inc
+--disable_query_log
+let $FILE_SQL_DATA_DIR = $OBSERVER_DIR/data_for_mysqltest_file_sql;
+set session enable_file_sql = ON;
+eval copy (select 1 as metadata) to '$FILE_SQL_DATA_DIR/._basic.csv' (format csv, header);
+eval copy (select 1 as metadata) to '$FILE_SQL_DATA_DIR/._basic.jsonl' (format csv, header);
+eval copy (select 1 as metadata) to '$FILE_SQL_DATA_DIR/._invalid.txt' (format csv, header);
+eval copy (select 1 as metadata) to '$FILE_SQL_DATA_DIR/._simple.parquet.b64' (format csv, header);
+eval copy (select 1 as metadata) to '$FILE_SQL_DATA_DIR/.hidden.csv' (format csv, header);
+--echo # Broad patterns skip hidden files
+eval select count(*) as visible_files from glob('$FILE_SQL_DATA_DIR/*');
+eval select count(*) as visible_csv from glob('$FILE_SQL_DATA_DIR/*.csv');
+eval select count(*) as question_wildcard from glob('$FILE_SQL_DATA_DIR/?*');
+--echo # Explicit dot patterns preserve access to hidden files
+eval select count(*) as hidden_files from glob('$FILE_SQL_DATA_DIR/.*');
+eval select count(*) as resource_files from glob('$FILE_SQL_DATA_DIR/._*');
+eval select count(*) as exact_resource_file from glob('$FILE_SQL_DATA_DIR/._basic.csv');
+set session enable_file_sql = OFF;
+--enable_query_log
+--source mysql_test/test_suite/file_sql/include/remove_file_sql_data.inc

@@ -1,0 +1,14 @@
+# Broad patterns skip hidden files
+visible_files
+4
+visible_csv
+1
+question_wildcard
+4
+# Explicit dot patterns preserve access to hidden files
+hidden_files
+5
+resource_files
+4
+exact_resource_file
+1
