@@ -2446,6 +2446,35 @@ all_ai_model_endpoint_def = dict(
 )
 def_table_schema(**all_ai_model_endpoint_def)
 
+all_ai_column_def = dict(
+  owner = 'faro',
+  table_name     = '__all_ai_column',
+  table_id       = '1131',
+  table_type = 'SYSTEM_TABLE',
+  gm_columns = ['gmt_create', 'gmt_modified'],
+  rowkey_columns = [
+  ('table_id', 'int'),
+  ('column_id', 'int')
+  ],
+
+  is_cluster_private = False,
+  meta_record_in_sys = False,
+  normal_columns = [
+  ('column_name', 'varchar:OB_MAX_COLUMN_NAME_LENGTH', 'false', ''),
+  ('max_retries', 'int', 'false', '0'),
+  ('sync_mode', 'int', 'false', '0'),
+  ('state_column_id', 'int', 'false', '-1'),
+  ('request_column_id', 'int', 'false', '-1'),
+  ('result_spec_column_id', 'int', 'false', '-1'),
+  ('version_column_id', 'int', 'false', '-1'),
+  ('normalized_expr', 'varchar:4096', 'true'),
+  ('prompt_hint', 'varchar:1024', 'true')
+  ]
+)
+
+def_table_schema(**all_ai_column_def)
+
+
 
 all_objauth_mysql_def = dict(
     owner = 'cjl476581',
@@ -4335,29 +4364,7 @@ def_table_schema(
 
 # 12068-12073 reserved
 
-def_table_schema(
-  owner = 'faro',
-  table_name     = '__all_ai_column',
-  table_id       = '12074',
-  table_type = 'VIRTUAL_TABLE',
-  gm_columns = [],
-  rowkey_columns = [
-  ('table_id', 'int'),
-  ('column_id', 'int')
-  ],
-
-  normal_columns = [
-  ('column_name', 'varchar:OB_MAX_COLUMN_NAME_LENGTH'),
-  ('max_retries', 'int'),
-  ('sync_mode', 'int'),
-  ('state_column_id', 'int'),
-  ('request_column_id', 'int'),
-  ('result_spec_column_id', 'int'),
-  ('version_column_id', 'int'),
-  ('normalized_expr', 'longtext'),
-  ('prompt_hint', 'longtext')
-  ]
-  )
+# 12074: __all_ai_column moved to the system table range (1131)
 
 # 12075: __all_virtual_column_history # removed (single-tenant: iterate VT mechanism deleted)
 

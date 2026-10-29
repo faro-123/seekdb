@@ -403,6 +403,8 @@ private:
   static int gen_column_dml(const ObColumnSchemaV2 &column,
       share::ObDMLSqlSplicer &dml,
       const bool is_history = false);
+  static int gen_ai_column_dml(const ObColumnSchemaV2 &column,
+                               share::ObDMLSqlSplicer &dml);
   int gen_constraint_dml(const ObConstraint &constraint, share::ObDMLSqlSplicer &dml);
   int gen_constraint_column_dml(
       const ObConstraint &constraint,

@@ -77,6 +77,8 @@ private:
   int add_hidden_tablet_seq_col();
   int add_ai_hidden_columns(share::schema::ObTableSchema &table_schema,
                             const uint64_t ai_column_id);
+  int check_ai_column_dependencies(const share::schema::ObTableSchema &table_schema,
+                                   const share::schema::ObColumnSchemaV2 &ai_column);
   int check_column_name_duplicate(const ParseNode *node);
   int resolve_primary_key_node(const ParseNode &pk_node, common::ObArray<ObColumnResolveStat> &stats);
   int resolve_table_elements(const ParseNode *node,

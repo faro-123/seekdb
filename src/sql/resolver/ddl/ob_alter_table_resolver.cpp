@@ -3457,11 +3457,149 @@ int ObAlterTableResolver::resolve_add_column(const ParseNode &node, ObColumnName
         if (OB_SUCC(ret)) {
           if (OB_FAIL(alter_table_stmt->add_column(alter_column_schema))) {
           } else if (FALSE_IT(alter_table_stmt->set_sql_mode(session_info_->get_sql_mode()))) {
+          } else if (alter_column_schema.is_ai_column()
+                     && OB_FAIL(add_ai_hidden_columns(
+                          alter_table_stmt->get_alter_table_arg().alter_table_schema_,
+                          alter_column_schema.get_column_name_str()))) {
           }
         }
       }
     }
     add_column_cnt_++;
+  }
+  return ret;
+}
+
+namespace
+{
+
+ObColumnSchemaV2 *find_column_by_name(ObTableSchema &table, const ObString &name)
+{
+  ObColumnSchemaV2 *found = NULL;
+  for (ObTableSchema::const_column_iterator it = table.column_begin();
+       NULL == found && it != table.column_end(); ++it) {
+    if (OB_NOT_NULL(*it) && 0 == (*it)->get_column_name_str().case_compare(name)) {
+      found = *it;
+    }
+  }
+  return found;
+}
+
+} // namespace
+
+int ObAlterTableResolver::add_ai_hidden_columns(AlterTableSchema &alter_table_schema,
+                                                const ObString &ai_column_name)
+{
+  int ret = OB_SUCCESS;
+  ObAlterTableStmt *alter_table_stmt = get_alter_table_stmt();
+  AlterColumnSchema *ai_column = NULL;
+  int64_t added_column_cnt = 0;
+  uint64_t next_column_id = OB_INVALID_ID;
+  uint64_t version_column_id = OB_INVALID_ID;
+  const ObString version_column_name("__ai_version");
+  if (OB_ISNULL(alter_table_stmt) || OB_ISNULL(table_schema_)) {
+    ret = OB_ERR_UNEXPECTED;
+    SQL_RESV_LOG(WARN, "invalid alter table stmt or table schema", K(ret));
+  } else {
+    // New column ids are allocated sequentially in the root server, so the ids of the
+    // hidden columns can be predicted from the number of added columns.
+    for (ObTableSchema::const_column_iterator it = alter_table_schema.column_begin();
+         OB_SUCC(ret) && it != alter_table_schema.column_end(); ++it) {
+      AlterColumnSchema *col = static_cast<AlterColumnSchema *>(*it);
+      if (OB_ISNULL(col)) {
+        ret = OB_ERR_UNEXPECTED;
+      } else if (OB_DDL_ADD_COLUMN == col->alter_type_) {
+        ++added_column_cnt;
+      }
+      if (OB_SUCC(ret) && col->get_column_name_str() == ai_column_name) {
+        ai_column = col;
+      }
+    }
+    if (OB_FAIL(ret)) {
+    } else if (OB_ISNULL(ai_column)) {
+      ret = OB_ERR_UNEXPECTED;
+      SQL_RESV_LOG(WARN, "ai column not found in alter table schema", K(ret), K(ai_column_name));
+    } else {
+      next_column_id = table_schema_->get_max_used_column_id() + added_column_cnt;
+      const ObColumnSchemaV2 *version_column = find_column_by_name(alter_table_schema, version_column_name);
+      if (OB_ISNULL(version_column)) {
+        version_column = table_schema_->get_column_schema(version_column_name);
+      }
+      if (OB_NOT_NULL(version_column)) {
+        version_column_id = version_column->get_column_id();
+      } else {
+        AlterColumnSchema new_version_column;
+        new_version_column.alter_type_ = OB_DDL_ADD_COLUMN;
+        new_version_column.set_table_id(table_schema_->get_table_id());
+        new_version_column.set_column_id(++next_column_id);
+        new_version_column.set_column_name(version_column_name);
+        new_version_column.set_data_type(ObIntType);
+        new_version_column.set_nullable(true);
+        new_version_column.set_is_hidden(true);
+        new_version_column.set_charset_type(CHARSET_UTF8MB4);
+        new_version_column.set_collation_type(CS_TYPE_UTF8MB4_BIN);
+        new_version_column.set_prev_column_id(UINT64_MAX);
+        new_version_column.set_next_column_id(UINT64_MAX);
+        new_version_column.set_rowkey_position(0);
+        if (OB_FAIL(alter_table_stmt->add_column(new_version_column))) {
+        } else {
+          version_column_id = next_column_id;
+        }
+      }
+    }
+
+    struct HiddenSpec {
+      const char *prefix;
+      common::ObObjType type;
+      int32_t length;
+    };
+    const HiddenSpec specs[] = {
+        {"__ai_state_", ObIntType, 0},
+        {"__ai_request_", ObVarcharType, 128},
+        {"__ai_spec_", ObVarcharType, 256}};
+    for (int64_t i = 0; OB_SUCC(ret) && i < static_cast<int64_t>(sizeof(specs) / sizeof(specs[0])); ++i) {
+      ObSqlString column_name;
+      if (OB_FAIL(column_name.append_fmt("%s%.*s", specs[i].prefix,
+                                         static_cast<int>(ai_column_name.length()),
+                                         ai_column_name.ptr()))) {
+      } else if (OB_NOT_NULL(find_column_by_name(alter_table_schema, column_name.string()))
+                 || OB_NOT_NULL(table_schema_->get_column_schema(column_name.string()))) {
+        ret = OB_ERR_COLUMN_DUPLICATE;
+        LOG_USER_ERROR(OB_ERR_COLUMN_DUPLICATE, column_name.length(), column_name.ptr());
+      } else {
+        AlterColumnSchema hidden_column;
+        hidden_column.alter_type_ = OB_DDL_ADD_COLUMN;
+        hidden_column.set_table_id(table_schema_->get_table_id());
+        hidden_column.set_column_id(++next_column_id);
+        hidden_column.set_data_type(specs[i].type);
+        if (ObVarcharType == specs[i].type) {
+          hidden_column.set_data_length(specs[i].length);
+        }
+        hidden_column.set_nullable(true);
+        hidden_column.set_is_hidden(true);
+        hidden_column.set_charset_type(CHARSET_UTF8MB4);
+        hidden_column.set_collation_type(CS_TYPE_UTF8MB4_BIN);
+        hidden_column.set_prev_column_id(UINT64_MAX);
+        hidden_column.set_next_column_id(UINT64_MAX);
+        hidden_column.set_rowkey_position(0);
+        if (OB_FAIL(hidden_column.set_column_name(column_name.string()))) {
+        } else if (OB_FAIL(alter_table_stmt->add_column(hidden_column))) {
+        }
+      }
+    }
+    // add_alter_column may reallocate the column array, so refetch the ai column.
+    if (OB_SUCC(ret)) {
+      ObColumnSchemaV2 *ai_col = find_column_by_name(alter_table_schema, ai_column_name);
+      if (OB_ISNULL(ai_col)) {
+        ret = OB_ERR_UNEXPECTED;
+        SQL_RESV_LOG(WARN, "ai column lost after adding hidden columns", K(ret), K(ai_column_name));
+      } else {
+        ai_col->set_ai_state_column_id(next_column_id - 2);
+        ai_col->set_ai_request_column_id(next_column_id - 1);
+        ai_col->set_ai_spec_column_id(next_column_id);
+        ai_col->set_ai_version_column_id(version_column_id);
+      }
+    }
   }
   return ret;
 }
@@ -3529,6 +3667,10 @@ int ObAlterTableResolver::resolve_alter_table_column_definition(AlterColumnSchem
               false,
               false,
               allow_has_default))) {
+  } else if (column.is_ai_column() && OB_DDL_ADD_COLUMN != column.alter_type_) {
+    ret = OB_NOT_SUPPORTED;
+    LOG_USER_ERROR(OB_NOT_SUPPORTED, "modify or change an AI column");
+    SQL_RESV_LOG(WARN, "alter table only supports adding AI columns", K(ret), K(column));
   } else { // add column level constraint
     add_or_modify_check_cst_times_ += alter_table_schema.get_constraint_count() - cst_cnt;
   }
