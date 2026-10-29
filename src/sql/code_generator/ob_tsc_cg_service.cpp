@@ -1829,7 +1829,7 @@ int ObTscCgService::generate_text_ir_ctdef(const ObLogTableScan &op,
   }
 
   if (OB_FAIL(ret)) {
-  } else if (tr_info.need_calc_relevance_) {
+  } else {
     ObDASScanCtDef *inv_idx_agg_ctdef = nullptr;
     ObDASScanCtDef *doc_agg_ctdef = nullptr;
     ObDASScanCtDef *block_max_scan_ctdef = nullptr;
@@ -1882,13 +1882,6 @@ int ObTscCgService::generate_text_ir_ctdef(const ObLogTableScan &op,
         ir_scan_ctdef->has_doc_id_agg_ = true;
         ir_scan_ctdef->has_block_max_scan_ = tr_info.need_block_max_scan();
       }
-    }
-  } else {
-    if (OB_ISNULL(ir_scan_ctdef->children_ = OB_NEW_ARRAY(ObDASBaseCtDef*, &ctdef_alloc, 1))) {
-      ret = OB_ALLOCATE_MEMORY_FAILED;
-    } else {
-      ir_scan_ctdef->children_cnt_ = 1;
-      ir_scan_ctdef->children_[0] = &scan_ctdef;
     }
   }
 
