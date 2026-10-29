@@ -4335,7 +4335,29 @@ def_table_schema(
 
 # 12068-12073 reserved
 
-# 12074: __all_virtual_column # removed (single-tenant: iterate VT mechanism deleted)
+def_table_schema(
+  owner = 'faro',
+  table_name     = '__all_ai_column',
+  table_id       = '12074',
+  table_type = 'VIRTUAL_TABLE',
+  gm_columns = [],
+  rowkey_columns = [
+  ('table_id', 'int'),
+  ('column_id', 'int')
+  ],
+
+  normal_columns = [
+  ('column_name', 'varchar:OB_MAX_COLUMN_NAME_LENGTH'),
+  ('max_retries', 'int'),
+  ('sync_mode', 'int'),
+  ('state_column_id', 'int'),
+  ('request_column_id', 'int'),
+  ('result_spec_column_id', 'int'),
+  ('version_column_id', 'int'),
+  ('normalized_expr', 'longtext'),
+  ('prompt_hint', 'longtext')
+  ]
+  )
 
 # 12075: __all_virtual_column_history # removed (single-tenant: iterate VT mechanism deleted)
 

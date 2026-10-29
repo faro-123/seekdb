@@ -1966,6 +1966,172 @@ int ObDDLResolver::resolve_column_definition(ObColumnSchemaV2 &column,
       }
     }
   }
+  if (OB_SUCC(ret) && column.is_ai_column()
+      && OB_FAIL(resolve_ai_column_definition(column, table_schema))) {
+  }
+  return ret;
+}
+
+int ObDDLResolver::resolve_ai_column_attribute(ObColumnSchemaV2 &column, ParseNode *attr_node)
+{
+  int ret = OB_SUCCESS;
+  if (OB_ISNULL(attr_node) || attr_node->num_child_ != 2 || OB_ISNULL(attr_node->children_[0])
+      || OB_ISNULL(session_info_)) {
+    ret = OB_ERR_UNEXPECTED;
+    SQL_RESV_LOG(WARN, "invalid ai column attribute node", K(ret));
+  } else {
+    ParseNode *expr_node = attr_node->children_[0];
+    ObString expr_str(expr_node->str_len_, expr_node->str_value_);
+    if (expr_str.empty()) {
+      ret = OB_ERR_PARSER_SYNTAX;
+      SQL_RESV_LOG(WARN, "empty ai column expression", K(ret));
+    } else if (OB_FAIL(ObSQLUtils::convert_sql_text_to_schema_for_storing(
+                         *allocator_, session_info_->get_dtc_params(), expr_str))) {
+    } else if (OB_FAIL(column.set_ai_column_expr(expr_str))) {
+    } else {
+      column.set_ai_column();
+      column.set_ai_max_retries(0);
+      column.set_ai_sync_mode(0);
+      column.set_nullable(true);
+      ParseNode *cur = attr_node->children_[1];
+      while (OB_SUCC(ret) && OB_NOT_NULL(cur)) {
+        ParseNode *option = (T_LINK_NODE == cur->type_) ? cur->children_[0] : cur;
+        ParseNode *next = (T_LINK_NODE == cur->type_) ? cur->children_[1] : NULL;
+        if (OB_ISNULL(option) || T_AI_COLUMN_OPTION != option->type_) {
+          ret = OB_ERR_UNEXPECTED;
+          SQL_RESV_LOG(WARN, "invalid ai column option", K(ret));
+        } else {
+          ParseNode *name_node = option->num_child_ >= 1 ? option->children_[0] : NULL;
+          ParseNode *value_node = option->num_child_ >= 2 ? option->children_[1] : NULL;
+          ObString name;
+          if (OB_ISNULL(name_node)) {
+            ret = OB_ERR_UNEXPECTED;
+          } else {
+            name.assign_ptr(name_node->str_value_, static_cast<int32_t>(name_node->str_len_));
+            if (0 == name.case_compare("max_retries")) {
+              if (OB_ISNULL(value_node) || T_INT != value_node->type_ || value_node->value_ < 0) {
+                ret = OB_INVALID_ARGUMENT;
+                LOG_USER_ERROR(OB_INVALID_ARGUMENT, "ai column max_retries");
+              } else {
+                column.set_ai_max_retries(value_node->value_);
+              }
+            } else if (0 == name.case_compare("sync_mode")) {
+              ObString value(value_node == NULL ? 0 : static_cast<int32_t>(value_node->str_len_),
+                             value_node == NULL ? NULL : value_node->str_value_);
+              if (0 != value.case_compare("async")) {
+                ret = OB_NOT_SUPPORTED;
+                LOG_USER_ERROR(OB_NOT_SUPPORTED, "AI column sync_mode other than 'async'");
+              }
+            } else {
+              ret = OB_INVALID_ARGUMENT;
+              LOG_USER_ERROR(OB_INVALID_ARGUMENT, "unknown ai column option");
+            }
+          }
+        }
+        cur = next;
+      }
+    }
+  }
+  return ret;
+}
+
+int ObDDLResolver::resolve_ai_column_definition(ObColumnSchemaV2 &column,
+                                                const ObTableSchema &table_schema)
+{
+  int ret = OB_SUCCESS;
+  ObItemType root_type = T_INVALID;
+  ObSEArray<ObString, 8> column_names;
+  const ParseNode *expr_node = NULL;
+  if (OB_UNLIKELY(!column.is_ai_column()) || OB_ISNULL(session_info_) || OB_ISNULL(allocator_)) {
+    ret = OB_ERR_UNEXPECTED;
+    SQL_RESV_LOG(WARN, "invalid ai column definition", K(ret));
+  } else if (OB_FAIL(ObResolverUtils::resolve_generated_column_info(
+                       column.get_ai_column_expr(), *allocator_, root_type, column_names))) {
+  } else if (T_FUN_SYS_AI_COMPLETE != root_type && T_FUN_SYS_AI_EMBED != root_type) {
+    ret = OB_NOT_SUPPORTED;
+    LOG_USER_ERROR(OB_NOT_SUPPORTED, "AI column expression without AI_COMPLETE or AI_EMBED function");
+  } else if (OB_FAIL(ObRawExprUtils::parse_expr_node_from_str(
+                       column.get_ai_column_expr(), session_info_->get_charsets4parser(),
+                       *allocator_, expr_node))) {
+  } else if (OB_ISNULL(expr_node) || T_FUN_SYS != expr_node->type_ || expr_node->num_child_ < 2) {
+    ret = OB_ERR_PARSER_SYNTAX;
+    SQL_RESV_LOG(WARN, "invalid ai function expression", K(ret));
+  } else {
+    for (int64_t i = 0; OB_SUCC(ret) && i < column_names.count(); ++i) {
+      const ObColumnSchemaV2 *dep_column = table_schema.get_column_schema(column_names.at(i));
+      if (OB_NOT_NULL(dep_column) && dep_column->is_ai_column()) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_USER_ERROR(OB_NOT_SUPPORTED, "");
+      }
+    }
+    if (OB_FAIL(ret)) {
+    } else if (T_FUN_SYS_AI_EMBED == root_type) {
+      if (!ob_is_collection_sql_type(column.get_data_type())) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_USER_ERROR(OB_NOT_SUPPORTED, "AI_EMBED on a non-vector AI column");
+      } else if (expr_node->num_child_ >= 4 && OB_NOT_NULL(expr_node->children_[3])
+                 && T_INT == expr_node->children_[3]->type_) {
+        int64_t expected = 0;
+        const int64_t got = expr_node->children_[3]->value_;
+        if (OB_FAIL(ObVectorIndexUtil::get_vector_dim_from_extend_type_info(
+                      column.get_extended_type_info(), expected))) {
+        } else if (expected != got) {
+          ret = OB_ERR_INVALID_VECTOR_DIM;
+          LOG_USER_ERROR(OB_ERR_INVALID_VECTOR_DIM,
+                         static_cast<uint32_t>(expected), static_cast<uint32_t>(got));
+        }
+      }
+    } else if (T_FUN_SYS_AI_COMPLETE == root_type) {
+      bool type_supported = column.is_string_type() || column.is_json()
+          || ob_is_integer_type(column.get_data_type())
+          || ob_is_number_tc(column.get_data_type());
+      if (!type_supported) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_USER_ERROR(OB_NOT_SUPPORTED, "AI_COMPLETE on this result column type");
+      }
+    }
+    if (OB_SUCC(ret) && T_FUN_SYS_AI_COMPLETE == root_type) {
+      const char *hint = NULL;
+      if (column.is_json()) {
+        hint = "Return exactly one valid JSON value matching the requested structure.";
+      } else if (ob_is_integer_type(column.get_data_type())) {
+        hint = "Return exactly one base-10 integer value with no extra text.";
+      }
+      if (OB_NOT_NULL(hint) && OB_NOT_NULL(expr_node->children_[1])
+          && OB_NOT_NULL(expr_node->children_[2])) {
+        ObString hint_str(hint);
+        ObSqlString normalized;
+        if (OB_FAIL(column.set_ai_prompt_hint(hint_str))) {
+        } else if (OB_FAIL(normalized.append_fmt("%.*s(%.*s, AI_PROMPT('%.*s {0}', %.*s)",
+                                                  static_cast<int>(expr_node->children_[0]->str_len_),
+                                                  expr_node->children_[0]->str_value_,
+                                                  static_cast<int>(expr_node->children_[1]->str_len_),
+                                                  expr_node->children_[1]->str_value_,
+                                                  static_cast<int>(hint_str.length()), hint_str.ptr(),
+                                                  static_cast<int>(expr_node->children_[2]->str_len_),
+                                                  expr_node->children_[2]->str_value_))) {
+        }
+        for (int64_t i = 3; OB_SUCC(ret) && i < expr_node->num_child_; ++i) {
+          if (OB_ISNULL(expr_node->children_[i])) {
+            ret = OB_ERR_UNEXPECTED;
+          } else if (OB_FAIL(normalized.append_fmt(", %.*s",
+                     static_cast<int>(expr_node->children_[i]->str_len_),
+                     expr_node->children_[i]->str_value_))) {
+          }
+        }
+        if (OB_SUCC(ret)) {
+          if (OB_FAIL(normalized.append(")"))) {
+          } else if (OB_FAIL(column.set_ai_column_expr(normalized.string()))) {
+          }
+        }
+      }
+    }
+    for (int64_t i = 0; OB_SUCC(ret) && i < column_names.count(); ++i) {
+      const ObColumnSchemaV2 *dep_column = table_schema.get_column_schema(column_names.at(i));
+      if (OB_NOT_NULL(dep_column) && OB_FAIL(column.add_cascaded_column_id(dep_column->get_column_id()))) {
+      }
+    }
+  }
   return ret;
 }
 
@@ -2272,6 +2438,11 @@ int ObDDLResolver::resolve_normal_column_attribute(ObColumnSchemaV2 &column,
       }
       case T_COL_SKIP_INDEX: {
         if (OB_FAIL(resolve_column_skip_index(*attr_node, column))) {
+        }
+        break;
+      }
+      case T_AI_COLUMN: {
+        if (OB_FAIL(resolve_ai_column_attribute(column, attr_node))) {
         }
         break;
       }

@@ -339,6 +339,7 @@ OBSERVER_UNITY_GROUPS = [
             "src/observer/virtual_table/ob_show_grants.cpp",
             "src/observer/virtual_table/ob_show_processlist.cpp",
             "src/observer/virtual_table/ob_table_columns.cpp",
+            "src/observer/virtual_table/ob_all_ai_column.cpp",
             "src/observer/virtual_table/ob_table_index.cpp",
             "src/observer/virtual_table/ob_virtual_data_access_service.cpp",
             "src/observer/virtual_table/ob_virtual_open_cursor_table.cpp",

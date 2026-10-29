@@ -69,6 +69,9 @@ int ObColumnSchemaV2::assign(const ObColumnSchemaV2 &src_schema)
     is_binary_collation_ = src_schema.is_binary_collation_;
     on_update_current_timestamp_ = src_schema.on_update_current_timestamp_;
     column_flags_ = src_schema.column_flags_;
+    if (OB_FAIL(deep_copy_str(src_schema.ai_column_expr_, ai_column_expr_))) {
+    } else if (OB_FAIL(deep_copy_str(src_schema.ai_prompt_hint_, ai_prompt_hint_))) {
+    }
     prev_column_id_ = src_schema.prev_column_id_;
     next_column_id_ = src_schema.next_column_id_;
     encoding_type_ = src_schema.encoding_type_;
@@ -77,6 +80,12 @@ int ObColumnSchemaV2::assign(const ObColumnSchemaV2 &src_schema)
     sub_type_ = src_schema.sub_type_;
     skip_index_attr_ = src_schema.skip_index_attr_;
     lob_chunk_size_ = src_schema.lob_chunk_size_;
+    ai_max_retries_ = src_schema.ai_max_retries_;
+    ai_sync_mode_ = src_schema.ai_sync_mode_;
+    ai_state_column_id_ = src_schema.ai_state_column_id_;
+    ai_request_column_id_ = src_schema.ai_request_column_id_;
+    ai_spec_column_id_ = src_schema.ai_spec_column_id_;
+    ai_version_column_id_ = src_schema.ai_version_column_id_;
 
     if (OB_FAIL(deep_copy_obj(src_schema.orig_default_value_, orig_default_value_))) {
     } else if (OB_FAIL(deep_copy_obj(src_schema.cur_default_value_, cur_default_value_))) {
@@ -118,6 +127,8 @@ int64_t ObColumnSchemaV2::get_convert_size() const
 
   convert_size += orig_default_value_.get_deep_copy_size();
   convert_size += cur_default_value_.get_deep_copy_size();
+  convert_size += ai_column_expr_.length() + 1;
+  convert_size += ai_prompt_hint_.length() + 1;
   convert_size += column_name_.length() + 1;
   convert_size += comment_.length() + 1;
   if (column_ref_idxs_ != NULL) {
@@ -187,6 +198,14 @@ void ObColumnSchemaV2::reset()
   reset_string_array(extended_type_info_);
   skip_index_attr_.reset();
   lob_chunk_size_ = OB_DEFAULT_LOB_CHUNK_SIZE;
+  ai_column_expr_.reset();
+  ai_prompt_hint_.reset();
+  ai_max_retries_ = 0;
+  ai_sync_mode_ = 0;
+  ai_state_column_id_ = OB_INVALID_ID;
+  ai_request_column_id_ = OB_INVALID_ID;
+  ai_spec_column_id_ = OB_INVALID_ID;
+  ai_version_column_id_ = OB_INVALID_ID;
   local_session_vars_.reset();
   ObSchema::reset();
 }
@@ -235,7 +254,15 @@ OB_DEF_SERIALIZE(ObColumnSchemaV2)
                 sub_type_,
                 skip_index_attr_,
                 lob_chunk_size_,
-                local_session_vars_);
+                local_session_vars_,
+                ai_column_expr_,
+                ai_prompt_hint_,
+                ai_max_retries_,
+                ai_sync_mode_,
+                ai_state_column_id_,
+                ai_request_column_id_,
+                ai_spec_column_id_,
+                ai_version_column_id_);
   }
 
   return ret;
@@ -295,7 +322,15 @@ OB_DEF_DESERIALIZE(ObColumnSchemaV2)
                 sub_type_,
                 skip_index_attr_,
                 lob_chunk_size_,
-                local_session_vars_);
+                local_session_vars_,
+                ai_column_expr_,
+                ai_prompt_hint_,
+                ai_max_retries_,
+                ai_sync_mode_,
+                ai_state_column_id_,
+                ai_request_column_id_,
+                ai_spec_column_id_,
+                ai_version_column_id_);
   }
   return ret;
 }
@@ -335,6 +370,14 @@ OB_DEF_SERIALIZE_SIZE(ObColumnSchemaV2)
               next_column_id_);
   len += get_string_array_serialize_size(extended_type_info_);
   LST_DO_CODE(OB_UNIS_ADD_LEN,
+              ai_column_expr_,
+              ai_prompt_hint_,
+              ai_max_retries_,
+              ai_sync_mode_,
+              ai_state_column_id_,
+              ai_request_column_id_,
+              ai_spec_column_id_,
+              ai_version_column_id_,
               srs_id_,
               udt_set_id_,
               sub_type_,

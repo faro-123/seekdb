@@ -26,6 +26,7 @@
 #include "observer/virtual_table/ob_session_variables.h"
 #include "observer/virtual_table/ob_global_variables.h"
 #include "observer/virtual_table/ob_table_columns.h"
+#include "observer/virtual_table/ob_all_ai_column.h"
 #include "observer/virtual_table/ob_table_index.h"
 #include "observer/virtual_table/ob_show_create_database.h"
 #include "observer/virtual_table/ob_show_create_table.h"
@@ -758,6 +759,14 @@ int ObVTIterCreator::create_vt_iter(ObVTableScanParam &params,
                 global_variables->set_sys_variable_schema(sys_variable_schema);
                 vt_iter = static_cast<ObVirtualTableIterator *>(global_variables);
               }
+            }
+            break;
+          }
+          case OB_ALL_AI_COLUMN_TID:
+          {
+            ObAllAIColumn *ai_column = NULL;
+            if (OB_SUCC(NEW_VIRTUAL_TABLE(ObAllAIColumn, ai_column))) {
+              vt_iter = static_cast<ObVirtualTableIterator *>(ai_column);
             }
             break;
           }

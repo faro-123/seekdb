@@ -38,6 +38,7 @@ namespace sql
 ObCreateTableResolver::ObCreateTableResolver(ObResolverParams &params)
     : ObCreateTableResolverBase(params),
       cur_column_id_(OB_APP_MIN_COLUMN_ID - 1),
+      ai_version_column_id_(OB_INVALID_ID),
       primary_keys_(),
       column_name_set_(),
       if_not_exist_(false),
@@ -138,6 +139,97 @@ int ObCreateTableResolver::add_hidden_tablet_seq_col()
 }
 
 // Set additional information for the temporary table
+int ObCreateTableResolver::add_ai_hidden_columns(ObTableSchema &table_schema,
+                                                  const uint64_t ai_column_id)
+{
+  int ret = OB_SUCCESS;
+  ObColumnSchemaV2 *ai_column = table_schema.get_column_schema(ai_column_id);
+  ObSqlString ai_column_name;
+  uint64_t version_column_id = OB_INVALID_ID;
+  if (OB_ISNULL(ai_column)) {
+    ret = OB_ERR_UNEXPECTED;
+    SQL_RESV_LOG(WARN, "ai column schema is null", K(ret), K(ai_column_id));
+  } else if (OB_FAIL(ai_column_name.append(ai_column->get_column_name_str()))) {
+  } else {
+    if (OB_INVALID_ID != ai_version_column_id_) {
+      version_column_id = ai_version_column_id_;
+    } else {
+    ObColumnSchemaV2 version_column;
+    version_column.set_table_id(table_schema.get_table_id());
+    version_column.set_column_id(gen_column_id());
+    version_column.set_column_name(ObString("__ai_version"));
+    version_column.set_data_type(ObIntType);
+    version_column.set_nullable(true);
+    version_column.set_is_hidden(true);
+    version_column.set_charset_type(CHARSET_UTF8MB4);
+    version_column.set_collation_type(CS_TYPE_UTF8MB4_BIN);
+    version_column.set_prev_column_id(UINT64_MAX);
+    version_column.set_next_column_id(UINT64_MAX);
+    version_column.set_rowkey_position(0);
+    version_column_id = version_column.get_column_id();
+    if (OB_FAIL(table_schema.add_column(version_column))) {
+      SQL_RESV_LOG(WARN, "failed to add ai version column", K(ret));
+    } else {
+      ai_version_column_id_ = version_column_id;
+    }
+    }
+  }
+
+  struct HiddenSpec {
+    const char *prefix;
+    common::ObObjType type;
+    int32_t length;
+  };
+  const HiddenSpec specs[] = {
+      {"__ai_state_", ObIntType, 0},
+      {"__ai_request_", ObVarcharType, 128},
+      {"__ai_spec_", ObVarcharType, 256}};
+  for (int64_t i = 0; OB_SUCC(ret) && i < static_cast<int64_t>(sizeof(specs) / sizeof(specs[0])); ++i) {
+    ObColumnSchemaV2 hidden_column;
+    ObSqlString column_name;
+    hidden_column.set_table_id(table_schema.get_table_id());
+    hidden_column.set_column_id(gen_column_id());
+    if (OB_FAIL(column_name.append_fmt("%s%.*s", specs[i].prefix,
+                                       static_cast<int>(ai_column_name.length()),
+                                       ai_column_name.ptr()))) {
+    } else if (OB_FAIL(hidden_column.set_column_name(column_name.string()))) {
+    } else {
+      hidden_column.set_data_type(specs[i].type);
+      if (ObVarcharType == specs[i].type) {
+        hidden_column.set_data_length(specs[i].length);
+      }
+      hidden_column.set_nullable(true);
+      hidden_column.set_is_hidden(true);
+      hidden_column.set_charset_type(CHARSET_UTF8MB4);
+      hidden_column.set_collation_type(CS_TYPE_UTF8MB4_BIN);
+      hidden_column.set_prev_column_id(UINT64_MAX);
+      hidden_column.set_next_column_id(UINT64_MAX);
+      hidden_column.set_rowkey_position(0);
+      const uint64_t hidden_column_id = hidden_column.get_column_id();
+      if (OB_FAIL(table_schema.add_column(hidden_column))) {
+        SQL_RESV_LOG(WARN, "failed to add ai hidden column", K(ret));
+      } else if (OB_ISNULL(ai_column = table_schema.get_column_schema(ai_column_id))) {
+        ret = OB_ERR_UNEXPECTED;
+      } else if (0 == i) {
+        ai_column->set_ai_state_column_id(hidden_column_id);
+      } else if (1 == i) {
+        ai_column->set_ai_request_column_id(hidden_column_id);
+      } else {
+        ai_column->set_ai_spec_column_id(hidden_column_id);
+      }
+    }
+  }
+  if (OB_SUCC(ret)) {
+    ObColumnSchemaV2 *ai_col = table_schema.get_column_schema(ai_column_id);
+    if (OB_ISNULL(ai_col)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else {
+      ai_col->set_ai_version_column_id(version_column_id);
+    }
+  }
+  return ret;
+}
+
 int ObCreateTableResolver::set_temp_table_info(ObTableSchema &table_schema, ParseNode *commit_option_node)
 {
   int ret = OB_SUCCESS;
@@ -831,7 +923,8 @@ int ObCreateTableResolver::resolve_table_elements(const ParseNode *node,
               } else {
                 ret = OB_SUCCESS;
               }
-            }
+          }
+
           }
 
           if (OB_SUCC(ret) && !column.is_invisible_column()) {

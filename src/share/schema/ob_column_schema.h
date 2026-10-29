@@ -240,6 +240,24 @@ int assign(const ObColumnSchemaV2 &src_schema);
   inline bool is_cte_generated_column() const { return column_flags_ & CTE_GENERATED_COLUMN_FLAG; }
   inline bool is_default_expr_v2_column() const { return column_flags_ & DEFAULT_EXPR_V2_COLUMN_FLAG; }
   inline bool is_generated_column() const { return (is_virtual_generated_column() || is_stored_generated_column()); }
+  inline bool is_ai_column() const { return 0 != (column_flags_ & AI_COLUMN_FLAG); }
+  inline void set_ai_column() { add_column_flag(AI_COLUMN_FLAG); }
+  inline int set_ai_column_expr(const common::ObString &expr) { return deep_copy_str(expr, ai_column_expr_); }
+  inline const common::ObString &get_ai_column_expr() const { return ai_column_expr_; }
+  inline void set_ai_max_retries(const int64_t v) { ai_max_retries_ = v; }
+  inline int64_t get_ai_max_retries() const { return ai_max_retries_; }
+  inline void set_ai_sync_mode(const int64_t v) { ai_sync_mode_ = v; }
+  inline int64_t get_ai_sync_mode() const { return ai_sync_mode_; }
+  inline void set_ai_state_column_id(const uint64_t id) { ai_state_column_id_ = id; }
+  inline uint64_t get_ai_state_column_id() const { return ai_state_column_id_; }
+  inline void set_ai_request_column_id(const uint64_t id) { ai_request_column_id_ = id; }
+  inline uint64_t get_ai_request_column_id() const { return ai_request_column_id_; }
+  inline void set_ai_spec_column_id(const uint64_t id) { ai_spec_column_id_ = id; }
+  inline uint64_t get_ai_spec_column_id() const { return ai_spec_column_id_; }
+  inline void set_ai_version_column_id(const uint64_t id) { ai_version_column_id_ = id; }
+  inline uint64_t get_ai_version_column_id() const { return ai_version_column_id_; }
+  inline int set_ai_prompt_hint(const common::ObString &v) { return deep_copy_str(v, ai_prompt_hint_); }
+  inline const common::ObString &get_ai_prompt_hint() const { return ai_prompt_hint_; }
   inline bool is_generated_column_using_udf() const { return /*is_generated_column() && global index table clean the virtual gen col flag*/ !!(column_flags_ & GENERATED_COLUMN_UDF_EXPR); }
   // to check whether storing column in index table is specified by user.
   inline bool is_user_specified_storing_column() const { return column_flags_ & USER_SPECIFIED_STORING_COLUMN_FLAG; }
@@ -397,6 +415,14 @@ private:
   uint64_t sub_type_;
   ObSkipIndexColumnAttr skip_index_attr_;
   int64_t lob_chunk_size_;
+  common::ObString ai_column_expr_;   // executable SQL expression for async generation
+  common::ObString ai_prompt_hint_;   // type hint injected as system prompt
+  int64_t ai_max_retries_;
+  int64_t ai_sync_mode_;
+  uint64_t ai_state_column_id_;
+  uint64_t ai_request_column_id_;
+  uint64_t ai_spec_column_id_;
+  uint64_t ai_version_column_id_;
   share::ObLocalSessionVar local_session_vars_;
 };
 
