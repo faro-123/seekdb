@@ -48,7 +48,7 @@ while ($retry)
   }
   if ($done == 0)
   {
-    --real_sleep 1
+    --sleep 1
     dec $retry;
   }
 }
@@ -58,7 +58,7 @@ from ai_column_p0_t1.docs where id = 1;
 
 --exec python3 mysql_test/test_suite/ai_column/include/ai_column_mock.py reset 19121
 update ai_column_p0_t1.docs set title = 'title-2' where id = 1;
---real_sleep 2
+--sleep 2
 select tags is not null as unrelated_update_keeps_result
 from ai_column_p0_t1.docs where id = 1;
 select count(*) = 0 as unrelated_update_creates_no_task
@@ -85,7 +85,7 @@ while ($retry)
 {
   let $done = `select tags is not null from ai_column_p0_t1.docs where id = 1`;
   if ($done == 1) { let $retry = 0; }
-  if ($done == 0) { --real_sleep 1
+  if ($done == 0) { --sleep 1
     dec $retry; }
 }
 select json_unquote(json_extract(tags, '$.input')) = 'Classify: dependency-update'
@@ -112,7 +112,7 @@ while ($retry)
 {
   let $done = `select tags is not null from ai_column_p0_t1.docs where id = 2`;
   if ($done == 1) { let $retry = 0; }
-  if ($done == 0) { --real_sleep 1
+  if ($done == 0) { --sleep 1
     dec $retry; }
 }
 eval select $done = 1 as primary_key_update_completed;
@@ -140,7 +140,7 @@ from oceanbase.__all_ai_column_task task
 join oceanbase.__all_table t on t.table_id = task.table_id
 join oceanbase.__all_database d on d.database_id = t.database_id
 where d.database_name = 'ai_column_p0_t1' and t.table_name = 'docs';
---real_sleep 2
+--sleep 2
 --exec python3 mysql_test/test_suite/ai_column/include/ai_column_mock.py assert 19121 no-rollback-value
 
 start transaction;

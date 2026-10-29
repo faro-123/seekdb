@@ -20,6 +20,8 @@
 
 #include "ob_table_scan_op.h"
 #include "common/json_type/ob_json_bin.h"
+#include "common/mysqlclient/ob_mysql_proxy.h"
+#include "common/mysqlclient/ob_mysql_result.h"
 #include "data_plane/blocksstable/ob_datum_row.h"
 #include "sql/engine/ob_physical_plan.h"
 #include "sql/das/ob_das_attach_define.h"
@@ -30,6 +32,11 @@
 #include "sql/das/iter/ob_das_iter_utils.h"
 #include "sql/engine/px/ob_granule_iterator_op.h"
 #include "sql/engine/expr/ob_expr_lob_utils.h"
+#include "query/session/ob_inner_sql_connection_access.h"
+#include "share/ai_service/ob_ai_column_meta.h"
+#include "share/schema/ob_schema_getter_guard.h"
+#include "sql/resolver/ob_resolver_utils.h"
+#include "sql/session/ob_inner_sql_connection.h"
 
 namespace oceanbase
 {
@@ -43,6 +50,109 @@ namespace sql
 
 namespace
 {
+// Check the entire column, not just the rows selected by this scan. The nested
+// read shares the caller's transaction and must not recursively run this check.
+int check_strict_ai_columns(ObExecContext &ctx, const ObTableScanSpec &spec)
+{
+  int ret = OB_SUCCESS;
+  bool strict = false;
+  ObSQLSessionInfo *session = ctx.get_my_session();
+  if (spec.strict_ai_column_ids_.empty() || OB_ISNULL(session)
+      || OB_NOT_NULL(session->get_inner_conn())) {
+  } else if (OB_FAIL(session->get_sys_variable(SYS_VAR_AI_COLUMN_STRICT_READ, strict))) {
+  } else if (strict) {
+    ObSchemaGetterGuard *guard = NULL;
+    const ObTableSchema *table = NULL;
+    const ObDatabaseSchema *database = NULL;
+    ObSEArray<ObAiColumnMeta, 4> metas;
+    if (OB_ISNULL(ctx.get_sql_ctx()) || OB_ISNULL(guard = ctx.get_sql_ctx()->schema_guard_)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (OB_FAIL(guard->get_table_schema(spec.ref_table_id_, table)) || OB_ISNULL(table)) {
+      if (OB_SUCC(ret)) { ret = OB_ERR_UNEXPECTED; }
+    } else if (OB_FAIL(guard->get_database_schema(table->get_database_id(), database))
+               || OB_ISNULL(database)) {
+      if (OB_SUCC(ret)) { ret = OB_ERR_UNEXPECTED; }
+    } else if (OB_FAIL(ObAiColumnMetaCache::get_instance().ensure_table_metas(
+                         spec.ref_table_id_, 1000000, ctx.get_allocator(), metas))) {
+    } else {
+      common::sqlclient::ObISQLConnectionGuard conn_guard;
+      ObIInnerSQLConnection *conn = NULL;
+      ObSQLSessionInfo::StmtSavedValue saved_session;
+      ObIInnerSQLConnection::SavedValue saved_conn;
+      const bool was_maintenance = ctx.get_das_ctx().is_ai_column_maintenance_;
+      bool nested = false;
+      if (OB_FAIL(query::ObInnerSQLConnectionAccess::create_connection_with_external_session(
+                    session, conn_guard))) {
+      } else if (OB_ISNULL(conn = as_inner_sql_connection(conn_guard.get_ptr()))) {
+        ret = OB_ERR_UNEXPECTED;
+      } else {
+        session->set_inner_conn(conn_guard.get_ptr());
+        ctx.get_das_ctx().is_ai_column_maintenance_ = true;
+        if (OB_FAIL(conn->begin_nested_session(saved_session, saved_conn, false))) {
+        } else {
+          nested = true;
+        }
+        for (int64_t i = 0; OB_SUCC(ret) && i < spec.strict_ai_column_ids_.count(); ++i) {
+          const uint64_t column_id = spec.strict_ai_column_ids_.at(i);
+          const ObAiColumnMeta *meta = NULL;
+          for (int64_t j = 0; NULL == meta && j < metas.count(); ++j) {
+            if (metas.at(j).column_id_ == column_id) { meta = &metas.at(j); }
+          }
+          if (OB_ISNULL(meta)) {
+            // ALTER ADD can invalidate an otherwise fresh cache.
+            if (OB_FAIL(ObAiColumnMetaCache::get_instance().reload())
+                || OB_FAIL(ObAiColumnMetaCache::get_instance().get_table_metas(
+                             spec.ref_table_id_, ctx.get_allocator(), metas))) {
+            } else {
+              for (int64_t j = 0; NULL == meta && j < metas.count(); ++j) {
+                if (metas.at(j).column_id_ == column_id) { meta = &metas.at(j); }
+              }
+            }
+          }
+          const ObColumnSchemaV2 *state = NULL;
+          ObSqlString sql;
+          if (OB_FAIL(ret)) {
+          } else if (OB_ISNULL(meta) || OB_ISNULL(state = table->get_column_schema(meta->state_column_id_))) {
+            ret = OB_ERR_UNEXPECTED;
+          } else if (OB_FAIL(sql.append("SELECT 1 FROM "))
+                     || OB_FAIL(ObResolverUtils::append_qualified_identifier(
+                                  sql, database->get_database_name_str(), table->get_table_name_str()))
+                     || OB_FAIL(sql.append(" WHERE "))
+                     || OB_FAIL(ObResolverUtils::append_escaped_identifier(sql, state->get_column_name_str()))
+                     || OB_FAIL(sql.append(" IS NULL OR "))
+                     || OB_FAIL(ObResolverUtils::append_escaped_identifier(sql, state->get_column_name_str()))
+                     || OB_FAIL(sql.append(" <> 2 LIMIT 1"))) {
+          } else {
+            ObMySQLProxy::MySQLResult result;
+            if (OB_FAIL(conn->execute_read(sql.ptr(), result))) {
+            } else if (OB_ISNULL(result.get_result())) {
+              ret = OB_ERR_UNEXPECTED;
+            } else {
+              int next_ret = result.get_result()->next();
+              if (OB_SUCCESS == next_ret) {
+                ret = OB_ERR_AI_COLUMN_UNFINISHED;
+                LOG_USER_ERROR(OB_ERR_AI_COLUMN_UNFINISHED,
+                               static_cast<int64_t>(spec.ref_table_id_), static_cast<int64_t>(column_id));
+              } else if (OB_ITER_END != next_ret) {
+                ret = next_ret;
+              }
+              int close_ret = result.get_result()->close();
+              if (OB_SUCC(ret) && OB_SUCCESS != close_ret) { ret = close_ret; }
+            }
+          }
+        }
+        if (nested) {
+          int end_ret = conn->end_nested_session(saved_session, saved_conn);
+          if (OB_SUCC(ret) && OB_SUCCESS != end_ret) { ret = end_ret; }
+        }
+        ctx.get_das_ctx().is_ai_column_maintenance_ = was_maintenance;
+        session->set_inner_conn(NULL);
+      }
+    }
+  }
+  return ret;
+}
+
 // Recursively find ObDASVecAuxScanCtDef with skip_delta_buffer_ in the attach hierarchy.
 // Used for HNSW+async: when index lookup finds deleted row, skip it instead of 4377.
 bool find_skip_delta_buffer_in_ctdef(const ObDASBaseCtDef *ctdef)
@@ -464,6 +574,7 @@ ObTableScanSpec::ObTableScanSpec(ObIAllocator &alloc, const ObPhyOperatorType ty
     pruned_index_name_(alloc),
     unstable_index_name_(alloc),
     ddl_output_cids_(alloc),
+    strict_ai_column_ids_(alloc),
     tsc_ctdef_(alloc),
     pdml_partition_id_(NULL),
     flags_(0),
@@ -495,6 +606,7 @@ OB_SERIALIZE_MEMBER((ObTableScanSpec, ObOpSpec),
                     tsc_ctdef_,
                     pdml_partition_id_,
                     ddl_output_cids_,
+                    strict_ai_column_ids_,
                     id_col_idx_,
                     partition_id_calc_type_,
                     parser_name_,
@@ -1435,6 +1547,7 @@ int ObTableScanOp::inner_open()
   init_scan_monitor_info();
   if (OB_ISNULL(my_session = GET_MY_SESSION(ctx_))) {
     ret = OB_ERR_UNEXPECTED;
+  } else if (OB_FAIL(check_strict_ai_columns(ctx_, MY_SPEC))) {
   } else if (OB_FAIL(ObDASUtils::check_nested_sql_mutating(MY_SPEC.ref_table_id_, ctx_, true))) {
   } else if (OB_FAIL(init_table_scan_rtdef())) {
   } else if (MY_SPEC.is_fts_ddl_ && OB_FAIL(fts_index_.init(MY_SPEC.is_fts_index_aux_, MY_SPEC.parser_name_,

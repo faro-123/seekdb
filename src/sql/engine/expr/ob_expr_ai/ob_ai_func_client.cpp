@@ -23,13 +23,14 @@ namespace common
 {
 
 const int64_t ObAIFuncClient::CURL_MAX_TIMEOUT_SEC = INT_MAX/1000;
+thread_local bool ObAIFuncClient::single_attempt_ = false;
 ObAIFuncClient::ObAIFuncClient()
     : allocator_(nullptr), url_(nullptr), header_list_(nullptr),
       curlm_(nullptr), curl_(nullptr), curl_handles_(), response_buffers_() 
 {
   is_finished_.store(false);
   abs_timeout_ts_ = 0;
-  max_retry_times_ = 3;  // default retry 3 times
+  max_retry_times_ = single_attempt_ ? 0 : 3;
   timeout_sec_ = 60; // default timeout 1 minute
 }
 
@@ -158,7 +159,7 @@ int ObAIFuncClient::send_post(ObJsonObject *data, ObJsonObject *&response)
         // retry
       } else if (!is_retryable_status_code(http_code)) {
         break;
-      } else {
+      } else if (i < max_retry_times_) {
         LOG_WARN("retryable http status code", K(http_code), K(i));
         int64_t delay_ms = 1000 * (1 << i) + rand() % 1000;
         ob_usleep(delay_ms * 1000);
@@ -280,14 +281,17 @@ int ObAIFuncClient::send_post_batch(common::ObIAllocator &allocator,
     if (OB_FAIL(init(allocator, url, headers))) {
     }
     // retry if need
-    for (int64_t i = 0; OB_SUCC(ret) && i < max_retry_times_; ++i) {
+    const int64_t attempts = std::max<int64_t>(1, max_retry_times_);
+    for (int64_t i = 0; OB_SUCC(ret) && i < attempts; ++i) {
       ret = send_post_batch(data_array, responses);
       if (is_timeout()) {
         ret = OB_TIMEOUT;
       } else if (OB_CURL_ERROR == ret) {
-        ret = OB_SUCCESS;
-        int64_t delay_ms = 1000 * (1 << i) + rand() % 1000;
-        ob_usleep(delay_ms * 1000);
+        if (i + 1 < attempts) {
+          ret = OB_SUCCESS;
+          int64_t delay_ms = 1000 * (1 << i) + rand() % 1000;
+          ob_usleep(delay_ms * 1000);
+        }
       } else if (OB_SUCC(ret)) {
         break;
       }

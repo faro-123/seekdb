@@ -10988,5 +10988,18 @@
     "info_cn": "开启后可以使用 read_csv/read_json/read_parquet/glob 表函数查询本地文件，并使用 COPY 导出查询结果",
     "background_cn": "",
     "ref_url": ""
+  },
+  "ai_column_strict_read": {
+    "id": 10755,
+    "name": "ai_column_strict_read",
+    "default_value": "0",
+    "base_value": "0",
+    "data_type": "bool",
+    "info": "Reject reads of AI columns that have unfinished or failed rows",
+    "flags": "SESSION | NEED_SERIALIZE | INFLUENCE_PLAN",
+    "publish_version": "1.0.0.0",
+    "info_cn": "严格读取 AI 列时拒绝包含未完成或失败任务的列",
+    "background_cn": "",
+    "ref_url": ""
   }
 }

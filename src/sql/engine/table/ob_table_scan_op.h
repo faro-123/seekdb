@@ -373,6 +373,8 @@ public:
   common::ObFixedArray<common::ObString, common::ObIAllocator> pruned_index_name_;
   common::ObFixedArray<common::ObString, common::ObIAllocator> unstable_index_name_;
   common::ObFixedArray<common::ObTableID, common::ObIAllocator> ddl_output_cids_; //ddl output column ids
+  // User-referenced AI columns, preserved in the cached plan for strict reads.
+  common::ObFixedArray<uint64_t, common::ObIAllocator> strict_ai_column_ids_;
 
   /**
    * the relationship between TableScan and DASScan

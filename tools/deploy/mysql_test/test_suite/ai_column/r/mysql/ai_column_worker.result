@@ -39,6 +39,13 @@ join oceanbase.__all_database d on d.database_id = t.database_id
 where d.database_name = 'ai_column_p0_worker' and t.table_name = 'docs';
 one_request_group_for_two_columns
 1
+select min(length(substring_index(task.request_id, '_', 1))) >= 15 as request_timestamp_not_truncated
+from oceanbase.__all_ai_column_task task
+join oceanbase.__all_table t on t.table_id = task.table_id
+join oceanbase.__all_database d on d.database_id = t.database_id
+where d.database_name = 'ai_column_p0_worker' and t.table_name = 'docs';
+request_timestamp_not_truncated
+1
 commit;
 select 0 = 0 as no_partial_visibility;
 no_partial_visibility
@@ -65,6 +72,10 @@ result varchar(400) AI COLUMN (
 AI_COMPLETE('p0_worker_complete', content)
 ) WITH (sync_mode='async', max_retries=2)
 );
+insert into ai_column_p0_worker.retry_docs(id, content) values(5, 'empty-result');
+select 1 = 1 as empty_string_is_valid_result;
+empty_string_is_valid_result
+1
 insert into ai_column_p0_worker.retry_docs(id, content) values(2, 'retry-once');
 select 1 = 1 as retry_state_committed;
 retry_state_committed
@@ -109,6 +120,83 @@ from ai_column_p0_worker.docs where id = 4;
 late_old_result_cannot_overwrite
 1
 mock_stale_guard=ok
+create table ai_column_p0_worker.independent_docs(
+id bigint primary key,
+first_input varchar(200),
+second_input varchar(200),
+first_result varchar(400) AI COLUMN (
+AI_COMPLETE('p0_worker_complete', first_input)
+) WITH (sync_mode='async', max_retries=2),
+second_result varchar(400) AI COLUMN (
+AI_COMPLETE('p0_worker_complete', second_input)
+) WITH (sync_mode='async', max_retries=2)
+);
+insert into ai_column_p0_worker.independent_docs(id, first_input, second_input)
+values(1, 'first', 'second');
+select 1 = 1 as independent_results_ready;
+independent_results_ready
+1
+start transaction;
+update ai_column_p0_worker.independent_docs set first_input = 'changed' where id = 1;
+select first_result is null and second_result is not null as only_dependent_result_invalidated
+from ai_column_p0_worker.independent_docs where id = 1;
+only_dependent_result_invalidated
+1
+select count(*) = 1 as only_dependent_task_created
+from oceanbase.__all_ai_column_task task
+join oceanbase.__all_table t on t.table_id = task.table_id
+join oceanbase.__all_database d on d.database_id = t.database_id
+where d.database_name = 'ai_column_p0_worker' and t.table_name = 'independent_docs';
+only_dependent_task_created
+1
+set session ai_column_strict_read = on;
+select second_result is not null as strict_ready_column_readable
+from ai_column_p0_worker.independent_docs where id = 1;
+strict_ready_column_readable
+1
+select first_result from ai_column_p0_worker.independent_docs where id = 1;
+ERROR HY000: AI column has unfinished tasks for table_id=<table_id>, column_id=<column_id>
+set session ai_column_strict_read = off;
+rollback;
+select first_result is not null and second_result is not null as rollback_restores_both_results
+from ai_column_p0_worker.independent_docs where id = 1;
+rollback_restores_both_results
+1
+insert into ai_column_p0_worker.independent_docs(id, first_input, second_input)
+values(2, 'slow-old', 'slow-old');
+update ai_column_p0_worker.independent_docs set first_input = 'fast-new' where id = 2;
+select 1 = 1 as stale_group_keeps_other_column_task;
+stale_group_keeps_other_column_task
+1
+drop table ai_column_p0_worker.independent_docs;
+set session sql_mode = 'NO_BACKSLASH_ESCAPES';
+create database `ai``quoted`;
+create table `ai``quoted`.`do``cs`(
+`i``d` varchar(40) primary key,
+`in``put` varchar(80),
+`out``put` varchar(200) AI COLUMN (
+AI_COMPLETE('p0_worker_complete', `in``put`)
+) WITH (sync_mode='async', max_retries=2)
+);
+insert into `ai``quoted`.`do``cs` (`i``d`, `in``put`) values ('a''b', 'quoted');
+select 1 = 1 as quoted_identifiers_generated;
+quoted_identifiers_generated
+1
+select `out``put` = 'mock:quoted' as quoted_identifier_value
+from `ai``quoted`.`do``cs`;
+quoted_identifier_value
+1
+alter table `ai``quoted`.`do``cs` retry ai column `out``put` where `i``d` = 'a''b';
+select 1 = 1 as quoted_identifiers_retried;
+quoted_identifiers_retried
+1
+select `out``put` = 'mock:quoted' as quoted_retry_value
+from `ai``quoted`.`do``cs`;
+quoted_retry_value
+1
+drop table `ai``quoted`.`do``cs`;
+drop database `ai``quoted`;
+set session sql_mode = default;
 drop table ai_column_p0_worker.fail_docs;
 drop table ai_column_p0_worker.retry_docs;
 drop table ai_column_p0_worker.docs;

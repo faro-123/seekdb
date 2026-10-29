@@ -45,6 +45,7 @@ private:
   static constexpr int MODEL_IDX = 0;
   static constexpr int PROMPT_IDX = 1;
   static constexpr int CONFIG_IDX = 2;
+  static constexpr int SYSTEM_IDX = 3;
   DISALLOW_COPY_AND_ASSIGN(ObExprAIComplete);
 };
 

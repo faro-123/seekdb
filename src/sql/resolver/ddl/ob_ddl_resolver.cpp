@@ -2060,16 +2060,16 @@ int ObDDLResolver::resolve_ai_column_attribute(ObColumnSchemaV2 &column, ParseNo
 namespace
 {
 
-// Locates the prompt argument (the second one) of the top-level function call.
-int find_ai_func_prompt_arg(const ObString &expr, int64_t &arg_start, int64_t &arg_end)
+// Locates the closing parenthesis of the top-level function call and counts its arguments.
+int locate_ai_func_tail(const ObString &expr, int64_t &close_pos, int64_t &arg_count)
 {
   int ret = OB_SUCCESS;
-  arg_start = -1;
-  arg_end = -1;
+  close_pos = -1;
+  arg_count = 0;
   const char *ptr = expr.ptr();
   const int64_t len = expr.length();
   int64_t open_pos = -1;
-  for (int64_t i = 0; OB_SUCC(ret) && i < len; ++i) {
+  for (int64_t i = 0; i < len; ++i) {
     if ('(' == ptr[i]) {
       open_pos = i;
       break;
@@ -2079,11 +2079,9 @@ int find_ai_func_prompt_arg(const ObString &expr, int64_t &arg_start, int64_t &a
     ret = OB_ERR_PARSER_SYNTAX;
   } else {
     int64_t depth = 1;
-    int64_t first_comma = -1;
-    int64_t second_comma = -1;
-    int64_t close_pos = -1;
+    arg_count = 1;
     char quote = 0;
-    for (int64_t i = open_pos + 1; OB_SUCC(ret) && i < len; ++i) {
+    for (int64_t i = open_pos + 1; i < len; ++i) {
       const char c = ptr[i];
       if (0 != quote) {
         if ('\\' == c) {
@@ -2105,57 +2103,57 @@ int find_ai_func_prompt_arg(const ObString &expr, int64_t &arg_start, int64_t &a
           break;
         }
       } else if (',' == c && 1 == depth) {
-        if (-1 == first_comma) {
-          first_comma = i;
-        } else if (-1 == second_comma) {
-          second_comma = i;
-        }
+        ++arg_count;
       }
     }
-    if (OB_FAIL(ret)) {
-    } else if (-1 == close_pos || -1 == first_comma) {
+    if (-1 == close_pos) {
       ret = OB_ERR_PARSER_SYNTAX;
-    } else {
-      int64_t start = first_comma + 1;
-      int64_t end = (-1 == second_comma) ? close_pos : second_comma;
-      while (start < end && (ptr[start] == ' ' || ptr[start] == '\t' || ptr[start] == '\n')) {
-        ++start;
-      }
-      while (end > start && (ptr[end - 1] == ' ' || ptr[end - 1] == '\t' || ptr[end - 1] == '\n')) {
-        --end;
-      }
-      if (start >= end) {
-        ret = OB_ERR_PARSER_SYNTAX;
-      } else {
-        arg_start = start;
-        arg_end = end;
-      }
     }
   }
   return ret;
 }
 
-// Wraps the user prompt with AI_PROMPT so the type hint is sent as the system prompt,
-// e.g. AI_COMPLETE(m, p, c) -> AI_COMPLETE(m, AI_PROMPT('<hint> {0}', p), c).
+// Appends the type hint as the system prompt argument, e.g.
+// AI_COMPLETE(m, p) -> AI_COMPLETE(m, p, '{}', '<hint>') and
+// AI_COMPLETE(m, p, c) -> AI_COMPLETE(m, p, c, '<hint>').
 int inject_ai_prompt_hint(ObColumnSchemaV2 &column, const ObString &hint)
 {
   int ret = OB_SUCCESS;
   const ObString expr = column.get_ai_column_expr();
-  int64_t arg_start = -1;
-  int64_t arg_end = -1;
+  int64_t close_pos = -1;
+  int64_t arg_count = 0;
   ObSqlString normalized;
-  if (OB_FAIL(find_ai_func_prompt_arg(expr, arg_start, arg_end))) {
-    SQL_RESV_LOG(WARN, "failed to locate ai prompt argument", K(ret), K(expr));
-  } else if (OB_FAIL(normalized.append(expr.ptr(), static_cast<int32_t>(arg_start)))) {
-  } else if (OB_FAIL(normalized.append("AI_PROMPT('"))) {
-  } else if (OB_FAIL(normalized.append(hint))) {
-  } else if (OB_FAIL(normalized.append(" {0}', "))) {
-  } else if (OB_FAIL(normalized.append(expr.ptr() + arg_start,
-                                        static_cast<int32_t>(arg_end - arg_start)))) {
-  } else if (OB_FAIL(normalized.append(")"))) {
-  } else if (OB_FAIL(normalized.append(expr.ptr() + arg_end,
-                                        static_cast<int32_t>(expr.length() - arg_end)))) {
-  } else if (OB_FAIL(column.set_ai_column_expr(normalized.string()))) {
+  if (OB_FAIL(locate_ai_func_tail(expr, close_pos, arg_count))) {
+    SQL_RESV_LOG(WARN, "failed to locate ai function tail", K(ret), K(expr));
+  } else if (arg_count < 2 || arg_count > 3) {
+    ret = OB_ERR_PARAM_SIZE;
+  } else {
+    int64_t tail = expr.length();
+    while (tail > close_pos && (expr.ptr()[tail - 1] == ' ' || expr.ptr()[tail - 1] == '\n')) {
+      --tail;
+    }
+    if (OB_FAIL(normalized.append(expr.ptr(), static_cast<int32_t>(close_pos)))) {
+    } else if (2 == arg_count && OB_FAIL(normalized.append(", '{}'"))) {
+    } else if (OB_FAIL(normalized.append(", '"))) {
+    } else {
+      // double single quotes so the hint stays a valid string literal
+      for (int64_t i = 0; OB_SUCC(ret) && i < hint.length(); ++i) {
+        if ('\'' == hint.ptr()[i] && OB_FAIL(normalized.append("''"))) {
+        } else if ('\'' != hint.ptr()[i]
+                   && OB_FAIL(normalized.append(hint.ptr() + i, 1))) {
+        }
+      }
+    }
+    if (OB_SUCC(ret) && OB_FAIL(normalized.append("'"))) {
+    } else if (OB_SUCC(ret) && close_pos < 0) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (OB_SUCC(ret) && OB_FAIL(normalized.append(expr.ptr() + close_pos,
+                                                         static_cast<int32_t>(tail - close_pos)))) {
+    } else if (OB_SUCC(ret) && tail < expr.length()
+               && OB_FAIL(normalized.append(expr.ptr() + tail,
+                                            static_cast<int32_t>(expr.length() - tail)))) {
+    } else if (OB_SUCC(ret) && OB_FAIL(column.set_ai_column_expr(normalized.string()))) {
+    }
   }
   return ret;
 }

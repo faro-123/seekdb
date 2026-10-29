@@ -7,6 +7,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -14,7 +15,7 @@ from urllib.parse import urlparse
 
 
 def state_dir(port):
-    return "/tmp/seekdb_ai_column_mock_%d" % port
+    return os.path.join(tempfile.gettempdir(), "seekdb_ai_column_mock_%d" % port)
 
 
 def state_path(port, name):
@@ -41,14 +42,29 @@ def stop_server(port):
         with open(pid_path, "r", encoding="ascii") as stream:
             pid = int(stream.read().strip())
         os.kill(pid, signal.SIGTERM)
-        for _ in range(50):
-            try:
-                os.kill(pid, 0)
-            except ProcessLookupError:
-                break
-            time.sleep(0.02)
+        if os.name == "nt":
+            # Windows does not support signal 0 in os.kill. Wait for the
+            # listening socket to close before a subsequent start.
+            for _ in range(50):
+                try:
+                    with socket.create_connection(("127.0.0.1", port), timeout=0.05):
+                        pass
+                except OSError:
+                    break
+                time.sleep(0.02)
+        else:
+            for _ in range(50):
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.02)
     except (ValueError, ProcessLookupError):
         pass
+    except OSError as error:
+        # A Windows process may already have exited when the PID file exists.
+        if os.name != "nt" or getattr(error, "winerror", None) not in (3, 87):
+            raise
     try:
         os.unlink(pid_path)
     except FileNotFoundError:
@@ -58,6 +74,11 @@ def stop_server(port):
 def start_server(port):
     os.makedirs(state_dir(port), exist_ok=True)
     stop_server(port)
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.05):
+            raise RuntimeError("AI column mock port %d is already in use" % port)
+    except OSError:
+        pass
     for name in ("events.jsonl", "server.out"):
         with open(state_path(port, name), "w", encoding="utf-8"):
             pass
@@ -72,12 +93,12 @@ def start_server(port):
     with open(state_path(port, "server.pid"), "w", encoding="ascii") as stream:
         stream.write(str(process.pid))
     for _ in range(100):
+        if process.poll() is not None:
+            break
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.05):
                 return
         except OSError:
-            if process.poll() is not None:
-                break
             time.sleep(0.02)
     raise RuntimeError("AI column mock did not start on port %d" % port)
 
@@ -85,6 +106,7 @@ def start_server(port):
 def serve(port):
     lock = threading.Lock()
     attempts = {}
+    os.makedirs(state_dir(port), exist_ok=True)
     log_path = state_path(port, "events.jsonl")
 
     class Handler(BaseHTTPRequestHandler):
@@ -154,7 +176,9 @@ def serve(port):
                     ]
                 }
             else:
-                if "base-10 integer" in system_text:
+                if user_text == "empty-result":
+                    content = ""
+                elif "base-10 integer" in system_text:
                     content = "7"
                 elif "valid JSON value" in system_text:
                     content = json.dumps(

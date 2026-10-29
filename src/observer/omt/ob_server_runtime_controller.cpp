@@ -68,6 +68,7 @@
 #include "observer/change_stream/ob_change_stream_mgr.h"
 #include "share/roaringbitmap/ob_rb_memory_mgr.h"
 #include "sql/dtl/ob_dtl_interm_result_manager.h"
+#include "observer/ai_service/ob_ai_column_worker.h"
 #include "sql/session/ob_sql_session_mgr.h"
 #include "observer/omt/ob_ai_service.h"
 #include "storage/allocator/ob_memstore_allocator.h"  // relocated-definition owner
@@ -1520,11 +1521,15 @@ int ObServer::obs_start_modules()
   if (OB_SUCC(ret) && OB_FAIL(server_module_start_default(mods_plugin_vector_index_service_))) { SERVER_LOG(WARN, "mods_plugin_vector_index_service_ fail", KR(ret)); }
   if (OB_SUCC(ret) && OB_FAIL(server_module_start_default(mods_ai_service_))) { SERVER_LOG(WARN, "mods_ai_service_ fail", KR(ret)); }
   if (OB_SUCC(ret) && OB_FAIL(server_module_start_default(mods_change_stream_mgr_))) { SERVER_LOG(WARN, "mods_change_stream_mgr_ fail", KR(ret)); }
+  if (OB_SUCC(ret) && OB_FAIL(observer::ObAiColumnWorker::get_instance().start())) {
+    SERVER_LOG(WARN, "ai column worker start failed", KR(ret));
+  }
   return ret;
 }
 
 void ObServer::obs_stop_modules()
 {
+  observer::ObAiColumnWorker::get_instance().stop();
   server_module_stop_default(mods_shared_macro_block_mgr_);
   server_module_stop_default(mods_change_stream_mgr_);
   server_module_stop_default(mods_ai_service_);

@@ -41,7 +41,7 @@ while ($retry)
       from ai_column_retry_strict.docs
       where result is not null and label is not null`;
   if ($ready == 1) { let $retry = 0; }
-  if ($ready == 0) { --real_sleep 0.1
+  if ($ready == 0) { --sleep 0.1
     dec $retry; }
 }
 eval select $ready = 1 as initial_results_ready;
@@ -100,7 +100,7 @@ while ($retry)
       where d.database_name = 'ai_column_retry_strict'
         and t.table_name = 'docs'`;
   if ($tasks == 0) { let $retry = 0; }
-  if ($tasks != 0) { --real_sleep 0.1
+  if ($tasks != 0) { --sleep 0.1
     dec $retry; }
 }
 eval select $tasks = 0 as failed_task_rows_cleaned;
@@ -125,7 +125,7 @@ while ($retry)
   let $ready = `select count(*) = 3
       from ai_column_retry_strict.docs where result is not null`;
   if ($ready == 1) { let $retry = 0; }
-  if ($ready == 0) { --real_sleep 0.1
+  if ($ready == 0) { --sleep 0.1
     dec $retry; }
 }
 eval select $ready = 1 as full_retry_ready;
@@ -162,7 +162,7 @@ while ($retry)
   let $ready = `select count(*) = 3
       from ai_column_retry_strict.docs where result is not null`;
   if ($ready == 1) { let $retry = 0; }
-  if ($ready == 0) { --real_sleep 0.1
+  if ($ready == 0) { --sleep 0.1
     dec $retry; }
 }
 --exec python3 mysql_test/test_suite/ai_column/include/ai_column_mock.py stop 19124

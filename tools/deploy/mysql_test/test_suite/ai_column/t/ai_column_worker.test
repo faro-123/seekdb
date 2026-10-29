@@ -45,6 +45,11 @@ from oceanbase.__all_ai_column_task task
 join oceanbase.__all_table t on t.table_id = task.table_id
 join oceanbase.__all_database d on d.database_id = t.database_id
 where d.database_name = 'ai_column_p0_worker' and t.table_name = 'docs';
+select min(length(substring_index(task.request_id, '_', 1))) >= 15 as request_timestamp_not_truncated
+from oceanbase.__all_ai_column_task task
+join oceanbase.__all_table t on t.table_id = task.table_id
+join oceanbase.__all_database d on d.database_id = t.database_id
+where d.database_name = 'ai_column_p0_worker' and t.table_name = 'docs';
 commit;
 
 let $retry = 150;
@@ -65,7 +70,7 @@ while ($retry)
   }
   if ($visible == 0)
   {
-    --real_sleep 0.1
+    --sleep 0.1
     dec $retry;
   }
 }
@@ -87,6 +92,18 @@ create table ai_column_p0_worker.retry_docs(
     AI_COMPLETE('p0_worker_complete', content)
   ) WITH (sync_mode='async', max_retries=2)
 );
+insert into ai_column_p0_worker.retry_docs(id, content) values(5, 'empty-result');
+let $retry = 150;
+let $empty_ready = 0;
+while ($retry)
+{
+  let $empty_ready = `select result is not null and length(result) = 0
+                      from ai_column_p0_worker.retry_docs where id = 5`;
+  if ($empty_ready == 1) { let $retry = 0; }
+  if ($empty_ready == 0) { --sleep 0.1
+    dec $retry; }
+}
+eval select $empty_ready = 1 as empty_string_is_valid_result;
 insert into ai_column_p0_worker.retry_docs(id, content) values(2, 'retry-once');
 let $retry = 100;
 let $saw_retry = 0;
@@ -105,7 +122,7 @@ while ($retry)
   }
   if ($saw_retry == 0)
   {
-    --real_sleep 0.1
+    --sleep 0.1
     dec $retry;
   }
 }
@@ -122,7 +139,7 @@ while ($retry)
   }
   if ($done == 0)
   {
-    --real_sleep 0.1
+    --sleep 0.1
     dec $retry;
   }
 }
@@ -159,7 +176,7 @@ while ($retry)
   }
   if ($tasks != 0)
   {
-    --real_sleep 0.1
+    --sleep 0.1
     dec $retry;
   }
 }
@@ -169,7 +186,7 @@ eval select $tasks = 0 as terminal_failure_removes_task;
 
 --exec python3 mysql_test/test_suite/ai_column/include/ai_column_mock.py reset 19122
 insert into ai_column_p0_worker.docs(id, content) values(4, 'slow-old');
---real_sleep 0.3
+--sleep 0.3
 update ai_column_p0_worker.docs set content = 'fast-new' where id = 4;
 let $retry = 150;
 let $done = 0;
@@ -183,16 +200,126 @@ while ($retry)
   }
   if ($done == 0)
   {
-    --real_sleep 0.1
+    --sleep 0.1
     dec $retry;
   }
 }
 eval select $done = 1 as latest_request_wins;
---real_sleep 2
+--sleep 2
 select json_unquote(json_extract(tags, '$.input')) = 'Classify: fast-new'
        and score = 7 as late_old_result_cannot_overwrite
 from ai_column_p0_worker.docs where id = 4;
 --exec python3 mysql_test/test_suite/ai_column/include/ai_column_mock.py assert 19122 stale-guard
+
+create table ai_column_p0_worker.independent_docs(
+  id bigint primary key,
+  first_input varchar(200),
+  second_input varchar(200),
+  first_result varchar(400) AI COLUMN (
+    AI_COMPLETE('p0_worker_complete', first_input)
+  ) WITH (sync_mode='async', max_retries=2),
+  second_result varchar(400) AI COLUMN (
+    AI_COMPLETE('p0_worker_complete', second_input)
+  ) WITH (sync_mode='async', max_retries=2)
+);
+insert into ai_column_p0_worker.independent_docs(id, first_input, second_input)
+values(1, 'first', 'second');
+let $retry = 150;
+let $ready = 0;
+while ($retry)
+{
+  let $ready = `select first_result is not null and second_result is not null
+                from ai_column_p0_worker.independent_docs where id = 1`;
+  if ($ready == 1) { let $retry = 0; }
+  if ($ready == 0) { --sleep 0.1
+    dec $retry; }
+}
+eval select $ready = 1 as independent_results_ready;
+start transaction;
+update ai_column_p0_worker.independent_docs set first_input = 'changed' where id = 1;
+select first_result is null and second_result is not null as only_dependent_result_invalidated
+from ai_column_p0_worker.independent_docs where id = 1;
+select count(*) = 1 as only_dependent_task_created
+from oceanbase.__all_ai_column_task task
+join oceanbase.__all_table t on t.table_id = task.table_id
+join oceanbase.__all_database d on d.database_id = t.database_id
+where d.database_name = 'ai_column_p0_worker' and t.table_name = 'independent_docs';
+set session ai_column_strict_read = on;
+select second_result is not null as strict_ready_column_readable
+from ai_column_p0_worker.independent_docs where id = 1;
+--replace_regex /table_id=[0-9]+, column_id=[0-9]+/table_id=<table_id>, column_id=<column_id>/
+--error 11120
+select first_result from ai_column_p0_worker.independent_docs where id = 1;
+set session ai_column_strict_read = off;
+rollback;
+select first_result is not null and second_result is not null as rollback_restores_both_results
+from ai_column_p0_worker.independent_docs where id = 1;
+
+# A stale request for one AI column must not delete a still-current task for
+# a different column in the same worker group.
+insert into ai_column_p0_worker.independent_docs(id, first_input, second_input)
+values(2, 'slow-old', 'slow-old');
+--sleep 0.3
+update ai_column_p0_worker.independent_docs set first_input = 'fast-new' where id = 2;
+let $retry = 150;
+let $ready = 0;
+while ($retry)
+{
+  let $ready = `select ifnull(first_result = 'mock:fast-new' and second_result = 'mock:slow-old', 0)
+                from ai_column_p0_worker.independent_docs where id = 2`;
+  if ($ready == 1) { let $retry = 0; }
+  if ($ready == 0) { --sleep 0.1
+    dec $retry; }
+}
+eval select $ready = 1 as stale_group_keeps_other_column_task;
+drop table ai_column_p0_worker.independent_docs;
+
+set session sql_mode = 'NO_BACKSLASH_ESCAPES';
+create database `ai``quoted`;
+create table `ai``quoted`.`do``cs`(
+  `i``d` varchar(40) primary key,
+  `in``put` varchar(80),
+  `out``put` varchar(200) AI COLUMN (
+    AI_COMPLETE('p0_worker_complete', `in``put`)
+  ) WITH (sync_mode='async', max_retries=2)
+);
+insert into `ai``quoted`.`do``cs` (`i``d`, `in``put`) values ('a''b', 'quoted');
+let $retry = 150;
+let $ready = 0;
+while ($retry)
+{
+  let $ready = `select count(*) = 0 from oceanbase.__all_ai_column_task task
+      join oceanbase.__all_table t on t.table_id = task.table_id
+      join oceanbase.__all_database d on d.database_id = t.database_id
+      where d.database_name = concat('ai', char(96), 'quoted')
+        and t.table_name = concat('do', char(96), 'cs')`;
+  if ($ready == 1) { let $retry = 0; }
+  if ($ready == 0) { --sleep 0.1
+    dec $retry; }
+}
+eval select $ready = 1 as quoted_identifiers_generated;
+select `out``put` = 'mock:quoted' as quoted_identifier_value
+from `ai``quoted`.`do``cs`;
+alter table `ai``quoted`.`do``cs` retry ai column `out``put` where `i``d` = 'a''b';
+let $retry = 150;
+let $ready = 0;
+while ($retry)
+{
+  let $ready = `select count(*) = 0 from oceanbase.__all_ai_column_task task
+      join oceanbase.__all_table t on t.table_id = task.table_id
+      join oceanbase.__all_database d on d.database_id = t.database_id
+      where d.database_name = concat('ai', char(96), 'quoted')
+        and t.table_name = concat('do', char(96), 'cs')`;
+  if ($ready == 1) { let $retry = 0; }
+  if ($ready == 0) { --sleep 0.1
+    dec $retry; }
+}
+eval select $ready = 1 as quoted_identifiers_retried;
+select `out``put` = 'mock:quoted' as quoted_retry_value
+from `ai``quoted`.`do``cs`;
+drop table `ai``quoted`.`do``cs`;
+drop database `ai``quoted`;
+set session sql_mode = default;
 
 drop table ai_column_p0_worker.fail_docs;
 drop table ai_column_p0_worker.retry_docs;

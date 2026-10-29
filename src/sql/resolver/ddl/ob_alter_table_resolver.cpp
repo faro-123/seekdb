@@ -401,6 +401,35 @@ int ObAlterTableResolver::resolve_action_list(const ParseNode &node)
       } else if (FALSE_IT(alter_table_stmt->inc_alter_table_action_count())) {
       } else {
         switch (action_node->type_) {
+        case T_AI_COLUMN_RETRY: {
+          const ObColumnSchemaV2 *column = NULL;
+          if (node.num_child_ != 1) {
+            ret = OB_NOT_SUPPORTED;
+            LOG_USER_ERROR(OB_NOT_SUPPORTED, "combining AI COLUMN RETRY with another ALTER action");
+          } else if (action_node->num_child_ != 2 || OB_ISNULL(action_node->children_)
+                     || OB_ISNULL(action_node->children_[0])) {
+            ret = OB_ERR_UNEXPECTED;
+          } else {
+            const ParseNode *name = action_node->children_[0];
+            const ObString column_name(static_cast<int32_t>(name->str_len_), name->str_value_);
+            column = table_schema_->get_column_schema(column_name);
+            if (OB_ISNULL(column) || !column->is_ai_column()) {
+              ret = OB_NOT_SUPPORTED;
+              LOG_USER_ERROR(OB_NOT_SUPPORTED, "retrying a column that is not an AI column");
+            } else {
+              const ParseNode *predicate = action_node->children_[1];
+              ObString predicate_text;
+              if (OB_NOT_NULL(predicate)
+                  && OB_FAIL(ob_write_string(*allocator_,
+                         ObString(static_cast<int32_t>(predicate->str_len_), predicate->str_value_),
+                         predicate_text))) {
+              } else {
+                alter_table_stmt->set_ai_column_retry(column->get_column_id(), predicate_text);
+              }
+            }
+          }
+          break;
+        }
         //deal with alter table option
         case T_ALTER_TABLE_OPTION: {
             alter_table_stmt->set_alter_table_option();

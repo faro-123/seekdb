@@ -226,6 +226,7 @@ OB_INLINE int ObTableInsertOp::insert_row_to_das()
                                                                 tablet_loc->tablet_id_,
                                                                 eval_ctx_))) {
       } else if (OB_FAIL(ObDMLService::insert_row(ins_ctdef, ins_rtdef, tablet_loc, dml_rtctx_, modify_row.new_row_))) {
+      } else if (OB_FAIL(collect_ai_row_change(ins_ctdef, &ins_ctdef.new_row_, NULL, NULL))) {
       } else if (need_after_row_process(ins_ctdef) && OB_FAIL(dml_modify_rows_.push_back(modify_row))) {
       }
       if (OB_FAIL(ret)) {
@@ -254,6 +255,8 @@ OB_INLINE int ObTableInsertOp::insert_row_to_das()
 int ObTableInsertOp::write_rows_post_proc(int last_errno)
 {
   int ret = last_errno;
+  if (OB_SUCC(ret) && OB_FAIL(flush_ai_column_tasks())) {
+  }
   if (iter_end_) {
     ObPhysicalPlanCtx *plan_ctx = GET_PHY_PLAN_CTX(ctx_);
     if (OB_ERR_PRIMARY_KEY_DUPLICATE == ret) {

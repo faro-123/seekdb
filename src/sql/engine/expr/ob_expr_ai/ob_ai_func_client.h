@@ -28,6 +28,17 @@ namespace common
 class ObAIFuncClient: public ObAIFuncHandle
 {
 public:
+  // Background AI columns persist their own retry count. Avoid multiplying
+  // that policy by the synchronous client's internal retries.
+  class SingleAttemptGuard
+  {
+  public:
+    SingleAttemptGuard() : previous_(single_attempt_) { single_attempt_ = true; }
+    ~SingleAttemptGuard() { single_attempt_ = previous_; }
+  private:
+    bool previous_;
+    DISALLOW_COPY_AND_ASSIGN(SingleAttemptGuard);
+  };
   ObAIFuncClient();
   virtual ~ObAIFuncClient();
   int init(common::ObIAllocator &allocator, const ObString &url, ObArray<ObString> &headers);
@@ -58,6 +69,7 @@ private:
   bool is_retryable_status_code(int64_t http_code);
   bool is_timeout();
 private:
+  static thread_local bool single_attempt_;
   static const int64_t CURL_MAX_TIMEOUT_SEC;
   common::ObIAllocator *allocator_;
   char *url_;

@@ -47,7 +47,7 @@ public:
   static int do_handle(ObTableModifyOp &op,
                        const ObDMLBaseCtDef &dml_ctdef,
                        ObDMLBaseRtDef &dml_rtdef);
-  
+
 private:
   static int value_changed(ObTableModifyOp &op,
                            const common::ObIArray<ObForeignKeyColumn> &columns,
@@ -79,10 +79,6 @@ private:
                      const common::ObIArray<ObForeignKeyColumn> &columns,
                      const ObExprPtrIArray &row, common::ObIAllocator &alloc,
                      const common::ObObjPrintParams &print_params);
-  static int gen_where(ObEvalCtx &eval_ctx, char *&buf, int64_t &len, int64_t &pos,
-                       const common::ObIArray<ObForeignKeyColumn> &columns,
-                       const ObExprPtrIArray &row, common::ObIAllocator &alloc,
-                       const common::ObObjPrintParams &print_params);
   static int gen_column_value(ObEvalCtx &ctx, char *&buf, int64_t &len, int64_t &pos,
                               const common::ObIArray<ObForeignKeyColumn> &columns,
                               const ObExprPtrIArray &row, const char *delimiter,
@@ -96,6 +92,11 @@ private:
   
   static int is_self_ref_row(ObEvalCtx &ctx, const ObExprPtrIArray &row,
                              const ObForeignKeyArg &fk_arg, bool &is_self_ref);
+public:
+  static int gen_where(ObEvalCtx &eval_ctx, char *&buf, int64_t &len, int64_t &pos,
+                       const common::ObIArray<ObForeignKeyColumn> &columns,
+                       const ObExprPtrIArray &row, common::ObIAllocator &alloc,
+                       const common::ObObjPrintParams &print_params);
 };
 
 class ObTableModifyOp;
@@ -225,6 +226,38 @@ public:
   }
 
 public:
+  // ---- async AI column maintenance -------------------------------------
+  struct ObAiColumnTaskDef
+  {
+    uint64_t column_id_;
+    uint64_t state_column_id_;
+    uint64_t request_column_id_;
+    common::ObString column_name_;
+    common::ObString state_column_name_;
+    common::ObString request_column_name_;
+    int64_t dep_start_;
+    int64_t dep_end_;
+  };
+  struct ObAiRowChange
+  {
+    common::ObString new_rowkey_;
+    common::ObString old_rowkey_;
+    bool is_write_;      // true: insert/update, false: delete
+    bool pk_changed_;
+    int64_t columns_start_;
+    int64_t columns_end_;
+  };
+  int prepare_ai_columns(const ObDMLBaseCtDef &dml_ctdef);
+  int collect_ai_row_change(const ObDMLBaseCtDef &dml_ctdef,
+                            const ObExprPtrIArray *new_row,
+                            const ObExprPtrIArray *old_row,
+                            const common::ObIArray<uint64_t> *updated_column_ids);
+  int flush_ai_column_tasks();
+  void reset_ai_column_tasks();
+  static bool has_column_id(const common::ObIArray<uint64_t> &column_ids,
+                            const uint64_t column_id);
+
+public:
   int open_inner_conn();
   int close_inner_conn();
   int begin_nested_session(bool skip_cur_stmt_tables);
@@ -313,6 +346,17 @@ public:
   ObDMLModifyRowsList dml_modify_rows_;
   ObSEArray<ObForeignKeyChecker *, 4> fk_checkers_;
   ObChunkDatumStore::ShadowStoredRow last_store_row_;
+  // async AI column maintenance state
+  bool ai_columns_inited_;
+  bool has_ai_columns_;
+  uint64_t ai_table_id_;
+  common::ObString ai_database_name_;
+  common::ObString ai_table_name_;
+  ObSEArray<ObAiColumnTaskDef, 4> ai_columns_;
+  ObSEArray<uint64_t, 8> ai_dep_pool_;
+  ObSEArray<ObForeignKeyColumn, 4> ai_pk_columns_;
+  ObSEArray<int64_t, 8> ai_changed_columns_;
+  ObSEArray<ObAiRowChange, 8> ai_row_changes_;
 private:
   ObSQLSessionInfo::StmtSavedValue *saved_session_;
   char saved_session_buf_[sizeof(ObSQLSessionInfo::StmtSavedValue)] __attribute__((aligned (16)));;

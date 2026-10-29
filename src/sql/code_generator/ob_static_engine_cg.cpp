@@ -3569,6 +3569,26 @@ int ObStaticEngineCG::generate_normal_tsc(ObLogTableScan &op, ObTableScanSpec &s
     }
   }
 
+  // Write operators may access additional columns to construct a row. Record
+  // the explicit references instead of the physical scan's access list.
+  if (OB_SUCC(ret) && OB_NOT_NULL(op.get_stmt())) {
+    const ObDMLStmt *stmt = op.get_stmt();
+    for (int64_t i = 0; OB_SUCC(ret) && i < stmt->get_column_size(); ++i) {
+      const ColumnItem *item = stmt->get_column_item(i);
+      const ObColumnSchemaV2 *column = NULL;
+      if (OB_NOT_NULL(item) && item->table_id_ == op.get_table_id()
+          && OB_NOT_NULL(item->expr_) && item->expr_->is_referred_by_normal()) {
+        if (OB_FAIL(schema_guard->get_column_schema(spec.ref_table_id_, item->column_id_, column))) {
+        } else if (OB_NOT_NULL(column) && column->is_ai_column()) {
+          if (spec.strict_ai_column_ids_.empty()
+              && OB_FAIL(spec.strict_ai_column_ids_.init(stmt->get_column_size()))) {
+          } else if (OB_FAIL(spec.strict_ai_column_ids_.push_back(item->column_id_))) {
+          }
+        }
+      }
+    }
+  }
+
   if (OB_SUCC(ret)) {
     if (opt_ctx_->is_online_ddl() &&
         stmt::T_INSERT == opt_ctx_->get_session_info()->get_stmt_type()) {

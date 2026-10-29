@@ -38,7 +38,7 @@ while ($retry)
   }
   if ($ready == 0)
   {
-    --real_sleep 0.1
+    --sleep 0.1
     dec $retry;
   }
 }
@@ -80,7 +80,7 @@ while ($retry)
   }
   if ($ready == 0)
   {
-    --real_sleep 0.1
+    --sleep 0.1
     dec $retry;
   }
 }
@@ -121,7 +121,7 @@ from oceanbase.__all_ai_column_task task
 join oceanbase.__all_table t on t.table_id = task.table_id
 join oceanbase.__all_database d on d.database_id = t.database_id
 where d.database_name = 'ai_column_p0_vector' and t.table_name = 'docs';
---real_sleep 2
+--sleep 2
 --exec python3 mysql_test/test_suite/ai_column/include/ai_column_mock.py assert 19123 no-requests
 select count(*) = 1 and sum(id = 3) = 1 as rollback_vector_still_visible_to_ann
 from (
