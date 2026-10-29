@@ -12072,44 +12072,27 @@ int ObLogPlan::prepare_text_retrieval_scan(const ObIArray<ObRawExpr *> &scan_mat
     ObTextRetrievalInfo &tr_info = table_scan->get_text_retrieval_info();
     tr_info.match_expr_ = match_against;
     tr_info.pushdown_match_filter_ = match_pred;
-    // A natural-language MATCH used solely as a top-level boolean predicate
-    // does not need its score projected to the rest of the plan.
-    if (get_stmt()->is_select_stmt() && !table_scan->get_index_back()
-        && !table_scan->use_index_merge() && !table_scan->is_vec_adaptive_scan()
+    // Unweighted natural-language scores are positive for matching documents.
+    // Only omit BM25 when every use of this MATCH consumes its truth value.
+    if (NATURAL_LANGUAGE_MODE == match_against->get_mode_flag()
+        && !table_scan->has_func_lookup()
+        && !table_scan->is_vec_adaptive_scan()
         && !table_scan->is_vec_idx_scan_post_filter()
-        && NATURAL_LANGUAGE_MODE == match_against->get_mode_flag()
+        && !match_against->is_es_match()
         && match_against->get_columns_boosts().empty()
+        && 1 == get_stmt()->get_match_exprs().count()
+        && get_stmt()->get_match_exprs().at(0) == match_against
         && T_OP_BOOL == match_pred->get_expr_type()
         && 1 == match_pred->get_param_count()
         && match_pred->get_param_expr(0) == match_against
-        && 1 == all_match_filters.count()
         && 1 == get_stmt()->get_condition_exprs().count()
-        && get_stmt()->get_condition_exprs().at(0) == match_pred
-        && get_stmt()->get_joined_tables().empty()
-        && get_stmt()->get_order_items().empty()
-        && nullptr == get_stmt()->get_limit_expr()) {
-      const ObSelectStmt *select_stmt = static_cast<const ObSelectStmt *>(get_stmt());
-      bool only_filter = 1 == select_stmt->get_select_item_size()
-          && nullptr != select_stmt->get_select_item(0).expr_
-          && T_FUN_COUNT == select_stmt->get_select_item(0).expr_->get_expr_type()
-          && select_stmt->get_group_exprs().empty()
-          && select_stmt->get_having_exprs().empty()
-          && select_stmt->get_window_func_exprs().empty();
-      for (int64_t i = 0; only_filter && i < select_stmt->get_select_item_size(); ++i) {
-        ObRawExpr *expr = select_stmt->get_select_item(i).expr_;
-        only_filter = nullptr != expr && expr != match_pred && !expr->has_flag(CNT_MATCH_EXPR);
-      }
-      ObSEArray<ObRawExpr *, 16> relation_exprs;
-      if (only_filter && OB_FAIL(get_stmt()->get_relation_exprs(relation_exprs))) {
-      } else {
-        for (int64_t i = 0; only_filter && i < relation_exprs.count(); ++i) {
-          ObRawExpr *expr = relation_exprs.at(i);
-          only_filter = nullptr != expr && (expr == match_pred || !expr->has_flag(CNT_MATCH_EXPR));
-        }
-        if (only_filter && !tr_info.need_sort()) {
-          tr_info.need_calc_relevance_ = false;
-          tr_info.pushdown_match_filter_ = nullptr;
-        }
+        && get_stmt()->get_condition_exprs().at(0) == match_pred) {
+      bool need_score = false;
+      if (OB_FAIL(ObTransformUtils::check_need_calc_match_score(
+              get_stmt(), match_against, need_score))) {
+      } else if (!need_score) {
+        tr_info.need_calc_relevance_ = false;
+        tr_info.pushdown_match_filter_ = nullptr;
       }
     }
     // The mapping table is absent when the data-table rowkey is used as the document ID.
@@ -12117,7 +12100,8 @@ int ObLogPlan::prepare_text_retrieval_scan(const ObIArray<ObRawExpr *> &scan_mat
     if (table_scan->is_vec_adaptive_scan() || table_scan->is_vec_idx_scan_post_filter()) {
       table_scan->set_rowkey_doc_table_id(tr_info.rowkey_idx_tid_);
     }
-    if (OB_FAIL(table_scan->set_is_skip_rowkey_doc(tr_info.doc_id_idx_tid_ == OB_INVALID_ID))) {
+    if (OB_FAIL(ret)) {
+    } else if (OB_FAIL(table_scan->set_is_skip_rowkey_doc(tr_info.doc_id_idx_tid_ == OB_INVALID_ID))) {
     } else if (OB_FAIL(table_scan->set_is_skip_rowkey_doc(tr_info.rowkey_idx_tid_ == OB_INVALID_ID))) {
     }
   }

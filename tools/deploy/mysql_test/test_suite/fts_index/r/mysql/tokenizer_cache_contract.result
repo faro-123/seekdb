@@ -1,0 +1,80 @@
+result_format: 4
+drop table if exists fts_tokenizer_cache_contract;
+create table fts_tokenizer_cache_contract (
+  id int primary key,
+  bin_text text collate utf8mb4_bin,
+  ci_text text collate utf8mb4_general_ci,
+  short_text text collate utf8mb4_bin,
+  default_text text collate utf8mb4_bin,
+  fulltext index ft_bin(bin_text) with parser beng,
+  fulltext index ft_ci(ci_text) with parser beng,
+  fulltext index ft_short(short_text) with parser space parser_properties=(min_token_size=1,max_token_size=84),
+  fulltext index ft_default(default_text) with parser space
+) default charset=utf8mb4;
+insert into fts_tokenizer_cache_contract values
+  (1, 'ALPHA alpha repeat', 'ALPHA alpha repeat', 'ax tiny', 'ax tiny'),
+  (2, 'Bravo bravo repeat', 'Bravo bravo repeat', 'by tiny', 'by tiny'),
+  (3, 'Alpha bravo final', 'Alpha bravo final', 'ax tiny', 'ax tiny');
+select group_concat(id order by id) as ids from fts_tokenizer_cache_contract where match(bin_text) against('alpha');
++-----+
+| ids |
++-----+
+| 1,3 |
++-----+
+select group_concat(id order by id) as ids from fts_tokenizer_cache_contract where match(ci_text) against('alpha');
++-----+
+| ids |
++-----+
+| 1,3 |
++-----+
+select group_concat(id order by id) as ids from fts_tokenizer_cache_contract where match(short_text) against('ax');
++-----+
+| ids |
++-----+
+| 1,3 |
++-----+
+select count(*) as n from fts_tokenizer_cache_contract where match(default_text) against('ax');
++---+
+| n |
++---+
+| 0 |
++---+
+update fts_tokenizer_cache_contract set bin_text='alpha inserted alpha', ci_text='alpha inserted alpha', short_text='ax', default_text='ax' where id=2;
+select group_concat(id order by id) as ids from fts_tokenizer_cache_contract where match(bin_text) against('alpha');
++-------+
+| ids   |
++-------+
+| 1,2,3 |
++-------+
+select group_concat(id order by id) as ids from fts_tokenizer_cache_contract where match(ci_text) against('alpha');
++-------+
+| ids   |
++-------+
+| 1,2,3 |
++-------+
+select count(*) as n from fts_tokenizer_cache_contract where match(short_text) against('ax');
++---+
+| n |
++---+
+| 3 |
++---+
+select count(*) as n from fts_tokenizer_cache_contract where match(default_text) against('ax');
++---+
+| n |
++---+
+| 0 |
++---+
+delete from fts_tokenizer_cache_contract where id=1;
+select group_concat(id order by id) as ids from fts_tokenizer_cache_contract where match(bin_text) against('alpha');
++-----+
+| ids |
++-----+
+| 2,3 |
++-----+
+select group_concat(id order by id) as ids from fts_tokenizer_cache_contract where match(ci_text) against('alpha');
++-----+
+| ids |
++-----+
+| 2,3 |
++-----+
+drop table fts_tokenizer_cache_contract;

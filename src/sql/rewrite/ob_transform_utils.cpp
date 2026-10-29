@@ -12841,6 +12841,32 @@ bool ObTransformUtils::is_full_group_by(ObSelectStmt& stmt, ObSQLMode mode)
   return !stmt.has_order_by() && is_only_full_group_by_on(mode);
 }
 
+int ObTransformUtils::check_need_calc_match_score(const ObDMLStmt *stmt,
+                                                  ObRawExpr *match_expr,
+                                                  bool &need_calc)
+{
+  int ret = OB_SUCCESS;
+  ObSEArray<ObRawExpr *, 16> relation_exprs;
+  need_calc = false;
+  if (OB_ISNULL(stmt) || OB_ISNULL(match_expr)) {
+    ret = OB_INVALID_ARGUMENT;
+  } else if (OB_FAIL(stmt->get_relation_exprs(relation_exprs))) {
+  } else {
+    for (int64_t i = 0; !need_calc && i < relation_exprs.count(); ++i) {
+      ObRawExpr *expr = relation_exprs.at(i);
+      if (expr->has_flag(CNT_MATCH_EXPR)) {
+        // Only a direct WHERE truth test can consume membership without a
+        // projected score. Other filters and projections still need MATCH.
+        need_calc = !ObOptimizerUtil::find_item(stmt->get_condition_exprs(), expr)
+            || T_OP_BOOL != expr->get_expr_type()
+            || 1 != expr->get_param_count()
+            || expr->get_param_expr(0) != match_expr;
+      }
+    }
+  }
+  return ret;
+}
+
 int ObTransformUtils::inner_check_need_calc_match_score(ObExecContext *exec_ctx,
                                                         ObRawExpr* expr, 
                                                         ObRawExpr* match_expr, 

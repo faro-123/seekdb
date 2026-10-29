@@ -1889,6 +1889,9 @@ public:
   static int check_contain_lost_deterministic_expr(const ObIArray<ObRawExpr*> &exprs,
                                                    bool &is_contain);
   // check whether the score calculated by match expr is actually utilized
+  static int check_need_calc_match_score(const ObDMLStmt *stmt,
+                                        ObRawExpr *match_expr,
+                                        bool &need_calc);
   static int check_expr_eq_zero(ObExecContext *ctx,
                                 ObRawExpr *expr, 
                                 bool &eq_zero, 

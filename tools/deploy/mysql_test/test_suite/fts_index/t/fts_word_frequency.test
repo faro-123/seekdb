@@ -1,0 +1,21 @@
+# Shared add-word grouping must preserve case folding, stopwords and ngram counts.
+--result_format 4
+--disable_query_log
+set names utf8mb4;
+--echo space frequencies and stopwords
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('Hello hello world the WORLD', 'space', '[{"output":"all"}]') as actual,
+cast('{"tokens":[{"hello":2},{"world":2}],"doc_len":4}' as json) as expected) t;
+--echo beng frequencies and stopwords
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('Hello hello world the WORLD', 'beng', '[{"output":"all"}]') as actual,
+cast('{"tokens":[{"hello":2},{"world":2}],"doc_len":4}' as json) as expected) t;
+--echo ngram frequencies
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('Hello hello world the WORLD', 'ngram', '[{"output":"all"}]') as actual,
+cast('{"tokens":[{"el":2},{"he":3},{"ld":2},{"ll":2},{"lo":2},{"or":2},{"rl":2},{"th":1},{"wo":2}],"doc_len":18}' as json) as expected) t;
+--echo ngram2 frequencies
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('Hello hello world the WORLD', 'ngram2', '[{"output":"all"}]') as actual,
+cast('{"tokens":[{"el":2},{"ell":2},{"he":3},{"hel":2},{"ld":2},{"ll":2},{"llo":2},{"lo":2},{"or":2},{"orl":2},{"rl":2},{"rld":2},{"th":1},{"the":1},{"wo":2},{"wor":2}],"doc_len":31}' as json) as expected) t;
+--enable_query_log

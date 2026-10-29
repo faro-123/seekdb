@@ -218,7 +218,7 @@ int ObSRTaaTIterImpl::init_chunk_stores()
         ret = OB_ALLOCATE_MEMORY_FAILED;
       } else {
         ObSRTaaTHashMap *hash_map = new (buf) ObSRTaaTHashMap();
-        if (OB_FAIL(hash_map->create(10, common::ObMemAttr("FTTaatMap")))) {
+        if (OB_FAIL(hash_map->create(OB_HASHMAP_DEFAULT_SIZE, common::ObMemAttr("FTTaatMap")))) {
         } else {
           hash_maps_[i] = hash_map;
         }
@@ -386,7 +386,6 @@ int ObSRTaaTIterImpl::load_next_hash_map()
 
     ObDocIdExt id;
     double cur_relevance = 0.0;
-    double last_relevance = 0.0;
     while (OB_SUCC(ret)) {
       if (OB_FAIL(query::spill_row_store_next_row(
           store_iter, *eval_ctx, exprs))) {
@@ -398,15 +397,13 @@ int ObSRTaaTIterImpl::load_next_hash_map()
         } else if (iter_param_->need_project_relevance()) {
           ObDatum &relevance_datum = iter_param_->relevance_expr_->locate_expr_datum(*eval_ctx);
           cur_relevance = relevance_datum.get_double();
-          if (OB_FAIL(map->get_refactored(id, last_relevance))) {
-            if (OB_HASH_NOT_EXIST != ret) {
-            } else if (OB_FAIL(map->set_refactored(id, cur_relevance, 1 /* overwrite */))) {
-            }
-          } else if (OB_FAIL(map->set_refactored(id, cur_relevance + last_relevance, 1 /* overwrite */))) {
+          auto add_relevance = [cur_relevance](hash::HashMapPair<ObDocIdExt, double> &entry) {
+            entry.second = cur_relevance + entry.second;
+          };
+          if (OB_FAIL(map->set_or_update(id, cur_relevance, add_relevance))) {
           }
         } else {
-          if (OB_FAIL(map->set_refactored(id, 1.0, 0 /* overwrite */))) {
-            if (OB_HASH_EXIST == ret) { ret = OB_SUCCESS; }
+          if (OB_FAIL(map->set_refactored(id, 1.0, 1 /* overwrite */))) {
           }
         }
       }

@@ -124,6 +124,12 @@ public:
       int64_t &word_len,
       int64_t &char_cnt,
       int64_t &word_freq) = 0;
+  virtual bool is_reusable() const { return false; }
+  virtual int reuse(const ObFTParserParam &param)
+  {
+    UNUSED(param);
+    return OB_NOT_SUPPORTED;
+  }
   DECLARE_PURE_VIRTUAL_TO_STRING;
 };
 

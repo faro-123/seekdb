@@ -262,8 +262,7 @@ int ObFTParseHelper::segment(
     const ObCharsetInfo *cs,
     const char *ft,
     const int64_t ft_len,
-    common::ObIAllocator &allocator,
-    ObAddWord &add_word)
+    ObAddWord &add_word) const
 {
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(parser_version < 0 || nullptr == parser_desc || nullptr == cs || nullptr == ft || 0 >= ft_len)) {
@@ -271,7 +270,7 @@ int ObFTParseHelper::segment(
   } else {
     ObFTParserParam param;
     ObITokenIterator *iter = nullptr;
-    param.allocator_ = &allocator;
+    param.allocator_ = &parser_allocator_;
     param.cs_ = cs;
     param.fulltext_ = ft;
     param.ft_length_ = ft_len;
@@ -282,7 +281,22 @@ int ObFTParseHelper::segment(
     param.min_ngram_size_ = property.min_ngram_token_size_;
     param.max_ngram_size_ = property.max_ngram_token_size_;
 
-    if (OB_FAIL(parser_desc->segment(&param, iter))) {
+    if (OB_NOT_NULL(cached_iter_)
+        && cached_iter_->is_reusable()
+        && parser_desc == parser_desc_) {
+      if (OB_FAIL(cached_iter_->reuse(param))) {
+        parser_desc_->free_token_iter(&cached_param_, cached_iter_);
+        cached_iter_ = nullptr;
+        parser_allocator_.reset();
+        if (OB_NOT_SUPPORTED == ret) {
+          ret = OB_SUCCESS;
+        }
+      } else {
+        iter = cached_iter_;
+      }
+    }
+    if (OB_FAIL(ret)) {
+    } else if (OB_ISNULL(iter) && OB_FAIL(parser_desc->segment(&param, iter))) {
     } else if (OB_ISNULL(iter)) {
       ret = OB_ERR_UNEXPECTED;
     } else {
@@ -290,9 +304,13 @@ int ObFTParseHelper::segment(
       int64_t word_len = 0;
       int64_t char_cnt = 0;
       int64_t word_freq = 0;
+      bool iter_end = false;
       while (OB_SUCC(ret)) {
         if (OB_FAIL(iter->get_next_token(word, word_len, char_cnt, word_freq))) {
           if (OB_ITER_END != ret) {
+            LOG_WARN("fail to get next token", K(ret), KPC(iter));
+          } else {
+            iter_end = true;
           }
         } else if (OB_FAIL(add_word.process_word(word, word_len, char_cnt, word_freq))) {
         }
@@ -300,10 +318,19 @@ int ObFTParseHelper::segment(
       if (OB_ITER_END == ret) {
         ret = OB_SUCCESS;
       }
+      if (OB_SUCC(ret) && iter_end && iter->is_reusable()) {
+        cached_iter_ = iter;
+        cached_param_ = param;
+        iter = nullptr;
+      }
     }
     if (OB_NOT_NULL(iter)) {
       parser_desc->free_token_iter(&param, iter);
+      if (cached_iter_ == iter) {
+        cached_iter_ = nullptr;
+      }
       iter = nullptr;
+      parser_allocator_.reset();
     }
   }
   return ret;
@@ -315,6 +342,9 @@ ObFTParseHelper::ObFTParseHelper()
     parser_name_(),
     add_word_flag_(),
     parser_property_(),
+    parser_allocator_(ObMemAttr("FTParserCache")),
+    cached_iter_(nullptr),
+    cached_param_(),
     is_inited_(false)
 {
 }
@@ -352,6 +382,12 @@ int ObFTParseHelper::init(
 
 void ObFTParseHelper::reset()
 {
+  if (OB_NOT_NULL(cached_iter_) && OB_NOT_NULL(parser_desc_)) {
+    parser_desc_->free_token_iter(&cached_param_, cached_iter_);
+    cached_iter_ = nullptr;
+  }
+  cached_param_.reset();
+  parser_allocator_.reset();
   parser_desc_ = nullptr;
   allocator_ = nullptr;
   add_word_flag_.clear();
@@ -386,7 +422,6 @@ int ObFTParseHelper::segment(
                     cs,
                     fulltext,
                     fulltext_len,
-                    *allocator_,
                     add_word))) {
     } else {
       doc_length = add_word.get_add_word_count();

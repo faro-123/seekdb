@@ -127,6 +127,11 @@ int ObFTDATBuilder<DATA_TYPE>::build_from_trie(ObFTTrie<DATA_TYPE> &trie)
               child_code = child_index.child_->dat_build_info_.code_;
               if (check[try_base + child_code] != 0) {
                 conflict = true;
+                // The first attempt must encode every child before later attempts
+                // can stop as soon as this candidate base is known to conflict.
+                if (!need_code) {
+                  break;
+                }
               }
             }
           }

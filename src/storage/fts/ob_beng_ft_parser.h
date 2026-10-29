@@ -50,6 +50,8 @@ public:
       int64_t &word_len,
       int64_t &char_len,
       int64_t &word_freq) override;
+  bool is_reusable() const override { return true; }
+  int reuse(const ObFTParserParam &param) override;
 
   VIRTUAL_TO_STRING_KV(K_(analysis_ctx), K_(english_analyzer), KP_(token_stream), K_(is_inited));
 private:

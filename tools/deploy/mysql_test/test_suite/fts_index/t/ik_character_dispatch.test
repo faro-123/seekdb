@@ -1,0 +1,33 @@
+# Check complete token sets and frequencies without depending on hash iteration order.
+--result_format 4
+--disable_query_log
+set names utf8mb4;
+--echo smart final character
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('hello world hello', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"smart"}]}]') as actual,
+cast('{"tokens":[{"hello":2},{"world":1}],"doc_len":3}' as json) as expected) t;
+--echo max_word final character
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('hello world hello', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"max_word"}]}]') as actual,
+cast('{"tokens":[{"hello":2},{"world":1}],"doc_len":3}' as json) as expected) t;
+--echo punctuation only
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize(' !!! , ; ', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"smart"}]}]') as actual,
+cast('{"tokens":[],"doc_len":0}' as json) as expected) t;
+--echo smart multiple batches
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello ', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"smart"}]}]') as actual,
+cast('{"tokens":[{"hello":204}],"doc_len":204}' as json) as expected) t;
+--echo max_word multiple batches
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello ', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"max_word"}]}]') as actual,
+cast('{"tokens":[{"hello":204}],"doc_len":204}' as json) as expected) t;
+--echo smart mixed characters
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('中 hello 中', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"smart"}]}]') as actual,
+cast('{"tokens":[{"hello":1},{"中":2}],"doc_len":3}' as json) as expected) t;
+--echo max_word mixed characters
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('中 hello 中', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"max_word"}]}]') as actual,
+cast('{"tokens":[{"hello":1},{"中":2}],"doc_len":3}' as json) as expected) t;
+--enable_query_log

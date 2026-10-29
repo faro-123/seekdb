@@ -1,0 +1,47 @@
+repeated query terms across partitions
++----+
+| ok |
++----+
+|  1 |
++----+
+taat relevance agrees with short query
++----+
+| ok |
++----+
+|  1 |
++----+
+boolean semantics
++----+
+| ok |
++----+
+|  1 |
++----+
+deterministic ranked limit
++----+
+| ok |
++----+
+|  1 |
++----+
+update and delete postings
++----+
+| ok |
++----+
+|  1 |
++----+
++----+
+| ok |
++----+
+|  1 |
++----+
+transaction own writes
++----+
+| ok |
++----+
+|  1 |
++----+
+rollback restores postings
++----+
+| ok |
++----+
+|  1 |
++----+
