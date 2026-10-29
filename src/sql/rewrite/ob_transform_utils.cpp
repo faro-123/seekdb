@@ -12749,6 +12749,43 @@ bool ObTransformUtils::is_const_null(ObRawExpr &expr)
   return bret;
 }
 
+bool ObTransformUtils::is_count_only_subquery(const ObDMLStmt *parent,
+                                              const ObDMLStmt *subquery)
+{
+  bool is_count_only = false;
+  if (OB_ISNULL(parent) || OB_ISNULL(subquery) || parent == subquery
+      || !parent->is_select_stmt() || !subquery->is_select_stmt()) {
+    // do nothing
+  } else {
+    const ObSelectStmt *parent_select = static_cast<const ObSelectStmt *>(parent);
+    is_count_only = 1 == parent_select->get_table_items().count()
+                 && parent_select->get_joined_tables().empty()
+                 && 0 == parent_select->get_group_expr_size()
+                 && 0 == parent_select->get_rollup_expr_size()
+                 && !parent_select->has_having()
+                 && 0 == parent_select->get_window_func_count()
+                 && !parent_select->has_order_by()
+                 && parent_select->get_condition_exprs().empty()
+                 && 0 == parent_select->get_subquery_expr_size()
+                 && 1 == parent_select->get_select_item_size();
+    if (is_count_only) {
+      const TableItem *table_item = parent_select->get_table_item(0);
+      const ObRawExpr *count_expr = parent_select->get_select_item(0).expr_;
+      // A plain FROM subquery is referenced exactly once.  CTEs and views can be
+      // referenced elsewhere, where the projected columns are still observable.
+      is_count_only = nullptr != table_item
+                   && table_item->is_generated_table()
+                   && TableItem::CTEType::NOT_CTE == table_item->cte_type_
+                   && !table_item->is_view_table_
+                   && table_item->ref_query_ == subquery
+                   && nullptr != count_expr
+                   && T_FUN_COUNT == count_expr->get_expr_type()
+                   && 0 == count_expr->get_param_count();
+    }
+  }
+  return is_count_only;
+}
+
 int ObTransformUtils::check_table_with_fts_or_multivalue_recursively(TableItem *table,
                                                             ObSchemaChecker *schema_checker,
                                                             ObSQLSessionInfo *session_info,

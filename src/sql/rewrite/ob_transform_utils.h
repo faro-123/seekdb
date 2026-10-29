@@ -1817,6 +1817,15 @@ public:
   static int add_aggr_winfun_expr(ObSelectStmt *stmt,
                                   ObRawExpr *expr,
                                   bool need_strict_check = true);
+  /**
+   * @brief Whether parent consumes subquery only as COUNT(*) over the whole row set.
+   *
+   * When true, neither the order of the rows produced by subquery nor which rows
+   * are selected by its LIMIT can be observed through parent, so an implicit
+   * ordering on subquery may be dropped.
+   */
+  static bool is_count_only_subquery(const ObDMLStmt *parent,
+                                     const ObDMLStmt *subquery);
   static int is_where_subquery_correlated(const ObIArray<ObExecParamRawExpr *> &exec_params,
                                           const ObSelectStmt &subquery, 
                                           bool &is_correlated);

@@ -17,6 +17,7 @@
 #define USING_LOG_PREFIX SQL_REWRITE
 #include "sql/rewrite/ob_transform_pre_process.h"
 #include "sql/optimizer/ob_optimizer_util.h"
+#include "sql/resolver/expr/ob_raw_expr_util.h"
 #include "sql/engine/expr/ob_expr_arg_case.h"
 #include "sql/resolver/dml/ob_select_resolver.h"
 #include "sql/rewrite/ob_expand_aggregate_utils.h"
@@ -179,7 +180,7 @@ int ObTransformPreProcess::transform_one_stmt(common::ObIArray<ObParentDMLStmt> 
     }
     if (OB_SUCC(ret)) {
       if (stmt->get_match_exprs().count() > 0 &&
-          OB_FAIL(preserve_order_for_fulltext_search(stmt, is_happened))) {
+          OB_FAIL(preserve_order_for_fulltext_search(parent_stmts, stmt, is_happened))) {
       } else {
         trans_happened |= is_happened;
       }
@@ -3790,7 +3791,9 @@ int ObTransformPreProcess::do_flatten_conditions(ObDMLStmt *stmt, ObIArray<ObRaw
 
 // full-text index queries on a single base table are processed with order preservation. 
 // (Order is not preserved in multi-table join scenarios.)
-int ObTransformPreProcess::preserve_order_for_fulltext_search(ObDMLStmt *stmt, bool& trans_happened)
+int ObTransformPreProcess::preserve_order_for_fulltext_search(common::ObIArray<ObParentDMLStmt> &parent_stmts,
+                                                              ObDMLStmt *stmt,
+                                                              bool& trans_happened)
 {
   int ret = OB_SUCCESS;
   trans_happened = false;
@@ -3808,6 +3811,27 @@ int ObTransformPreProcess::preserve_order_for_fulltext_search(ObDMLStmt *stmt, b
               static_cast<ObSelectStmt*>(stmt)->has_window_function() ||
               static_cast<ObSelectStmt*>(stmt)->get_table_items().count() != 1)) {
     // do nothing
+  } else if (!parent_stmts.empty()
+             && nullptr != stmt->get_limit_expr()
+             && ObTransformUtils::is_count_only_subquery(parent_stmts.at(parent_stmts.count() - 1).stmt_, stmt)) {
+    // The parent statement only counts the rows of this statement, so neither the order of
+    // the limited rows nor the values they project can be observed through the parent.
+    // Dropping the relevance order lets the limit stop the inverted index scan early, and
+    // projecting a constant avoids the rowkey -> base table lookup of the returned rows.
+    ObSelectStmt *select_stmt = static_cast<ObSelectStmt *>(stmt);
+    ObConstRawExpr *const_expr = nullptr;
+    if (OB_ISNULL(ctx_) || OB_ISNULL(ctx_->expr_factory_)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (OB_FAIL(ObRawExprUtils::build_const_int_expr(*ctx_->expr_factory_,
+                                                            ObIntType,
+                                                            1,
+                                                            const_expr))) {
+    } else {
+      for (int64_t i = 0; OB_SUCC(ret) && i < select_stmt->get_select_item_size(); ++i) {
+        select_stmt->get_select_item(i).expr_ = const_expr;
+      }
+      trans_happened = true;
+    }
   } else if (OB_ISNULL(table_item = stmt->get_table_item(0))) {
     ret = OB_ERR_UNEXPECTED;
   } else if (!table_item->is_basic_table()) {
