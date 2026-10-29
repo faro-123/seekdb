@@ -25,6 +25,7 @@
 #include "sql/session/ob_local_session_var.h"
 #include "query/command/ob_root_command_service.h"
 #include "query/vector/ob_vector_index_util.h"
+#include "share/ai_service/ob_ai_column_meta.h"
 
 namespace oceanbase
 {
@@ -3514,6 +3515,41 @@ ObColumnSchemaV2 *find_column_by_name(ObTableSchema &table, const ObString &name
   return found;
 }
 
+int check_ai_dependency_change(const ObTableSchema &table, const ObString &name,
+                               ObIAllocator &alloc)
+{
+  int ret = OB_SUCCESS;
+  bool has_ai = false;
+  for (auto it = table.column_begin(); !has_ai && it != table.column_end(); ++it) {
+    has_ai = OB_NOT_NULL(*it) && (*it)->is_ai_column();
+  }
+  const ObColumnSchemaV2 *target = table.get_column_schema(name);
+  if (has_ai && OB_NOT_NULL(target) && target->is_rowkey_column()) {
+    ret = OB_NOT_SUPPORTED;
+    LOG_USER_ERROR(OB_NOT_SUPPORTED, "dropping or renaming a primary key used by AI column tasks");
+  }
+  ObSEArray<share::ObAiColumnMeta, 4> metas;
+  if (OB_SUCC(ret) && has_ai && OB_FAIL(share::ObAiColumnMetaCache::get_instance().ensure_table_metas(
+                           table.get_table_id(), 0, alloc, metas))) {
+  }
+  for (int64_t m = 0; OB_SUCC(ret) && m < metas.count(); ++m) {
+    if (OB_NOT_NULL(table.get_column_schema(metas.at(m).column_id_))) {
+      ObItemType type = T_INVALID;
+      ObSEArray<ObString, 8> dependencies;
+      if (OB_FAIL(ObResolverUtils::resolve_generated_column_info(
+                      metas.at(m).expr_, alloc, type, dependencies))) {
+      }
+      for (int64_t i = 0; OB_SUCC(ret) && i < dependencies.count(); ++i) {
+        if (0 == dependencies.at(i).case_compare(name)) {
+          ret = OB_NOT_SUPPORTED;
+          LOG_USER_ERROR(OB_NOT_SUPPORTED, "dropping or renaming a column referenced by an AI column");
+        }
+      }
+    }
+  }
+  return ret;
+}
+
 } // namespace
 
 int ObAlterTableResolver::add_ai_hidden_columns(AlterTableSchema &alter_table_schema,
@@ -4099,6 +4135,11 @@ int ObAlterTableResolver::resolve_change_column(const ParseNode &node)
         }
       }
       if (OB_SUCC(ret)) {
+        if (0 != alter_column_schema.get_column_name_str().case_compare(origin_column_name)) {
+          ret = check_ai_dependency_change(*table_schema_, origin_column_name, *allocator_);
+        }
+      }
+      if (OB_SUCC(ret)) {
         alter_table_stmt->set_sql_mode(session_info_->get_sql_mode());
         if (OB_FAIL(alter_table_stmt->add_column(alter_column_schema))) {
         }
@@ -4392,6 +4433,8 @@ int ObAlterTableResolver::resolve_drop_column(
         if (OB_ISNULL(alter_table_stmt)) {
           ret = OB_ERR_UNEXPECTED;
           SQL_RESV_LOG(WARN, "alter table stmt should not be null", K(ret));
+        } else if (OB_FAIL(check_ai_dependency_change(*table_schema_,
+                              alter_column_schema.get_origin_column_name(), *allocator_))) {
         } else if (OB_FAIL(check_column_in_foreign_key(
                               *table_schema_,
                               alter_column_schema.get_origin_column_name(),
@@ -4566,6 +4609,10 @@ int ObAlterTableResolver::check_mysql_rename_column(const AlterColumnSchema &alt
   int ret = OB_SUCCESS;
   ObColumnSchemaV2 *column = nullptr;
   const ObPartitionOption &part_opt = origin_table_schema.get_part_option();
+  if (OB_FAIL(check_ai_dependency_change(origin_table_schema,
+                  alter_column_schema.get_origin_column_name(), *allocator_))) {
+    return ret;
+  }
   // check table part key deps
   if (alter_column_schema.is_tbl_part_key_column()
       && part_opt.get_part_func_type() != PARTITION_FUNC_TYPE_KEY_IMPLICIT) {
@@ -4580,7 +4627,7 @@ int ObAlterTableResolver::check_mysql_rename_column(const AlterColumnSchema &alt
     if (OB_ISNULL(column = *col_iter)) {
       ret = OB_ERR_UNEXPECTED;
     } else if (column->has_cascaded_column_id(alter_column_schema.get_column_id())
-               && column->is_generated_column()) {
+               && (column->is_generated_column() || column->is_ai_column())) {
       if (!column->is_hidden()) {
         ret = OB_ERR_DEPENDENT_BY_GENERATED_COLUMN;
         LOG_USER_ERROR(OB_ERR_DEPENDENT_BY_GENERATED_COLUMN,

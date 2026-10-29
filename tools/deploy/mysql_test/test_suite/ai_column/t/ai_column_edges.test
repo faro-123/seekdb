@@ -1,0 +1,168 @@
+# Conflict paths, binary results, DDL dependencies, and a row wider than a worker batch.
+--exec python3 mysql_test/test_suite/ai_column/include/ai_column_mock.py start 19125
+--disable_query_log
+--disable_warnings
+drop database if exists ai_column_edges;
+--enable_warnings
+create database ai_column_edges;
+--error 0,11112
+call DBMS_AI_SERVICE.DROP_AI_MODEL_ENDPOINT('edges_ep');
+--error 0,11118
+call DBMS_AI_SERVICE.DROP_AI_MODEL('edges_model');
+call DBMS_AI_SERVICE.CREATE_AI_MODEL('edges_model', '{"type":"completion","model_name":"mock-complete"}');
+call DBMS_AI_SERVICE.CREATE_AI_MODEL_ENDPOINT('edges_ep', '{"ai_model_name":"edges_model","url":"http://127.0.0.1:19125/v1/chat/completions","access_key":"dummy","provider":"openai","request_model_name":"mock-complete"}');
+
+create table ai_column_edges.docs(id int primary key, code varchar(30) unique,
+  content varchar(100), result varchar(400) AI COLUMN(AI_COMPLETE('edges_model', content)));
+insert into ai_column_edges.docs(id,code,content) values(1,'one','first')
+  on duplicate key update content=values(content);
+let $ai_wait = select count(*)=1 from ai_column_edges.docs where result='mock:first';
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+select result='mock:first' as upsert_insert_generated from ai_column_edges.docs;
+
+start transaction;
+insert into ai_column_edges.docs(id,code,content) values(1,'one','ignored')
+  on duplicate key update code='renamed';
+select result='mock:first' as unrelated_upsert_keeps_result from ai_column_edges.docs;
+rollback;
+start transaction;
+insert into ai_column_edges.docs(id,code,content) values(1,'one','changed')
+  on duplicate key update content=values(content);
+select result is null as upsert_invalidates from ai_column_edges.docs;
+rollback;
+select result='mock:first' as upsert_rollback_restores from ai_column_edges.docs;
+
+insert into ai_column_edges.docs(id,code,content)
+  values(1,'one','batch1'),(2,'two','batch2'),(1,'one','last')
+  on duplicate key update content=values(content);
+let $ai_wait = select count(*)=2 from ai_column_edges.docs where (id=1 and result='mock:last') or (id=2 and result='mock:batch2');
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+select count(*)=2 as mixed_repeated_upsert_generated from ai_column_edges.docs where result is not null;
+insert into ai_column_edges.docs(id,code,content) values(3,'one','moved')
+  on duplicate key update id=values(id),content=values(content);
+let $ai_wait = select count(*)=1 from ai_column_edges.docs where id=3 and result='mock:moved';
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+select count(*)=0 as old_upsert_primary_key_removed from ai_column_edges.docs where id=1;
+replace into ai_column_edges.docs(id,code,content) values(4,'one','replaced');
+let $ai_wait = select count(*)=1 from ai_column_edges.docs where id=4 and result='mock:replaced';
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+select count(*)=0 as replace_removes_unique_conflict from ai_column_edges.docs where id=3;
+start transaction;
+replace into ai_column_edges.docs(id,code,content) values(4,'one','rolled-back');
+select result is null as replace_invalidates_in_transaction from ai_column_edges.docs where id=4;
+rollback;
+select result='mock:replaced' as replace_rollback_restores from ai_column_edges.docs where id=4;
+insert ignore into ai_column_edges.docs(id,code,content) values(4,'one','ignored'),(5,'five','fifth');
+let $ai_wait = select count(*)=1 from ai_column_edges.docs where id=5 and result='mock:fifth';
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+select result='mock:replaced' as ignored_insert_keeps_result from ai_column_edges.docs where id=4;
+insert ignore into ai_column_edges.docs(id,code,content) values(5,'five','new-fifth')
+  on duplicate key update content=values(content);
+let $ai_wait = select count(*)=1 from ai_column_edges.docs where id=5 and result='mock:new-fifth';
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+select result='mock:new-fifth' as ignored_upsert_generated from ai_column_edges.docs where id=5;
+
+insert into ai_column_edges.docs(id,code,content) values(6,'six',concat('head',char(0,9,10,13,26,39,92),'tail'));
+let $ai_wait = select count(*)=1 from ai_column_edges.docs where id=6 and hex(result)=hex(concat('mock:',content));
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+select hex(result)=hex(concat('mock:',content)) as control_bytes_preserved from ai_column_edges.docs where id=6;
+alter table ai_column_edges.docs rename column result to renamed;
+update ai_column_edges.docs set content='after-rename' where id=6;
+let $ai_wait = select count(*)=1 from ai_column_edges.docs where id=6 and renamed='mock:after-rename';
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+select renamed='mock:after-rename' as renamed_ai_column_generated from ai_column_edges.docs where id=6;
+select count(*)=1 as renamed_metadata_matches from oceanbase.__all_ai_column a
+join oceanbase.__all_table t on t.table_id=a.table_id
+join oceanbase.__all_database d on d.database_id=t.database_id
+where d.database_name='ai_column_edges' and t.table_name='docs' and a.column_name='renamed';
+--disable_result_log
+--error 1235
+alter table ai_column_edges.docs rename column content to broken;
+--error 1235
+alter table ai_column_edges.docs drop column content;
+--error 1235
+alter table ai_column_edges.docs change column content broken varchar(100);
+--error 1235
+alter table ai_column_edges.docs rename column id to new_id;
+--enable_result_log
+select count(*)=4 as rejected_dependency_changes_keep_rows from ai_column_edges.docs;
+
+# Repeated replacement keys and two conflicting unique keys must use the final row.
+replace into ai_column_edges.docs(id,code,content) values(2,'one','both-conflicts'),(2,'one','last-replace');
+let $ai_wait = select count(*)=1 from ai_column_edges.docs where id=2 and renamed='mock:last-replace';
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+select count(*)=3 as replace_two_conflicts_and_repeated_key from ai_column_edges.docs;
+
+create table ai_column_edges.composite(a varchar(40), b varbinary(40), content varchar(100),
+  result varchar(200) AI COLUMN(AI_COMPLETE('edges_model',content)),primary key(a,b));
+set session sql_mode='NO_BACKSLASH_ESCAPES';
+insert into ai_column_edges.composite(a,b,content) values(convert(X'e4b8ade69687' using utf8mb4),X'00275c','composite');
+let $ai_wait = select count(*)=1 from ai_column_edges.composite where result='mock:composite';
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+alter table ai_column_edges.composite retry ai column result;
+let $ai_wait = select count(*)=1 from ai_column_edges.composite where result='mock:composite';
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+set session ai_column_strict_read=on;
+select result='mock:composite' as binary_unicode_primary_key_retried from ai_column_edges.composite;
+set session ai_column_strict_read=off;
+set session sql_mode=default;
+
+# Dropping a table must not let its outstanding request touch a recreated name.
+create table ai_column_edges.recreated(id int primary key, content varchar(100),
+  result varchar(200) AI COLUMN(AI_COMPLETE('edges_model',content)));
+let $old_table_id = `select t.table_id from oceanbase.__all_table t join oceanbase.__all_database d on d.database_id=t.database_id where d.database_name='ai_column_edges' and t.table_name='recreated'`;
+insert into ai_column_edges.recreated(id,content) values(1,'slow-old:drop');
+drop table ai_column_edges.recreated;
+create table ai_column_edges.recreated(id int primary key, content varchar(100),
+  result varchar(200) AI COLUMN(AI_COMPLETE('edges_model',content)));
+insert into ai_column_edges.recreated(id,content) values(1,'new-table');
+let $ai_wait = select count(*)=1 from ai_column_edges.recreated where result='mock:new-table';
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+let $ai_wait = select count(*)=0 from oceanbase.__all_ai_column_task where table_id=$old_table_id;
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+select result='mock:new-table' as recreated_table_ignores_old_request from ai_column_edges.recreated;
+
+# Generate 65 AI columns; the last response is delayed so splitting the group is observable.
+let $defs = id int primary key,content varchar(100);
+let $ready_sum = 0;
+let $col = 0;
+let $remaining = 64;
+while ($remaining)
+{
+  let $defs = $defs, c$col varchar(200) AI COLUMN(AI_COMPLETE('edges_model',content));
+  let $ready_sum = $ready_sum + (c$col is not null);
+  inc $col;
+  dec $remaining;
+}
+let $defs = $defs, c64 varchar(200) AI COLUMN(AI_COMPLETE('edges_model',concat('slow-old:',content)));
+let $ready_sum = $ready_sum + (c64 is not null);
+eval create table ai_column_edges.wide($defs);
+insert into ai_column_edges.wide(id,content) values(1,'wide');
+let $attempts = 300;
+let $ready = 0;
+while ($attempts)
+{
+  let $ready = `select $ready_sum from ai_column_edges.wide`;
+  if ($ready > 0)
+  {
+    if ($ready != 65) { die AI COLUMN row exposed a partial result group; }
+    let $attempts = 0;
+  }
+  if ($ready == 0)
+  {
+    --sleep 0.1
+    dec $attempts;
+  }
+}
+eval select $ready=65 as wide_row_results_atomic;
+let $ai_wait = select count(*)=0 from oceanbase.__all_ai_column_task task join oceanbase.__all_table t on t.table_id=task.table_id join oceanbase.__all_database d on d.database_id=t.database_id where d.database_name='ai_column_edges';
+--source mysql_test/test_suite/ai_column/include/wait_ai_condition.inc
+select count(*)=0 as completed_edge_tasks_drained from oceanbase.__all_ai_column_task task
+join oceanbase.__all_table t on t.table_id=task.table_id
+join oceanbase.__all_database d on d.database_id=t.database_id where d.database_name='ai_column_edges';
+
+drop database ai_column_edges;
+call DBMS_AI_SERVICE.DROP_AI_MODEL_ENDPOINT('edges_ep');
+call DBMS_AI_SERVICE.DROP_AI_MODEL('edges_model');
+--enable_query_log
+--exec python3 mysql_test/test_suite/ai_column/include/ai_column_mock.py stop 19125

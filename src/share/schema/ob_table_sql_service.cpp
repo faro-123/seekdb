@@ -953,6 +953,20 @@ int ObTableSqlService::update_single_column(
     }
   }
 
+  if (OB_SUCC(ret) && new_column_schema.is_ai_column()) {
+    ObDMLSqlSplicer ai_dml;
+    int64_t affected_rows = 0;
+    if (OB_FAIL(ai_dml.add_pk_column("table_id", ObSchemaUtils::get_extract_schema_id(table_id)))
+        || OB_FAIL(ai_dml.add_pk_column("column_id", new_column_schema.get_column_id()))
+        || OB_FAIL(ai_dml.add_column("column_name", ObHexEscapeSqlStr(new_column_schema.get_column_name())))
+        || OB_FAIL(ai_dml.add_gmt_modified())) {
+    } else if (OB_FAIL(exec_update(sql_client, table_id,
+                                  OB_ALL_AI_COLUMN_TNAME, ai_dml, affected_rows))) {
+    } else if (affected_rows > 1) {
+      ret = OB_ERR_UNEXPECTED;
+    }
+  }
+
   // change from non-auto-increment to auto-increment, add sequence record
   // or
   // change from auto-increment to non-auto-increment, do not delete sequence record, ignore it

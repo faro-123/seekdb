@@ -505,6 +505,7 @@ int ObTableInsertUpOp::insert_row_to_das(const ObInsCtDef &ins_ctdef,
   int ret = OB_SUCCESS;
   ObChunkDatumStore::StoredRow* stored_row = nullptr;
   if (OB_FAIL(ObDMLService::insert_row(ins_ctdef, ins_rtdef, tablet_loc, upd_rtctx_, stored_row))) {
+  } else if (OB_FAIL(collect_ai_row_change(ins_ctdef, &ins_ctdef.new_row_, NULL, NULL))) {
   } else {
     LOG_TRACE("insert one row", KPC(tablet_loc),
               "insert row", ROWEXPR2STR(eval_ctx_, ins_ctdef.new_row_));
@@ -520,6 +521,7 @@ int ObTableInsertUpOp::insert_row_to_das(const ObInsCtDef &ins_ctdef,
 {
   int ret = OB_SUCCESS;
   if (OB_FAIL(ObDMLService::insert_row(ins_ctdef, ins_rtdef, tablet_loc, dml_rtctx_, modify_row.new_row_))) {
+  } else if (OB_FAIL(collect_ai_row_change(ins_ctdef, &ins_ctdef.new_row_, NULL, NULL))) {
   } else {
     LOG_TRACE("insert one row", KPC(tablet_loc),
               "insert row", ROWEXPR2STR(eval_ctx_, ins_ctdef.new_row_));
@@ -885,6 +887,8 @@ int ObTableInsertUpOp::do_insert_up()
     } else if (OB_FAIL(post_all_dml_das_task(upd_rtctx_))) {
     } else if (OB_FAIL(ObDMLService::handle_after_row_processing(this, &dml_modify_rows_))) {
     }
+    if (OB_SUCC(ret) && OB_FAIL(flush_ai_column_tasks())) {
+    }
     if (OB_SUCC(ret) && !is_iter_end) {
       // Only need to do reuse if there is a next batch, if there is no next batch, memory will be released in close and destroy
       // The previous logic executed successfully, this batch successfully completed replace, reuse environment, prepare for the next batch
@@ -1158,6 +1162,13 @@ int ObTableInsertUpOp::do_update(const ObConflictValue &constraint_value)
     } else {
       ret = OB_ERR_UNEXPECTED;
     }
+    if (OB_SUCC(ret)) {
+      const ObUpdCtDef &upd_ctdef = *MY_SPEC.insert_up_ctdefs_.at(0)->upd_ctdef_;
+      const bool existing_row = NULL != constraint_value.baseline_datum_row_;
+      ret = collect_ai_row_change(upd_ctdef, &upd_ctdef.new_row_,
+                                 existing_row ? &upd_ctdef.old_row_ : NULL,
+                                 existing_row ? &upd_ctdef.dupd_ctdef_.updated_column_ids_ : NULL);
+    }
   }
   return ret;
 }
@@ -1181,6 +1192,9 @@ int ObTableInsertUpOp::do_update_with_ignore()
     LOG_USER_ERROR(OB_NOT_SUPPORTED, "Do update with ignore under inconsistent tablet loc");
   } else if (OB_FAIL(ObDMLService::update_row(*upd_ctdef, upd_rtdef, old_tablet_loc, new_tablet_loc, upd_rtctx_,
                                              modify_row.old_row_, modify_row.new_row_, modify_row.full_row_))) {
+  } else if (upd_rtdef.is_row_changed_
+             && OB_FAIL(collect_ai_row_change(*upd_ctdef, &upd_ctdef->new_row_, &upd_ctdef->old_row_,
+                                              &upd_ctdef->dupd_ctdef_.updated_column_ids_))) {
   } else if (need_after_row_process(*upd_ctdef) && OB_FAIL(dml_modify_rows_.push_back(modify_row))) {
   }
   return ret;
@@ -1197,6 +1211,8 @@ int ObTableInsertUpOp::do_insert(const ObConflictValue &constraint_value)
     // delete + insert
     OZ(constraint_value.baseline_datum_row_->to_expr(get_primary_table_upd_old_row(), eval_ctx_));
     OZ(delete_upd_old_row_to_das());
+    OZ(collect_ai_row_change(*MY_SPEC.insert_up_ctdefs_.at(0)->upd_ctdef_, NULL,
+                            &get_primary_table_upd_old_row(), NULL));
     OZ(constraint_value.current_datum_row_->to_expr(get_primary_table_insert_row(), eval_ctx_));
     OZ(insert_row_to_das());
   } else if (NULL != constraint_value.baseline_datum_row_ &&
@@ -1204,6 +1220,8 @@ int ObTableInsertUpOp::do_insert(const ObConflictValue &constraint_value)
     // only delete
     OZ(constraint_value.baseline_datum_row_->to_expr(get_primary_table_upd_old_row(), eval_ctx_));
     OZ(delete_upd_old_row_to_das());
+    OZ(collect_ai_row_change(*MY_SPEC.insert_up_ctdefs_.at(0)->upd_ctdef_, NULL,
+                            &get_primary_table_upd_old_row(), NULL));
   } else if (NULL == constraint_value.baseline_datum_row_ &&
              NULL != constraint_value.current_datum_row_) {
     // only insert
@@ -1216,6 +1234,8 @@ int ObTableInsertUpOp::do_insert(const ObConflictValue &constraint_value)
 int ObTableInsertUpOp::reset_das_env()
 {
   int ret = OB_SUCCESS;
+  // Speculative inserts are rolled back before conflict resolution.
+  reset_ai_column_tasks();
   // Release the das task from the first try insert
   if (OB_FAIL(dml_rtctx_.das_ref_.close_all_task())) {
   } else {

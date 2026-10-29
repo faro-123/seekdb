@@ -397,6 +397,7 @@ int ObTableReplaceOp::final_insert_row_to_das()
     ++ins_rtdef.cur_row_num_;
     if (OB_FAIL(calc_insert_tablet_loc(ins_ctdef, ins_rtdef, tablet_loc))) {
     } else if (OB_FAIL(ObDMLService::insert_row(ins_ctdef, ins_rtdef, tablet_loc, replace_rtctx_, stored_row_))) {
+    } else if (OB_FAIL(collect_ai_row_change(ins_ctdef, &ins_ctdef.new_row_, NULL, NULL))) {
     } else {
       LOG_TRACE("final insert one row", KPC(tablet_loc), "ins row", ROWEXPR2STR(eval_ctx_, ins_ctdef.new_row_));
     }
@@ -425,6 +426,7 @@ int ObTableReplaceOp::insert_row_to_das(bool &is_skipped)
     } else if (OB_FAIL(calc_insert_tablet_loc(ins_ctdef, ins_rtdef, tablet_loc))) {
     } else if (OB_FAIL(ObDMLService::set_heap_table_hidden_pk(ins_ctdef, tablet_loc->tablet_id_, eval_ctx_))) {
     } else if (OB_FAIL(ObDMLService::insert_row(ins_ctdef, ins_rtdef, tablet_loc, dml_rtctx_, modify_row.new_row_))) {
+    } else if (OB_FAIL(collect_ai_row_change(ins_ctdef, &ins_ctdef.new_row_, NULL, NULL))) {
     } else if (need_after_row_process(ins_ctdef) && OB_FAIL(dml_modify_rows_.push_back(modify_row))) {
     } else {
       LOG_TRACE("insert one row", KPC(tablet_loc), "ins row", ROWEXPR2STR(eval_ctx_, ins_ctdef.new_row_));
@@ -452,6 +454,7 @@ int ObTableReplaceOp::delete_row_to_das(bool need_do_trigger)
       break;
     } else if (OB_FAIL(calc_delete_tablet_loc(del_ctdef, del_rtdef, tablet_loc))) {
     } else if (OB_FAIL(ObDMLService::delete_row(del_ctdef, del_rtdef, tablet_loc, replace_rtctx_, stored_row))) {
+    } else if (OB_FAIL(collect_ai_row_change(del_ctdef, NULL, &del_ctdef.old_row_, NULL))) {
     } else {
       LOG_DEBUG("delete one row", KPC(tablet_loc), "del row", ROWEXPR2STR(eval_ctx_, del_ctdef.old_row_));
     }
@@ -613,6 +616,8 @@ int ObTableReplaceOp::do_replace_into()
     } else if (OB_FAIL(prepare_final_replace_task())) {
     } else if (OB_FAIL(post_all_dml_das_task(replace_rtctx_))) {
     } else if (OB_FAIL(ObDMLService::handle_after_row_processing(this, &dml_modify_rows_))) {
+    }
+    if (OB_SUCC(ret) && OB_FAIL(flush_ai_column_tasks())) {
     }
     if (OB_SUCC(ret) && !is_iter_end) {
       // Only need to do reuse if there is a next batch, if there is no next batch, memory will be released in close and destroy
@@ -858,6 +863,8 @@ const ObIArray<ObExpr *> &ObTableReplaceOp::get_primary_table_old_row()
 int ObTableReplaceOp::reset_das_env()
 {
   int ret = OB_SUCCESS;
+  // Discard the changes collected by speculative inserts before retrying.
+  reset_ai_column_tasks();
   // Release the das task from the first try insert
   if (OB_FAIL(dml_rtctx_.das_ref_.close_all_task())) {
   } else {

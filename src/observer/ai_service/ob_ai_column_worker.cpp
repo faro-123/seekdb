@@ -20,6 +20,7 @@
 #include "sql/engine/expr/ob_expr_ai/ob_ai_func_client.h"
 #include "sql/resolver/ob_resolver_utils.h"
 #include "share/ai_service/ob_ai_column_meta.h"
+#include "share/ai_service/ob_ai_column_sql_utils.h"
 #include "share/ob_server_struct.h"
 #include "share/ob_shared_timer.h"
 #include "share/rc/ob_server_runtime.h"
@@ -115,20 +116,10 @@ void ObAiColumnWorker::runTimerTask()
       ObSEArray<AiTask, 4> group;
       const uint64_t table_id = tasks.at(i).table_id_;
       const ObString rowkey = tasks.at(i).rowkey_;
-      bool already_processed = false;
-      for (int64_t j = 0; j < i && !already_processed; ++j) {
-        already_processed = tasks.at(j).table_id_ == table_id && tasks.at(j).rowkey_ == rowkey;
-      }
-      if (already_processed) {
-        ++i;
-        continue;
-      }
-      for (int64_t j = i; j < tasks.count(); ++j) {
-        if (tasks.at(j).table_id_ == table_id && tasks.at(j).rowkey_ == rowkey) {
-          if (OB_FAIL(group.push_back(tasks.at(j)))) {
-            break;
-          }
-        }
+      // fetch_tasks orders complete row groups contiguously.
+      while (OB_SUCC(ret) && i < tasks.count()
+             && tasks.at(i).table_id_ == table_id && tasks.at(i).rowkey_ == rowkey) {
+        ret = group.push_back(tasks.at(i++));
       }
       if (OB_SUCC(ret) && !group.empty()) {
         int tmp_ret = process_task_group(table_id, rowkey, group);
@@ -136,7 +127,7 @@ void ObAiColumnWorker::runTimerTask()
           LOG_WARN("failed to process ai column task group", K(tmp_ret), K(table_id), K(rowkey));
         }
       }
-      ++i;
+      if (OB_FAIL(ret)) { break; }
     }
   }
 }
@@ -147,9 +138,15 @@ int ObAiColumnWorker::fetch_tasks(const ObIAllocator &unused, ObIArray<AiTask> &
   ObSqlString sql;
   ObIAllocator &task_alloc = const_cast<ObIAllocator &>(unused);
   if (OB_FAIL(sql.append_fmt(
-        "SELECT table_id, column_id, rowkey_predicate, request_id, retry_count, state FROM %s "
-        "WHERE state <> 1 AND eligible_ts <= now(6) ORDER BY eligible_ts LIMIT %" PRId64,
-        AI_TASK_TABLE, AI_TASK_BATCH_SIZE))) {
+        // Limit rows rather than individual columns: never split an atomic
+        // result group at the batch boundary, including delayed retries.
+        "SELECT t.table_id, t.column_id, t.rowkey_predicate, t.request_id, t.retry_count, t.state "
+        "FROM %s t JOIN (SELECT table_id, rowkey_predicate FROM %s WHERE state <> 1 "
+        "GROUP BY table_id, rowkey_predicate HAVING MAX(eligible_ts) <= now(6) "
+        "ORDER BY MIN(eligible_ts), table_id, rowkey_predicate LIMIT %" PRId64 ") batch "
+        "ON t.table_id = batch.table_id AND t.rowkey_predicate = batch.rowkey_predicate "
+        "WHERE t.state <> 1 ORDER BY t.table_id, t.rowkey_predicate, t.column_id",
+        AI_TASK_TABLE, AI_TASK_TABLE, AI_TASK_BATCH_SIZE))) {
   } else {
     SMART_VAR(ObMySQLProxy::MySQLResult, res) {
       ObMySQLResult *result = NULL;
@@ -326,7 +323,8 @@ int ObAiColumnWorker::process_task_group(const uint64_t table_id,
           meta = all_metas.at(j);
         }
       }
-      if (OB_INVALID_ID == meta.column_id_) {
+      if (OB_INVALID_ID == meta.column_id_
+          || OB_ISNULL(table_schema->get_column_schema(meta.column_id_))) {
         // metadata gone (column dropped): drop the task later
         LOG_INFO("ai worker: stale task without metadata", K(table_id), K(task.column_id_));
       } else {
@@ -374,15 +372,17 @@ int ObAiColumnWorker::process_task_group(const uint64_t table_id,
               value_ok = false;
               break;
             } else if ((i > 0 && OB_FAIL(update_sql.append(", ")))
-                       || OB_FAIL(::oceanbase::sql::ObResolverUtils::append_escaped_identifier(update_sql, metas.at(i).column_name_))
-                       || OB_FAIL(update_sql.append(" = '"))) {
-            } else if (OB_FAIL(append_sql_escaped(update_sql, value))) {
+                       || OB_FAIL(::oceanbase::sql::ObResolverUtils::append_escaped_identifier(update_sql,
+                                    table_schema->get_column_schema(metas.at(i).column_id_)->get_column_name_str()))
+                       || OB_FAIL(update_sql.append(" = CONVERT("))) {
+            } else if (OB_FAIL(share::append_ai_hex_literal(update_sql, value))) {
+            } else if (OB_FAIL(update_sql.append(" USING utf8mb4)"))) {
             } else {
               const ObColumnSchemaV2 *state_column =
                   table_schema->get_column_schema(metas.at(i).state_column_id_);
               if (OB_ISNULL(state_column)) {
                 ret = OB_ERR_UNEXPECTED;
-              } else if (OB_FAIL(update_sql.append("', "))
+              } else if (OB_FAIL(update_sql.append(", "))
                          || OB_FAIL(::oceanbase::sql::ObResolverUtils::append_escaped_identifier(update_sql,
                                       state_column->get_column_name_str()))
                          || OB_FAIL(update_sql.append(" = 2"))) {
