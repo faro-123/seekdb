@@ -1,0 +1,39 @@
+# Check that reused IK state cannot join tokens from consecutive documents.
+--result_format 4
+--disable_warnings
+drop table if exists fts_ik_reuse;
+--enable_warnings
+set names utf8mb4;
+create table fts_ik_reuse (
+  id int primary key,
+  smart_text text,
+  max_text text,
+  fulltext index ft_smart(smart_text) with parser ik parser_properties=(ik_mode='smart'),
+  fulltext index ft_max(max_text) with parser ik parser_properties=(ik_mode='max_word')
+) default charset=utf8mb4;
+insert into fts_ik_reuse values
+  (1, 'alpha alpha 123', 'alpha alpha 123'),
+  (2, 'bravo 456', 'bravo 456'),
+  (3, '!!!', '!!!'),
+  (4, 'charlie', 'charlie'),
+  (5, repeat('delta ', 300), repeat('delta ', 300)),
+  (6, 'echo', 'echo'),
+  (7, convert(0xe4b8ade59bbde4b8ade59bbd using utf8mb4), convert(0xe4b8ade59bbde4b8ade59bbd using utf8mb4)),
+  (8, convert(0xe4b8ade59bbd using utf8mb4), convert(0xe4b8ade59bbd using utf8mb4));
+select group_concat(id order by id) as ids from fts_ik_reuse where match(smart_text) against('alpha');
+select group_concat(id order by id) as ids from fts_ik_reuse where match(max_text) against('alpha');
+select group_concat(id order by id) as ids from fts_ik_reuse where match(smart_text) against('bravo');
+select group_concat(id order by id) as ids from fts_ik_reuse where match(max_text) against('bravo');
+select group_concat(id order by id) as ids from fts_ik_reuse where match(smart_text) against('delta');
+select group_concat(id order by id) as ids from fts_ik_reuse where match(max_text) against('echo');
+select group_concat(id order by id) as ids from fts_ik_reuse where match(smart_text) against(convert(0xe4b8ade59bbd using utf8mb4));
+select group_concat(id order by id) as ids from fts_ik_reuse where match(max_text) against(convert(0xe4b8ade59bbd using utf8mb4));
+update fts_ik_reuse set smart_text='foxtrot', max_text='foxtrot' where id=1;
+select count(*) as n from fts_ik_reuse where match(smart_text) against('alpha');
+select count(*) as n from fts_ik_reuse where match(max_text) against('alpha');
+select group_concat(id order by id) as ids from fts_ik_reuse where match(smart_text) against('foxtrot');
+select group_concat(id order by id) as ids from fts_ik_reuse where match(max_text) against('foxtrot');
+delete from fts_ik_reuse where id=5;
+select count(*) as n from fts_ik_reuse where match(smart_text) against('delta');
+select count(*) as n from fts_ik_reuse where match(max_text) against('delta');
+drop table fts_ik_reuse;

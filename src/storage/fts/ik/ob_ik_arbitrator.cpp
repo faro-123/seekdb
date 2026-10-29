@@ -107,13 +107,15 @@ int ObIKArbitrator::process(TokenizeContext &ctx)
   return ret;
 }
 
-int ObIKArbitrator::output_result(TokenizeContext &ctx)
+int ObIKArbitrator::output_result(TokenizeContext &ctx,
+                                  const int64_t start_offset,
+                                  const int64_t end_offset)
 {
   int ret = OB_SUCCESS;
 
   int64_t char_len = 0;
   ObIKTokenChain *chain = nullptr;
-  for (int64_t current = 0; OB_SUCC(ret) && current < ctx.fulltext_len();) {
+  for (int64_t current = start_offset; OB_SUCC(ret) && current < end_offset;) {
     ObFTCharUtil::CharType type;
     // maybe not so good to keep single, check it later
     if (OB_FAIL(ObCharset::first_valid_char(ctx.collation(),
@@ -304,7 +306,18 @@ int ObIKArbitrator::prepare(TokenizeContext &ctx)
 
   int cal_bucket_num = MAX(ctx.fulltext_len() / 100, 10);
   cal_bucket_num = MIN(cal_bucket_num, 100);
-  if (OB_FAIL(chains_.create(cal_bucket_num, ObMemAttr("IK ARBITRATE")))) {
+  // Results contain token values, so previous chains can be reclaimed per batch.
+  if (chains_.created()) {
+    if (OB_FAIL(chains_.reuse())) {
+    } else {
+      alloc_.reuse();
+      if (chains_.bucket_count() < cal_bucket_num) {
+        chains_.destroy();
+      }
+    }
+  }
+  if (OB_SUCC(ret) && !chains_.created()
+      && OB_FAIL(chains_.create(cal_bucket_num, ObMemAttr("IK ARBITRATE")))) {
   }
   return ret;
 }

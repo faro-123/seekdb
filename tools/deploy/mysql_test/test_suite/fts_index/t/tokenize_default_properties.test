@@ -1,0 +1,27 @@
+# Default properties must produce the same token sets and frequencies as explicit defaults.
+--result_format 4
+--disable_query_log
+set names utf8mb4;
+--echo space defaults
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('hello abc 12 alpha hello', 'space', '[{"output":"all"}]') as actual,
+tokenize('hello abc 12 alpha hello', 'space', '[{"output":"all"},{"additional_args":[{"min_token_size":3},{"max_token_size":84}]}]') as expected) t;
+--echo beng defaults
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('hello abc 12 alpha hello', 'beng', '[{"output":"all"}]') as actual,
+tokenize('hello abc 12 alpha hello', 'beng', '[{"output":"all"},{"additional_args":[{"min_token_size":3},{"max_token_size":84}]}]') as expected) t;
+--echo ik defaults
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('hello abc 12 alpha hello', 'ik', '[{"output":"all"}]') as actual,
+tokenize('hello abc 12 alpha hello', 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"smart"}]}]') as expected) t;
+--echo ngram defaults
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('hello abc 12 alpha hello', 'ngram', '[{"output":"all"}]') as actual,
+tokenize('hello abc 12 alpha hello', 'ngram', '[{"output":"all"},{"additional_args":[{"ngram_token_size":2}]}]') as expected) t;
+--echo ngram2 defaults
+select json_contains(actual, expected) and json_contains(expected, actual) as ok
+from (select tokenize('hello abc 12 alpha hello', 'ngram2', '[{"output":"all"}]') as actual,
+tokenize('hello abc 12 alpha hello', 'ngram2', '[{"output":"all"},{"additional_args":[{"min_ngram_size":2},{"max_ngram_size":3}]}]') as expected) t;
+--echo empty and null documents
+select json_length(tokenize('','ik')) = 0 and json_length(tokenize(null,'beng')) = 0 as ok;
+--enable_query_log

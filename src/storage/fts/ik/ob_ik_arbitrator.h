@@ -36,7 +36,7 @@ public:
 
   int process(TokenizeContext &ctx);
 
-  int output_result(TokenizeContext &ctx);
+  int output_result(TokenizeContext &ctx, int64_t start_offset, int64_t end_offset);
 
 private:
   int prepare(TokenizeContext &ctx);

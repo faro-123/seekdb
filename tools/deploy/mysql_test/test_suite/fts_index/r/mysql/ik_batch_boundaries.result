@@ -1,0 +1,37 @@
+result_format: 4
+smart CJK batches
++------+
+| ok   |
++------+
+|    1 |
++------+
+max_word CJK batches
++------+
+| ok   |
++------+
+|    1 |
++------+
+smart ASCII batches
++------+
+| ok   |
++------+
+|    1 |
++------+
+max_word ASCII batches
++------+
+| ok   |
++------+
+|    1 |
++------+
+connectors keep long tokens intact
++------+
+| ok   |
++------+
+|    1 |
++------+
+numeric connectors keep long tokens intact
++------+
+| ok   |
++------+
+|    1 |
++------+
