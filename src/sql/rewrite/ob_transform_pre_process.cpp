@@ -181,6 +181,7 @@ int ObTransformPreProcess::transform_one_stmt(common::ObIArray<ObParentDMLStmt> 
     if (OB_SUCC(ret)) {
       if (stmt->get_match_exprs().count() > 0 &&
           OB_FAIL(preserve_order_for_fulltext_search(parent_stmts, stmt, is_happened))) {
+        LOG_WARN("failed to preserve order for fulltext search", K(ret));
       } else {
         trans_happened |= is_happened;
       }
@@ -3789,11 +3790,98 @@ int ObTransformPreProcess::do_flatten_conditions(ObDMLStmt *stmt, ObIArray<ObRaw
   return ret;
 }
 
-// full-text index queries on a single base table are processed with order preservation. 
+int ObTransformPreProcess::simplify_counted_fulltext_limit(
+    const ObIArray<ObParentDMLStmt> &parent_stmts,
+    ObDMLStmt *stmt,
+    bool &trans_happened)
+{
+  int ret = OB_SUCCESS;
+  trans_happened = false;
+  if (OB_ISNULL(stmt)) {
+    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected null", K(ret));
+  } else if (!stmt->is_select_stmt() || parent_stmts.empty()) {
+    // do nothing
+  } else {
+    ObDMLStmt *parent = parent_stmts.at(parent_stmts.count() - 1).stmt_;
+    ObSelectStmt *child = static_cast<ObSelectStmt *>(stmt);
+    if (OB_ISNULL(parent)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected null parent stmt", K(ret));
+    } else if (!parent->is_select_stmt()) {
+      // do nothing
+    } else {
+      ObSelectStmt *upper = static_cast<ObSelectStmt *>(parent);
+      bool valid = upper->is_scala_group_by()
+                   && 1 == upper->get_aggr_item_size()
+                   && 1 == upper->get_select_item_size()
+                   && upper->is_single_table_stmt()
+                   && upper->get_condition_exprs().empty()
+                   && !upper->has_having() && !upper->has_order_by()
+                   && !upper->has_distinct() && !upper->has_window_function()
+                   && !upper->has_window_function_filter() && !upper->has_limit()
+                   && !upper->is_set_stmt() && !upper->is_contains_assignment()
+                   && !upper->has_for_update() && !upper->has_select_into()
+                   && !upper->is_calc_found_rows()
+                   && child->is_single_table_stmt()
+                   && nullptr != child->get_limit_expr()
+                   && nullptr == child->get_limit_percent_expr()
+                   && !child->is_fetch_with_ties()
+                   && !child->has_order_by() && !child->has_group_by()
+                   && !child->has_distinct() && !child->has_having()
+                   && !child->has_window_function() && !child->has_window_function_filter()
+                   && !child->is_set_stmt() && !child->is_contains_assignment()
+                   && !child->has_for_update() && !child->has_select_into()
+                   && !child->is_calc_found_rows() && child->get_subquery_exprs().empty()
+                   && child->get_semi_infos().empty()
+                   && 1 == child->get_match_exprs().count()
+                   && 1 == child->get_condition_exprs().count();
+      if (valid) {
+        const TableItem *view = upper->get_table_item(0);
+        const TableItem *base = child->get_table_item(0);
+        const ObRawExpr *count = upper->get_select_item(0).expr_;
+        const ObMatchFunRawExpr *match = child->get_match_exprs().at(0);
+        const ObRawExpr *filter = child->get_condition_exprs().at(0);
+        valid = nullptr != view && view->is_generated_table() && view->ref_query_ == child
+                && nullptr != base && base->is_basic_table()
+                && nullptr != count && count == upper->get_aggr_item(0)
+                && T_FUN_COUNT == count->get_expr_type() && 0 == count->get_param_count()
+                && nullptr != match && NATURAL_LANGUAGE_MODE == match->get_mode_flag()
+                && !match->is_es_match() && match->get_columns_boosts().empty()
+                && nullptr != filter && T_OP_BOOL == filter->get_expr_type()
+                && 1 == filter->get_param_count() && filter->get_param_expr(0) == match;
+      }
+      ObSqlBitSet<> removed_idxs;
+      for (int64_t i = 0; OB_SUCC(ret) && valid && i < child->get_select_item_size(); ++i) {
+        const ObRawExpr *expr = child->get_select_item(i).expr_;
+        valid = nullptr != expr
+                && (expr->is_const_raw_expr()
+                    || (expr->is_column_ref_expr()
+                        && !static_cast<const ObColumnRefRawExpr *>(expr)->is_generated_column()));
+        if (valid && OB_FAIL(removed_idxs.add_member(i))) {
+          LOG_WARN("failed to collect unused select item", K(ret));
+        }
+      }
+      if (OB_SUCC(ret) && valid) {
+        // COUNT(*) only observes min(max(rows - offset, 0), limit), not ranked rows or their values.
+        if (OB_FAIL(ObTransformUtils::remove_select_items(ctx_, upper->get_table_item(0)->table_id_,
+                                                        *child, *upper, removed_idxs))) {
+          LOG_WARN("failed to remove counted fulltext projections", K(ret));
+        } else {
+          trans_happened = true;
+        }
+      }
+    }
+  }
+  return ret;
+}
+
+// full-text index queries on a single base table are processed with order preservation.
 // (Order is not preserved in multi-table join scenarios.)
-int ObTransformPreProcess::preserve_order_for_fulltext_search(common::ObIArray<ObParentDMLStmt> &parent_stmts,
-                                                              ObDMLStmt *stmt,
-                                                              bool& trans_happened)
+int ObTransformPreProcess::preserve_order_for_fulltext_search(
+    const ObIArray<ObParentDMLStmt> &parent_stmts,
+    ObDMLStmt *stmt,
+    bool &trans_happened)
 {
   int ret = OB_SUCCESS;
   trans_happened = false;
@@ -3801,6 +3889,11 @@ int ObTransformPreProcess::preserve_order_for_fulltext_search(common::ObIArray<O
   ObRawExpr *match_expr = nullptr;
   if (OB_ISNULL(stmt)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected null", K(ret));
+  } else if (OB_FAIL(simplify_counted_fulltext_limit(parent_stmts, stmt, trans_happened))) {
+    LOG_WARN("failed to simplify counted fulltext limit", K(ret));
+  } else if (trans_happened) {
+    // The counted subquery does not need the implicit relevance ordering.
   } else if (stmt->get_table_items().count() != 1 || stmt->get_order_item_size() != 0) {
     // do nothing
   } else if (stmt->is_select_stmt() && 

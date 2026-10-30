@@ -24,6 +24,27 @@ namespace oceanbase
 namespace share
 {
 
+namespace
+{
+inline int64_t ascii_or_mbcharlen(const ObCharsetInfo *cs,
+                                  const char *ptr,
+                                  const char *end)
+{
+  const unsigned char c = static_cast<unsigned char>(*ptr);
+  return c < 0x80 ? 1 : ob_mbcharlen_ptr(cs, ptr, end);
+}
+
+inline bool ascii_or_charset_isalnum(const ObCharsetInfo *cs, const char c)
+{
+  const unsigned char value = static_cast<unsigned char>(c);
+  return value < 0x80
+      ? ((value >= static_cast<unsigned char>('a') && value <= static_cast<unsigned char>('z'))
+         || (value >= static_cast<unsigned char>('A') && value <= static_cast<unsigned char>('Z'))
+         || (value >= static_cast<unsigned char>('0') && value <= static_cast<unsigned char>('9')))
+      : ob_isalnum(cs, c);
+}
+}
+
 ObTextTokenizer::ObTextTokenizer()
   : ObITokenStream(),
     input_doc_(nullptr),
@@ -98,7 +119,7 @@ int ObTextWhitespaceTokenizer::get_next(ObDatum &next_token, int64_t &token_freq
     int64_t token_len = 0;
     // to next non-whitespace pos
     while (OB_SUCC(ret) && found_delimiter()) {
-      const int64_t c_len = ob_mbcharlen_ptr(cs_, doc + trav_pos_, doc + doc_len);
+      const int64_t c_len = ascii_or_mbcharlen(cs_, doc + trav_pos_, doc + doc_len);
       trav_pos_ += c_len;
       if (trav_pos_ >= doc_len || 0 == c_len) {// if char is invalid, just skip the rest of document
         iter_end_ = true;
@@ -112,7 +133,7 @@ int ObTextWhitespaceTokenizer::get_next(ObDatum &next_token, int64_t &token_freq
 
     // to next whitespace pos
     while (OB_SUCC(ret) && !found_delimiter()) {
-      const int64_t c_len = ob_mbcharlen_ptr(cs_, doc + trav_pos_, doc + doc_len);
+      const int64_t c_len = ascii_or_mbcharlen(cs_, doc + trav_pos_, doc + doc_len);
       trav_pos_ += c_len;
       token_len += c_len;
       if (trav_pos_ >= doc_len || 0 == c_len) {
@@ -136,10 +157,20 @@ int ObTextWhitespaceTokenizer::get_next(ObDatum &next_token, int64_t &token_freq
 
 bool ObTextWhitespaceTokenizer::found_delimiter()
 {
-  bool found = false;
-  const char *curr_char = input_doc_->ptr_ + trav_pos_;
-  found = ob_isspace(cs_, *curr_char) || ob_iscntrl(cs_, *curr_char) || ob_ispunct(cs_, *curr_char);
-  return found;
+  const unsigned char curr_char = static_cast<unsigned char>(input_doc_->ptr_[trav_pos_]);
+  // The benchmark and the English parser predominantly use ASCII text.  For
+  // those bytes delimiter classification is independent of the connection
+  // charset and avoids three charset table lookups per byte.  Non-ASCII input
+  // keeps the charset-aware path below.
+  if (curr_char < 0x80) {
+    return curr_char <= 0x20 || curr_char == 0x7f
+        || (curr_char >= 0x21 && curr_char <= 0x2f)
+        || (curr_char >= 0x3a && curr_char <= 0x40)
+        || (curr_char >= 0x5b && curr_char <= 0x60)
+        || (curr_char >= 0x7b && curr_char <= 0x7e);
+  }
+  const char *curr_ptr = input_doc_->ptr_ + trav_pos_;
+  return ob_isspace(cs_, *curr_ptr) || ob_iscntrl(cs_, *curr_ptr) || ob_ispunct(cs_, *curr_ptr);
 }
 
 ObTokenNormalizer::ObTokenNormalizer()
@@ -262,7 +293,7 @@ int ObBasicEnglishNormalizer::get_next(ObDatum &next_token, int64_t &token_freq)
         uint32_t last_alnum_pos = raw_token_len - 1;
         for (uint32_t i = 0; i < raw_token_len; ++i) {
           const char *character = token + i;
-          if (ob_isalnum(cs_, *character)) {
+          if (ascii_or_charset_isalnum(cs_, *character)) {
             first_alnum_pos = i;
             found_alnum = true;
             break;
@@ -271,7 +302,7 @@ int ObBasicEnglishNormalizer::get_next(ObDatum &next_token, int64_t &token_freq)
 
         for (int32_t i = raw_token_len - 1; 0 <= i && i < raw_token_len && i >= first_alnum_pos; --i) {
           const char *character = token + i;
-          if (ob_isalnum(cs_, *character)) {
+          if (ascii_or_charset_isalnum(cs_, *character)) {
             last_alnum_pos = i;
             found_alnum = true;
             break;

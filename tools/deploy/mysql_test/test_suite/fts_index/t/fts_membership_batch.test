@@ -1,0 +1,61 @@
+# Membership union across posting batches and counted LIMIT rewrite boundaries.
+--result_format 4
+--disable_query_log
+--disable_warnings
+drop table if exists fts_membership_batch;
+--enable_warnings
+create table fts_membership_batch(id int primary key, body varchar(200), nullable_id int, fulltext index ft(body) with parser beng);
+insert into fts_membership_batch values(0,'alpha beta',null);
+insert into fts_membership_batch select id+1,body,null from fts_membership_batch;
+insert into fts_membership_batch select id+2,body,null from fts_membership_batch;
+insert into fts_membership_batch select id+4,body,null from fts_membership_batch;
+insert into fts_membership_batch select id+8,body,null from fts_membership_batch;
+insert into fts_membership_batch select id+16,body,null from fts_membership_batch;
+insert into fts_membership_batch select id+32,body,null from fts_membership_batch;
+insert into fts_membership_batch select id+64,body,null from fts_membership_batch;
+insert into fts_membership_batch select id+128,body,null from fts_membership_batch;
+insert into fts_membership_batch select id+256,body,null from fts_membership_batch;
+insert into fts_membership_batch select id+512,body,null from fts_membership_batch;
+update fts_membership_batch set body='beta gamma' where mod(id,4)=0;
+update fts_membership_batch set body='gamma delta' where mod(id,4)=1;
+insert into fts_membership_batch values(1024,'epsilon zeta eta theta iota',null);
+--echo merged batches deduplicate and retain all unique postings
+select count(*)=768 as ok from fts_membership_batch where match(body) against('alpha beta');
+select count(*)=512 as ok from fts_membership_batch where match(body) against('alpha');
+select count(*)=1025 as ok from fts_membership_batch where match(body) against('alpha beta gamma delta epsilon zeta eta theta');
+select count(*)=1025 as ok from fts_membership_batch where match(body) against('alpha beta gamma delta epsilon zeta eta theta iota');
+--echo counted limit offset and empty cases
+select count(*)=20 as ok from (select id from fts_membership_batch where match(body) against('alpha beta') limit 20) q;
+select count(*)=0 as ok from (select id from fts_membership_batch where match(body) against('alpha beta') limit 0) q;
+select count(*)=1 as ok from (select id from fts_membership_batch where match(body) against('alpha beta') limit 767,20) q;
+select count(*)=0 as ok from (select id from fts_membership_batch where match(body) against('alpha beta') limit 768,20) q;
+select count(*)=0 as ok from (select id from fts_membership_batch where match(body) against('missing') limit 20) q;
+--echo scalar counted limit returns its last row before end
+select /*+ opt_param('rowsets_max_rows',0) */ count(*)=1 as ok from (select id from fts_membership_batch where match(body) against('alpha beta') limit 1) q;
+select /*+ opt_param('rowsets_max_rows',0) */ count(*)=1 as ok from (select id from fts_membership_batch where match(body) against('alpha beta') limit 767,1) q;
+select /*+ opt_param('rowsets_max_rows',0) */ count(*)=0 as ok from (select id from fts_membership_batch where match(body) against('missing') limit 1) q;
+--echo value-sensitive aggregate distinct and outer filter retain semantics
+select count(nullable_id)=0 as ok from (select nullable_id from fts_membership_batch where match(body) against('alpha beta') limit 20) q;
+select count(*)=1 as ok from (select distinct body from fts_membership_batch where match(body) against('alpha') limit 20) q;
+select count(*)=5 as ok from (select id from fts_membership_batch where match(body) against('alpha beta') order by id limit 20) q where id<7;
+--echo explicit relevance ordering still selects the best match
+update fts_membership_batch set body='alpha alpha alpha alpha alpha alpha alpha' where id=2;
+select id=2 as ok from fts_membership_batch where match(body) against('alpha') order by match(body) against('alpha') desc limit 1;
+--echo prepared rescan switches posting lists and limit parameters
+prepare membership_batch_stmt from 'select count(*) from (select id from fts_membership_batch where match(body) against(?) limit ?,?) q';
+set @query='alpha beta',@skip=767,@take=20;
+execute membership_batch_stmt using @query,@skip,@take;
+set @query='missing',@skip=0,@take=20;
+execute membership_batch_stmt using @query,@skip,@take;
+set @query='alpha beta',@skip=0,@take=20;
+execute membership_batch_stmt using @query,@skip,@take;
+deallocate prepare membership_batch_stmt;
+--echo own writes and rollback update merged membership
+begin;
+delete from fts_membership_batch where id=2;
+update fts_membership_batch set body='gamma' where id=3;
+select count(*)=766 as ok from fts_membership_batch where match(body) against('alpha beta');
+rollback;
+select count(*)=768 as ok from fts_membership_batch where match(body) against('alpha beta');
+drop table fts_membership_batch;
+--enable_query_log

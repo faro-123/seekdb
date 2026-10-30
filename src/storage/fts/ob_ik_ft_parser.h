@@ -19,9 +19,7 @@
 
 #include "lib/allocator/ob_allocator.h"
 #include "lib/allocator/page_arena.h"
-#include "storage/fts/dict/ob_ft_cache_container.h"
 #include "storage/fts/dict/ob_ft_dict.h"
-#include "storage/fts/dict/ob_ft_dict_def.h"
 #include "storage/fts/ik/ob_ik_arbitrator.h"
 #include "storage/fts/ik/ob_ik_processor.h"
 #include "data_plane/fts/ob_fts_parser.h"
@@ -44,9 +42,6 @@ public:
         ctx_(nullptr),
         hub_(hub),
         segmenters_(runtime_allocator_),
-        cache_main_(allocator),
-        cache_quan_(allocator),
-        cache_stop_(allocator),
         dict_main_(nullptr),
         dict_quan_(nullptr),
         dict_stop_(nullptr)
@@ -79,7 +74,7 @@ private:
                        const ObFTCharUtil::CharType type);
 
 private:
-  int init_dict();
+  int init_dict(const ObFTParserParam &param);
 
   int init_segmenter(const ObFTParserParam &param);
 
@@ -101,10 +96,9 @@ private:
   ObFTDictHub *hub_;
   ObList<ObIIKProcessor *, ObIAllocator> segmenters_;
 
-  // borrowed from the process wide bundle owned by the dict hub
-  const ObIFTDict *dict_main_;
-  const ObIFTDict *dict_quan_;
-  const ObIFTDict *dict_stop_;
+  ObIFTDict *dict_main_;
+  ObIFTDict *dict_quan_;
+  ObIFTDict *dict_stop_;
 
   DISABLE_COPY_ASSIGN(ObIKFTParser);
 };

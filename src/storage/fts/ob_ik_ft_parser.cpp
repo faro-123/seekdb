@@ -265,16 +265,28 @@ int ObIKFTParserDesc::get_add_word_flag(ObAddWordFlag &flag) const
 int ObIKFTParser::init_dict()
 {
   int ret = OB_SUCCESS;
-  const ObIKDictBundle *bundle = nullptr;
+  UNUSED(param);
+
   if (OB_ISNULL(hub_)) {
     ret = OB_ERR_UNEXPECTED;
-  } else if (OB_FAIL(hub_->get_ik_dict_bundle(bundle))) {
-  } else if (OB_ISNULL(bundle)) {
-    ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("Dict hub is not inited", K(ret));
   } else {
-    dict_main_ = &bundle->main_dict();
-    dict_quan_ = &bundle->quan_dict();
-    dict_stop_ = &bundle->stop_dict();
+    ObFTDictDesc main_dict_desc("main_dict",
+                                ObFTDictType::DICT_IK_MAIN,
+                                ObCharsetType::CHARSET_UTF8MB4,
+                                ObCollationType::CS_TYPE_UTF8MB4_BIN);
+    ObFTDictDesc quan_dict_desc("quan_dict",
+                                ObFTDictType::DICT_IK_QUAN,
+                                ObCharsetType::CHARSET_UTF8MB4,
+                                ObCollationType::CS_TYPE_UTF8MB4_BIN);
+    ObFTDictDesc stopword_dict_desc("stopword",
+                                    ObFTDictType::DICT_IK_STOP,
+                                    ObCharsetType::CHARSET_UTF8MB4,
+                                    ObCollationType::CS_TYPE_UTF8MB4_BIN);
+    if (OB_FAIL(hub_->get_builtin_dict(main_dict_desc, dict_main_))) {
+    } else if (OB_FAIL(hub_->get_builtin_dict(quan_dict_desc, dict_quan_))) {
+    } else if (OB_FAIL(hub_->get_builtin_dict(stopword_dict_desc, dict_stop_))) {
+    }
   }
   return ret;
 }
@@ -362,27 +374,11 @@ void ObIKFTParser::reset_runtime()
 void ObIKFTParser::reset()
 {
   reset_runtime();
-
-  if (!OB_ISNULL(dict_main_)) {
-    dict_main_->~ObIFTDict();
-    allocator_.free(dict_main_);
-    dict_main_ = nullptr;
-  }
-  if (!OB_ISNULL(dict_quan_)) {
-    dict_quan_->~ObIFTDict();
-    allocator_.free(dict_quan_);
-    dict_quan_ = nullptr;
-  }
-  if (!OB_ISNULL(dict_stop_)) {
-    dict_stop_->~ObIFTDict();
-    allocator_.free(dict_stop_);
-    dict_stop_ = nullptr;
-  }
-
-  cache_main_.reset();
-  cache_quan_.reset();
-  cache_stop_.reset();
-
+  // The dictionaries are owned by ObFTDictHub and remain valid until global
+  // FTS shutdown.  Parsers only borrow these read-only objects.
+  dict_main_ = nullptr;
+  dict_quan_ = nullptr;
+  dict_stop_ = nullptr;
   coll_type_ = ObCollationType::CS_TYPE_INVALID;
   is_inited_ = false;
 }

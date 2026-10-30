@@ -448,23 +448,36 @@ inline int ObFTCharUtil::do_classify(const char *input, const uint8_t char_len, 
   ob_wc_t unicode = 0;
   type = CharType::USELESS;
 
-  // All character classes below refer to the same code point. Decode the UTF-8
-  // sequence once instead of decoding it again for every class predicate.
-  if (OB_FAIL(decode_unicode<CS_TYPE>(input, char_len, unicode))) {
-  } else if (ObUnicodeBlockUtils::is_alpha(unicode)) {
-    type = CharType::ENGLISH_LETTER;
-  } else if (ObUnicodeBlockUtils::is_arabic(unicode)) {
-    type = CharType::ARABIC_LETTER;
-  } else if (ObUnicodeBlockUtils::is_chinese(unicode)) {
-    type = CharType::CHINESE;
-  } else if (ObUnicodeBlockUtils::is_other_cjk(unicode)) {
-    type = CharType::OTHER_CJK;
-  } else if ((CS_TYPE == CHARSET_UTF16 || CS_TYPE == CHARSET_UTF16LE)
-             && ObUnicodeBlockUtils::check_high_surrogate(unicode)) {
-    type = CharType::SURROGATE_HIGH;
-  } else if ((CS_TYPE == CHARSET_UTF16 || CS_TYPE == CHARSET_UTF16LE)
-             && ObUnicodeBlockUtils::check_low_surrogate(unicode)) {
-    type = CharType::SURROGATE_LOW;
+  // ASCII has a one-byte, charset-independent classification.  Avoid the
+  // Unicode decoder on the dominant English/number path; all non-ASCII bytes
+  // retain the full Unicode classification below.
+  if (CS_TYPE == CHARSET_UTF8MB4 && 1 == char_len) {
+    const unsigned char value = static_cast<unsigned char>(*input);
+    if ((value >= static_cast<unsigned char>('a') && value <= static_cast<unsigned char>('z'))
+        || (value >= static_cast<unsigned char>('A') && value <= static_cast<unsigned char>('Z'))) {
+      type = CharType::ENGLISH_LETTER;
+    } else if (value >= static_cast<unsigned char>('0') && value <= static_cast<unsigned char>('9')) {
+      type = CharType::ARABIC_LETTER;
+    }
+  } else {
+    // All character classes below refer to the same code point. Decode the UTF-8
+    // sequence once instead of decoding it again for every class predicate.
+    if (OB_FAIL(decode_unicode<CS_TYPE>(input, char_len, unicode))) {
+    } else if (ObUnicodeBlockUtils::is_alpha(unicode)) {
+      type = CharType::ENGLISH_LETTER;
+    } else if (ObUnicodeBlockUtils::is_arabic(unicode)) {
+      type = CharType::ARABIC_LETTER;
+    } else if (ObUnicodeBlockUtils::is_chinese(unicode)) {
+      type = CharType::CHINESE;
+    } else if (ObUnicodeBlockUtils::is_other_cjk(unicode)) {
+      type = CharType::OTHER_CJK;
+    } else if ((CS_TYPE == CHARSET_UTF16 || CS_TYPE == CHARSET_UTF16LE)
+               && ObUnicodeBlockUtils::check_high_surrogate(unicode)) {
+      type = CharType::SURROGATE_HIGH;
+    } else if ((CS_TYPE == CHARSET_UTF16 || CS_TYPE == CHARSET_UTF16LE)
+               && ObUnicodeBlockUtils::check_low_surrogate(unicode)) {
+      type = CharType::SURROGATE_LOW;
+    }
   }
   return ret;
 }

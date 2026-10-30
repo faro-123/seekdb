@@ -45,6 +45,7 @@
 #include "rootserver/ddl_task/ob_ddl_task.h"
 #include "rootserver/ob_index_builder.h"
 #include "lib/worker.h"
+#include "data_plane/ob_order_perserving_encoder.h"
 
 using namespace oceanbase::share;
 using namespace oceanbase::common;
@@ -532,10 +533,22 @@ int ObDDLTaskUtil::generate_build_replica_sql(const int64_t data_table_id,
         if (dest_table_schema->is_vec_vid_rowkey_type()) {
           src_table_schema_version_hint_sql_string.reset();
         }
+        bool encode_fts_sort = dest_table_schema->is_fts_index_aux()
+                               || dest_table_schema->is_fts_doc_word_aux();
+        const ObRowkeyInfo &sort_rowkey = dest_table_schema->get_rowkey_info();
+        for (int64_t i = 0; encode_fts_sort && i < sort_rowkey.get_size(); ++i) {
+          const ObColumnSchemaV2 *column = dest_table_schema->get_column_schema(
+              sort_rowkey.get_column(i)->column_id_);
+          encode_fts_sort = nullptr != column
+                            && ObOrderPerservingEncoder::can_encode_sortkey(
+                                ObVarcharType == column->get_data_type()
+                                    ? ObCharType : column->get_data_type(),
+                                column->get_collation_type());
+        }
         if (OB_FAIL(ret)) {
         } else {
-          if (OB_FAIL(sql_string.assign_fmt("INSERT /*+ enable_parallel_dml parallel(%ld) opt_param('ddl_execution_id', %ld) opt_param('ddl_task_id', %ld) opt_param('enable_newsort', 'false') %.*s use_px */INTO `%.*s`.`%.*s` %.*s(%.*s) SELECT /*+ index(`%.*s` primary) %.*s */ %.*s from `%.*s`.`%.*s` %.*s as of snapshot %ld %.*s",
-              real_parallelism, execution_id, task_id,
+          if (OB_FAIL(sql_string.assign_fmt("INSERT /*+ enable_parallel_dml parallel(%ld) opt_param('ddl_execution_id', %ld) opt_param('ddl_task_id', %ld) opt_param('enable_newsort', '%s') %.*s use_px */INTO `%.*s`.`%.*s` %.*s(%.*s) SELECT /*+ index(`%.*s` primary) %.*s */ %.*s from `%.*s`.`%.*s` %.*s as of snapshot %ld %.*s",
+              real_parallelism, execution_id, task_id, encode_fts_sort ? "true" : "false",
               static_cast<int>(strlen(io_read_hint)), io_read_hint,
               static_cast<int>(new_dest_database_name.length()), new_dest_database_name.ptr(), static_cast<int>(new_dest_table_name.length()), new_dest_table_name.ptr(),
               static_cast<int>(partition_names.length()), partition_names.ptr(),

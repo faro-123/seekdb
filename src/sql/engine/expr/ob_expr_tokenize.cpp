@@ -31,6 +31,7 @@
 #include "data_plane/fts/ob_fts_parser_helper.h"
 #include "data_plane/fts/dict/ob_gen_dic_loader.h"
 #include "data_plane/fts/ob_fts_parser_property.h"
+#include "data_plane/fts/ob_fts_literal.h"
 
 #define USING_LOG_PREFIX SQL_ENG
 #include "sql/engine/expr/ob_expr_json_func_helper.h" // file not self-contained, there're logs inside.
@@ -85,8 +86,6 @@ int ObExprTokenize::tokenize_fulltext(const TokenizeParam &param,
   const int64_t ft_word_bkt_cnt = MIN(MAX(param.fulltext_.length() / 2, 2), 997);
   int64_t doc_len = 0;
   storage::ObFTWordMap token_map;
-
-  ObArenaAllocator tmp_parse_alloc(ObMemAttr("Tmp buffer"));
 
   if (TokenizeParam::OUTPUT_MODE::DEFAULT != mode && TokenizeParam::OUTPUT_MODE::ALL != mode) {
     ret = OB_INVALID_ARGUMENT;
@@ -224,7 +223,31 @@ int ObExprTokenize::construct_ft_parser_inner_name(const ObString &input_str, To
   int ret = OB_SUCCESS;
   storage::ObFTParser parser;
 
-  if (OB_FAIL(parser.init(input_str))) {
+  // TOKENIZE receives the built-in parser name without a version in the
+  // hot path.  The built-ins all use version 1, so avoid constructing and
+  // serializing a temporary parser object for this common case.
+  static const char *BUILTIN_PARSER_NAMES[] = {
+      storage::ObFTSLiteral::PARSER_NAME_SPACE,
+      storage::ObFTSLiteral::PARSER_NAME_NGRAM,
+      storage::ObFTSLiteral::PARSER_NAME_BENG,
+      storage::ObFTSLiteral::PARSER_NAME_IK,
+      storage::ObFTSLiteral::PARSER_NAME_NGRAM2,
+  };
+  bool is_builtin_name = false;
+  for (const char *name : BUILTIN_PARSER_NAMES) {
+    if (0 == input_str.case_compare(ObString::make_string(name))) {
+      const int64_t name_len = STRLEN(name);
+      MEMCPY(param.parser_name_buf_, name, name_len);
+      param.parser_name_buf_[name_len] = '.';
+      param.parser_name_buf_[name_len + 1] = '1';
+      param.parser_name_buf_[name_len + 2] = '\0';
+      param.parser_name_ = ObString(name_len + 2, param.parser_name_buf_);
+      is_builtin_name = true;
+      break;
+    }
+  }
+  if (is_builtin_name) {
+  } else if (OB_FAIL(parser.init(input_str))) {
   } else if (OB_FAIL(parser.serialize_to_str(param.parser_name_buf_, sizeof(param.parser_name_buf_)))) {
   } else {
     param.parser_name_ = ObString::make_string(param.parser_name_buf_);

@@ -132,6 +132,18 @@ public:
   virtual int advance_to(const ObDatum &id_datum) override;
   virtual int get_curr_score(double &score) const override;
   virtual int get_curr_id(const ObDatum *&id_datum) const override;
+  int get_next_id(const ObDatum *&id_datum)
+  {
+    int ret = OB_SUCCESS;
+    if (OB_LIKELY(cur_idx_ + 1 < count_)) {
+      ++cur_idx_;
+      id_datum = &doc_id_[cur_idx_].get_datum();
+    } else if (OB_FAIL(get_next_row())) {
+    } else {
+      ret = get_curr_id(id_datum);
+    }
+    return ret;
+  }
 public:
   int get_token_doc_cnt(int64_t &token_doc_cnt) const { return token_iter_->get_token_doc_cnt(token_doc_cnt); }
   virtual int get_dim_max_score(double &score) override {

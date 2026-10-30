@@ -517,6 +517,7 @@ int ObDASLegacyTRMergeIter::init_daat_iter_param(ObTextDaaTParam &iter_param)
       } else if (OB_FAIL(inner_product_relevance_collector->init(should_match))) {
       } else {
         iter_param.relevance_collector_ = inner_product_relevance_collector;
+        iter_param.membership_should_match_ = should_match;
       }
     }
   }

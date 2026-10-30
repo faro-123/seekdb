@@ -20,7 +20,7 @@
 #include "lib/allocator/page_arena.h"
 #include "lib/charset/ob_charset.h"
 #include "lib/lock/ob_bucket_lock.h"
-#include "lib/lock/ob_mutex.h"
+#include "storage/fts/dict/ob_ft_cache_container.h"
 #include "storage/fts/dict/ob_ft_dict_def.h"
 
 namespace oceanbase
@@ -137,18 +137,17 @@ private:
 };
 
 class ObFTCacheRangeContainer;
+class ObIFTDict;
+class ObFTRangeDict;
 class ObFTDictHub
 {
 public:
   ObFTDictHub()
-      : is_inited_(false),
-        dict_map_(),
-        rw_dict_lock_(),
-        bundle_lock_(),
-        bundle_alloc_(lib::ObMemAttr("FtDictBundle")),
-        ik_bundle_(nullptr)
-  {
-  }
+      : is_inited_(false), dict_map_(), rw_dict_lock_(),
+        builtin_containers_{nullptr, nullptr, nullptr},
+        builtin_dicts_{nullptr, nullptr, nullptr},
+        cache_allocator_(nullptr)
+  {}
   ~ObFTDictHub() {}
 
   int init();
@@ -159,11 +158,9 @@ public:
 
   int load_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &container);
 
-  /**
-   * @brief get the shared, read-only IK dictionaries, building them on first use
-   * @param[out] bundle valid for the lifetime of the hub, never null on OB_SUCCESS
-   */
-  int get_ik_dict_bundle(const ObIKDictBundle *&bundle);
+  // Return the process-lifetime immutable cache for one of the built-in IK
+  // dictionaries.  The first caller builds it; subsequent parsers borrow it.
+  int get_builtin_dict(const ObFTDictDesc &desc, ObIFTDict *&dict);
 
 private:
   int get_dict_info(const ObFTDictInfoKey &key, ObFTDictInfo &info);
@@ -187,9 +184,9 @@ private:
   // holds info of dict
   hash::ObHashMap<ObFTDictInfoKey, ObFTDictInfo> dict_map_;
   ObBucketLock rw_dict_lock_;
-  lib::ObMutex bundle_lock_;
-  ObArenaAllocator bundle_alloc_;
-  const ObIKDictBundle *ik_bundle_;
+  ObFTCacheRangeContainer *builtin_containers_[3];
+  ObFTRangeDict *builtin_dicts_[3];
+  common::ObIAllocator *cache_allocator_;
 };
 
 } //  namespace storage
