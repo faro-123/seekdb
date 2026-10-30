@@ -39,7 +39,11 @@ public:
   static constexpr const char *DOC_ROWKEY_NAME = "fts_doc_rowkey";
   static constexpr const char *ROWKEY_DOC_NAME = "fts_rowkey_doc";
   static const int64_t OB_FTS_INDEX_TABLE_INDEX_COL_CNT = 2;
-  static const int64_t OB_FTS_DOC_WORD_TABLE_INDEX_COL_CNT = 2;
+  // doc_word keeps one row per document: doc_id is the only key column and the
+  // word segment text is stored as a payload column.
+  static const int64_t OB_FTS_DOC_WORD_TABLE_INDEX_COL_CNT = 1;
+  static const int64_t OB_FTS_DOC_WORD_TABLE_STORE_COL_CNT = 1;
+  static const int64_t OB_FTS_DOC_WORD_TABLE_COL_CNT = 2;
   static const int64_t OB_FTS_INDEX_OR_DOC_WORD_TABLE_COL_CNT = 4;
 public:
   // Check if we can use rowkey instead of doc id.
@@ -179,6 +183,10 @@ private:
       obcall::ObCreateIndexArg *fts_arg,
       const ObIArray<const share::schema::ObColumnSchemaV2 *> &fts_cols,
       const int index_column_cnt,
+      ObIAllocator &allocator);
+  static int inner_adjust_doc_word_arg(
+      obcall::ObCreateIndexArg *doc_word_arg,
+      const ObIArray<const share::schema::ObColumnSchemaV2 *> &fts_cols,
       ObIAllocator &allocator);
   static int generate_word_segment_column(
       const obcall::ObCreateIndexArg *index_arg,

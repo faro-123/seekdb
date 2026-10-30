@@ -34,14 +34,16 @@ namespace oceanbase
 {
 namespace sql
 {
+static constexpr int64_t OB_FTS_DOC_WORD_ROW_COL_CNT = 2;
+
 using storage::ObFTWordMap;
 
 
 ObObjDatumMapType ObFTIndexRowCache::FTS_INDEX_TYPES[] = {OBJ_DATUM_STRING, OBJ_DATUM_STRING, OBJ_DATUM_8BYTE_DATA, OBJ_DATUM_8BYTE_DATA};
-ObObjDatumMapType ObFTIndexRowCache::FTS_DOC_WORD_TYPES[] = {OBJ_DATUM_STRING, OBJ_DATUM_STRING, OBJ_DATUM_8BYTE_DATA, OBJ_DATUM_8BYTE_DATA};
+ObObjDatumMapType ObFTIndexRowCache::FTS_DOC_WORD_TYPES[] = {OBJ_DATUM_STRING, OBJ_DATUM_STRING};
 
 ObExprOperatorType ObFTIndexRowCache::FTS_INDEX_EXPR_TYPE[] = {T_FUN_SYS_WORD_SEGMENT, T_FUN_SYS_DOC_ID, T_FUN_SYS_WORD_COUNT, T_FUN_SYS_DOC_LENGTH};
-ObExprOperatorType ObFTIndexRowCache::FTS_DOC_WORD_EXPR_TYPE[] = {T_FUN_SYS_DOC_ID, T_FUN_SYS_WORD_SEGMENT, T_FUN_SYS_WORD_COUNT, T_FUN_SYS_DOC_LENGTH};
+ObExprOperatorType ObFTIndexRowCache::FTS_DOC_WORD_EXPR_TYPE[] = {T_FUN_SYS_DOC_ID, T_FUN_SYS_WORD_SEGMENT};
 
 ObFTIndexRowCache::ObFTIndexRowCache()
   : rows_(),
@@ -284,6 +286,7 @@ int ObDASDomainUtils::build_ft_doc_word_infos(
 {
   int ret = OB_SUCCESS;
   static int64_t FT_WORD_DOC_COL_CNT = 4;
+  static constexpr int64_t OB_DOC_WORD_COL_CNT = 2;
   static constexpr int64_t FT_MAX_WORD_BUCKET = 997;
   const int64_t ft_word_bkt_cnt = MIN(MAX(fulltext.length() / 10, 2), FT_MAX_WORD_BUCKET);
   int64_t doc_length = 0;
@@ -294,6 +297,28 @@ int ObDASDomainUtils::build_ft_doc_word_infos(
     ret = OB_INVALID_ARGUMENT;
   } else if (0 == fulltext.length()) {
     ret = OB_ITER_END;
+  } else if (!is_fts_index_aux) {
+    // doc_word keeps one row per document: [DOC_ID], [WORD_SEGMENT_PAYLOAD].
+    // The payload is the exact generated value of the word segment column, so
+    // old/new row derivation and the generated column check agree on it.
+    if (OB_ISNULL(rows_buf = reinterpret_cast<char *>(
+                     allocator.alloc(sizeof(blocksstable::ObDatumRow))))) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+    } else {
+      rows = new (rows_buf) blocksstable::ObDatumRow();
+      char *payload_buf = nullptr;
+      if (OB_FAIL(rows->init(allocator, OB_DOC_WORD_COL_CNT))) {
+      } else if (OB_ISNULL(payload_buf = static_cast<char *>(allocator.alloc(fulltext.length())))) {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      } else {
+        MEMCPY(payload_buf, fulltext.ptr(), fulltext.length());
+        const ObString payload(static_cast<int32_t>(fulltext.length()), payload_buf);
+        rows->storage_datums_[0].shallow_copy_from_datum(doc_id_datum);
+        rows->storage_datums_[1].set_string(payload);
+        if (OB_FAIL(word_rows.push_back(rows))) {
+        }
+      }
+    }
   } else if (OB_FAIL(ft_word_map.create(ft_word_bkt_cnt, common::ObMemAttr("FTWordMap")))) {
   } else if (OB_FAIL(segment_and_calc_word_count(allocator,
                                                  helper,
@@ -318,7 +343,7 @@ int ObDASDomainUtils::build_ft_doc_word_infos(
         const int64_t word_cnt = iter->second;
         // index row format
         //  -    FTS_INDEX: [WORD], [DOC_ID], [WORD_COUNT], [DOC_LENGTH]
-        //  - FTS_DOC_WORD: [DOC_ID], [WORD], [WORD_COUNT], [DOC_LENGTH]
+        //  - FTS_DOC_WORD is handled above as one row per document.
         const int64_t word_idx = is_fts_index_aux ? 0 : 1;
         const int64_t doc_id_idx = is_fts_index_aux ? 1 : 0;
         const int64_t word_cnt_idx = 2;
@@ -1055,6 +1080,22 @@ int ObFTDMLIterator::scan_ft_word_rows(const ObChunkDatumStore::StoredRow *store
     ObDatum doc_id_datum = store_row->cells()[row_projector_->at(doc_id_idx)];
 
     if (OB_FAIL(ret)) {
+    } else if (is_fts_index_aux) {
+      // doc_word stores the whole word segment payload, so prepare the parser
+      // to rebuild the old posting rows from it.
+      const common::ObString &parser_str =
+          das_ctdef_->table_param_.get_data_table().get_fts_parser_name();
+      const common::ObString &parser_property_str =
+          das_ctdef_->table_param_.get_data_table().get_fts_parser_property();
+      bool is_same = false;
+      if (OB_FAIL(ft_parse_helper_.check_is_the_same(parser_str, parser_property_str, is_same))) {
+      } else if (!is_same) {
+        ft_parse_helper_.reset();
+        if (OB_FAIL(ft_parse_helper_.init(&allocator_, parser_str, parser_property_str))) {
+        }
+      }
+    }
+    if (OB_FAIL(ret)) {
     } else if (OB_FAIL(data_plane::scan_ft_doc_words(
                    ft_doc_word_iter_, doc_word_info_->doc_word_table_id_, doc_id_datum))) {
     } else {
@@ -1066,9 +1107,26 @@ int ObFTDMLIterator::scan_ft_word_rows(const ObChunkDatumStore::StoredRow *store
         if (OB_FAIL(data_plane::next_ft_doc_word(ft_doc_word_iter_, row))) {
           if (OB_ITER_END != ret) {
           }
+        } else if (is_fts_index_aux) {
+          if (OB_UNLIKELY(OB_ISNULL(row) || row->count_ != OB_FTS_DOC_WORD_ROW_COL_CNT)) {
+            ret = OB_ERR_UNEXPECTED;
+          } else {
+            const common::ObString payload = row->storage_datums_[1].get_string();
+            const common::ObObjMeta ft_meta = das_ctdef_->column_types_.at(0);
+            int tmp_ret = ObDASDomainUtils::generate_fulltext_word_rows(allocator_,
+                                                                        &ft_parse_helper_,
+                                                                        ft_meta,
+                                                                        row->storage_datums_[0],
+                                                                        payload,
+                                                                        true/*is_fts_index_aux*/,
+                                                                        tmp_rows);
+            if (OB_ITER_END == tmp_ret) {
+              tmp_ret = OB_SUCCESS;
+            }
+            ret = tmp_ret;
+          }
         } else if (OB_FAIL(build_ft_word_row(row, ft_word_row))) {
         } else if (OB_FAIL(tmp_rows.push_back(ft_word_row))) {
-        } else {
         }
       } while (OB_SUCC(ret));
 
@@ -1157,27 +1215,25 @@ int ObFTDMLIterator::build_ft_word_row(
     blocksstable::ObDatumRow *&dest_row)
 {
   int ret = OB_SUCCESS;
-  const int64_t DOC_ID_IDX = das_ctdef_->table_param_.get_data_table().is_fts_index_aux() ? 1 : 0;
-  const int64_t WORD_SEGMENT_IDX = das_ctdef_->table_param_.get_data_table().is_fts_index_aux() ? 0 : 1;
-  static int64_t WORD_COUNT_IDX = 2;
-  static int64_t DOC_LENGTH_IDX = 3;
   void *buf = nullptr;
   blocksstable::ObDatumRow *tmp_row = nullptr;
   if (OB_ISNULL(src_row)) {
     ret = OB_INVALID_ARGUMENT;
-  } else if (OB_UNLIKELY(4 != src_row->count_)) {
+  } else if (OB_UNLIKELY(OB_FTS_DOC_WORD_ROW_COL_CNT != src_row->count_)) {
     ret = OB_ERR_UNEXPECTED;
   } else if (OB_ISNULL(buf = allocator_.alloc(sizeof(blocksstable::ObDatumRow)))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
   } else if (FALSE_IT(tmp_row = new (buf) blocksstable::ObDatumRow())) {
   } else if (OB_FAIL(tmp_row->init(src_row->count_))) {
   } else if (OB_FAIL(tmp_row->copy_attributes_except_datums(*src_row))) {
-  } else if (OB_FAIL(tmp_row->storage_datums_[DOC_ID_IDX].deep_copy(src_row->storage_datums_[0], allocator_))) {
-  } else if (OB_FAIL(tmp_row->storage_datums_[WORD_SEGMENT_IDX].deep_copy(src_row->storage_datums_[1], allocator_))) {
-  } else if (OB_FAIL(tmp_row->storage_datums_[WORD_COUNT_IDX].deep_copy(src_row->storage_datums_[2], allocator_))) {
-  } else if (OB_FAIL(tmp_row->storage_datums_[DOC_LENGTH_IDX].deep_copy(src_row->storage_datums_[3], allocator_))) {
   } else {
-    dest_row = tmp_row;
+    for (int64_t i = 0; OB_SUCC(ret) && i < src_row->count_; ++i) {
+      if (OB_FAIL(tmp_row->storage_datums_[i].deep_copy(src_row->storage_datums_[i], allocator_))) {
+      }
+    }
+    if (OB_SUCC(ret)) {
+      dest_row = tmp_row;
+    }
   }
   return ret;
 }
@@ -1222,7 +1278,11 @@ int ObFTDMLIterator::get_ft_and_doc_id_for_update(const ObChunkDatumStore::Store
   const uint64_t rowkey_col_cnt = das_ctdef_->table_param_.get_data_table().get_rowkey_column_num();
   const uint64_t old_proj_cnt = das_ctdef_->old_row_projector_.count();
   const uint64_t new_proj_cnt = das_ctdef_->new_row_projector_.count();
-  if (OB_UNLIKELY(rowkey_col_cnt + 2 != old_proj_cnt || rowkey_col_cnt + 2 != new_proj_cnt)) {
+  const uint64_t expect_col_cnt = static_cast<uint64_t>(das_ctdef_->column_types_.count());
+  if (OB_UNLIKELY(0 == expect_col_cnt
+                  || expect_col_cnt != old_proj_cnt
+                  || expect_col_cnt != new_proj_cnt
+                  || rowkey_col_cnt > expect_col_cnt)) {
     ret = OB_INVALID_ARGUMENT;
   } else {
     const bool is_fts_index_aux = das_ctdef_->table_param_.get_data_table().is_fts_index_aux();

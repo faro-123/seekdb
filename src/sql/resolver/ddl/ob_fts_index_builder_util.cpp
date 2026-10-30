@@ -465,9 +465,9 @@ int ObFtsIndexBuilderUtil::adjust_fts_args(
                && OB_FAIL(get_fts_rowkey_col(data_schema, existing_rowkey_col))) {
     } else if ((is_fts_index || is_doc_word)
                && OB_FAIL(get_word_segment_col(data_schema, &index_arg, existing_word_col))) {
-    } else if ((is_fts_index || is_doc_word)
+    } else if (is_fts_index
                && OB_FAIL(get_doc_length_col(data_schema, &index_arg, existing_doc_length_col))) {
-    } else if ((is_fts_index || is_doc_word)
+    } else if (is_fts_index
                && OB_FAIL(get_word_cnt_col(data_schema, &index_arg, existing_word_count_col))) {
     } else if (existing_word_col && is_fts_index) {
       // Add warnings but still make it pass
@@ -505,7 +505,7 @@ int ObFtsIndexBuilderUtil::adjust_fts_args(
       }
 
       // Gen col: word count
-      if (OB_SUCC(ret) && OB_ISNULL(existing_word_count_col)) {
+      if (OB_SUCC(ret) && is_fts_index && OB_ISNULL(existing_word_count_col)) {
         word_count_col_id = available_col_id++;
         if (OB_FAIL(generate_word_count_column(&index_arg,
                                                word_count_col_id,
@@ -516,7 +516,7 @@ int ObFtsIndexBuilderUtil::adjust_fts_args(
       }
 
       // Gen col: doc len
-      if (OB_SUCC(ret) && OB_ISNULL(existing_doc_length_col)) {
+      if (OB_SUCC(ret) && is_fts_index && OB_ISNULL(existing_doc_length_col)) {
         doc_len_col_id = available_col_id++;
         if (OB_FAIL(generate_doc_length_column(&index_arg,
                                                doc_len_col_id,
@@ -545,8 +545,6 @@ int ObFtsIndexBuilderUtil::adjust_fts_args(
     } else if (is_doc_word) {
       if (OB_FAIL(push_back_gen_col(tmp_cols, existing_rowkey_col, nullptr))) {
       } else if (OB_FAIL(push_back_gen_col(tmp_cols, existing_word_col, generated_word_col))) {
-      } else if (OB_FAIL(push_back_gen_col(tmp_cols, existing_word_count_col, generated_word_count_col))) {
-      } else if (OB_FAIL(push_back_gen_col(tmp_cols, existing_doc_length_col, generated_doc_len_col))) {
       } else if (OB_FAIL(adjust_fts_arg(&index_arg, data_schema, allocator, tmp_cols))) {
       }
     }
@@ -581,8 +579,6 @@ int ObFtsIndexBuilderUtil::adjust_fts_args(
     } else if (is_doc_word) {
       if (OB_FAIL(push_back_gen_col(tmp_cols, existing_doc_id_col, generated_doc_id_col))) {
       } else if (OB_FAIL(push_back_gen_col(tmp_cols, existing_word_col, generated_word_col))) {
-      } else if (OB_FAIL(push_back_gen_col(tmp_cols, existing_word_count_col, generated_word_count_col))) {
-      } else if (OB_FAIL(push_back_gen_col(tmp_cols, existing_doc_length_col, generated_doc_len_col))) {
       } else if (OB_FAIL(adjust_fts_arg(&index_arg, data_schema, allocator, tmp_cols))) {
       }
     }
@@ -737,13 +733,17 @@ int ObFtsIndexBuilderUtil::set_fts_index_table_columns(
     ObTableSchema &index_schema)
 {
   int ret = OB_SUCCESS;
+  const bool is_doc_word = share::schema::is_fts_doc_word_aux(arg.index_type_);
+  const int64_t index_col_cnt = is_doc_word ?
+      OB_FTS_DOC_WORD_TABLE_INDEX_COL_CNT : OB_FTS_INDEX_TABLE_INDEX_COL_CNT;
+  const int64_t store_col_cnt = is_doc_word ?
+      OB_FTS_DOC_WORD_TABLE_STORE_COL_CNT : 2;
   if (!data_schema.is_valid() ||
-      (!share::schema::is_fts_index_aux(arg.index_type_) &&
-      !share::schema::is_fts_doc_word_aux(arg.index_type_)) ||
-      arg.index_columns_.count() != 2 ||
-      arg.store_columns_.count() != 2) {
-    // expect word col, doc id col in index_columns,
-    // expect worc count, doc length col in store_columns.
+      (!share::schema::is_fts_index_aux(arg.index_type_) && !is_doc_word) ||
+      arg.index_columns_.count() != index_col_cnt ||
+      arg.store_columns_.count() != store_col_cnt) {
+    // fts_index: word + doc id keys, word count + doc length stores.
+    // doc word: doc id key, word segment payload store.
     ret = OB_INVALID_ARGUMENT;
   }
   HEAP_VAR(ObRowDesc, row_desc) {
@@ -857,7 +857,7 @@ int ObFtsIndexBuilderUtil::adjust_fts_arg(
     if ((is_rowkey_doc && fts_cols.count() != 1) ||
         (is_doc_rowkey && fts_cols.count() != 1) ||
         (is_fts_index && fts_cols.count() != 4) ||
-        (is_doc_word && fts_cols.count() != 4) ) {
+        (is_doc_word && fts_cols.count() != 2) ) {
       ret = OB_ERR_UNEXPECTED;
     } else {
       index_arg->index_columns_.reuse();
@@ -907,10 +907,9 @@ int ObFtsIndexBuilderUtil::adjust_fts_arg(
         }
       } else if (is_doc_word) {
         if (OB_FAIL(ret)) {
-        } else if (OB_FAIL(inner_adjust_fts_arg(index_arg,
-                                                fts_cols,
-                                                OB_FTS_DOC_WORD_TABLE_INDEX_COL_CNT,
-                                                allocator))) {
+        } else if (OB_FAIL(inner_adjust_doc_word_arg(index_arg,
+                                                     fts_cols,
+                                                     allocator))) {
         }
       }
     }
@@ -954,6 +953,36 @@ int ObFtsIndexBuilderUtil::inner_adjust_fts_arg(
     ObString doc_length_col_name;
     if (FAILEDx(ob_write_string(allocator, doc_length_col->get_column_name_str(), doc_length_col_name))) {
     } else if (OB_FAIL(fts_arg->store_columns_.push_back(doc_length_col_name))) {
+    }
+  }
+  return ret;
+}
+
+int ObFtsIndexBuilderUtil::inner_adjust_doc_word_arg(
+    obcall::ObCreateIndexArg *doc_word_arg,
+    const ObIArray<const ObColumnSchemaV2 *> &fts_cols,
+    ObIAllocator &allocator)
+{
+  int ret = OB_SUCCESS;
+  if (OB_ISNULL(doc_word_arg) ||
+      !share::schema::is_fts_doc_word_aux(doc_word_arg->index_type_) ||
+      fts_cols.count() != OB_FTS_DOC_WORD_TABLE_INDEX_COL_CNT + OB_FTS_DOC_WORD_TABLE_STORE_COL_CNT) {
+    ret = OB_ERR_UNEXPECTED;
+  } else {
+    const ObColumnSchemaV2 *doc_id_col = fts_cols.at(0);
+    const ObColumnSchemaV2 *word_col = fts_cols.at(1);
+    ObColumnSortItem doc_id_item;
+    ObString word_col_name;
+    if (OB_ISNULL(doc_id_col) || OB_ISNULL(word_col)) {
+      ret = OB_ERR_UNEXPECTED;
+    } else if (OB_FAIL(ob_write_string(allocator,
+                                       doc_id_col->get_column_name_str(),
+                                       doc_id_item.column_name_))) {
+    } else if (OB_FAIL(doc_word_arg->index_columns_.push_back(doc_id_item))) {
+    } else if (OB_FAIL(ob_write_string(allocator,
+                                       word_col->get_column_name_str(),
+                                       word_col_name))) {
+    } else if (OB_FAIL(doc_word_arg->store_columns_.push_back(word_col_name))) {
     }
   }
   return ret;
@@ -1092,7 +1121,7 @@ int ObFtsIndexBuilderUtil::generate_word_segment_column(
                                        name_pos,
                                        col_exists))) {
   } else if (!col_exists) {
-    int32_t max_data_length = 0;
+    int64_t max_data_length = 0;
     ObCollationType collation_type = CS_TYPE_INVALID;
     ObCharsetType charset_type = CHARSET_INVALID;
     ObColumnSchemaV2 column_schema;
@@ -1121,9 +1150,9 @@ int ObFtsIndexBuilderUtil::generate_word_segment_column(
                                            "`%s`, ",
                                            col_schema->get_column_name()))) {
         } else {
-          if (max_data_length < col_schema->get_data_length()) {
-            max_data_length = col_schema->get_data_length();
-          }
+          // WORD_SEGMENT concatenates all source columns, so the generated
+          // value can be as long as their sum (the doc_word payload stores it).
+          max_data_length += col_schema->get_data_length();
           if (CS_TYPE_INVALID == collation_type && CHARSET_INVALID == charset_type) {
             collation_type = col_schema->get_collation_type();
             charset_type = col_schema->get_charset_type();
@@ -1155,7 +1184,9 @@ int ObFtsIndexBuilderUtil::generate_word_segment_column(
           column_schema.add_column_flag(VIRTUAL_GENERATED_COLUMN_FLAG);
           column_schema.set_is_hidden(true);
           column_schema.set_data_type(ObVarcharType);
-          column_schema.set_data_length(max_data_length); //The length of the generated column is consistent with the maximum length of the tokenized column
+          const int64_t data_length = max_data_length < OB_MAX_VARCHAR_LENGTH ?
+              max_data_length : OB_MAX_VARCHAR_LENGTH;
+          column_schema.set_data_length(static_cast<int32_t>(data_length)); //The length of the generated column is consistent with the maximum length of the tokenized column
           column_schema.set_collation_type(collation_type); // keep the collation of the generated column consistent with the collation of the tokenized column
           column_schema.set_charset_type(charset_type);
           column_schema.set_prev_column_id(UINT64_MAX);

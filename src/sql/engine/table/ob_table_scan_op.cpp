@@ -3806,7 +3806,9 @@ int ObTableScanOp::fill_generated_fts_cols(blocksstable::ObDatumRow *row)
   if (OB_ISNULL(row)) {
     ret = OB_INVALID_ARGUMENT;
   } else {
-    for (int64_t i = 0; OB_SUCC(ret) && i < share::ObFtsIndexBuilderUtil::OB_FTS_INDEX_OR_DOC_WORD_TABLE_COL_CNT; ++i) {
+    for (int64_t i = 0; OB_SUCC(ret) && i < (MY_SPEC.is_fts_index_aux_ ?
+        share::ObFtsIndexBuilderUtil::OB_FTS_INDEX_OR_DOC_WORD_TABLE_COL_CNT :
+        share::ObFtsIndexBuilderUtil::OB_FTS_DOC_WORD_TABLE_COL_CNT); ++i) {
       ObExpr *expr = nullptr;
       if (OB_FAIL(get_output_fts_col_expr_by_type(expr_types[i], expr))) {
       } else {

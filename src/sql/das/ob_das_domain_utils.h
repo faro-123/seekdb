@@ -36,9 +36,9 @@ class ObFTIndexRowCache final
 {
 public:
   static ObObjDatumMapType FTS_INDEX_TYPES[4];
-  static ObObjDatumMapType FTS_DOC_WORD_TYPES[4];
+  static ObObjDatumMapType FTS_DOC_WORD_TYPES[2];
   static ObExprOperatorType FTS_INDEX_EXPR_TYPE[4];
-  static ObExprOperatorType FTS_DOC_WORD_EXPR_TYPE[4];
+  static ObExprOperatorType FTS_DOC_WORD_EXPR_TYPE[2];
 
   ObFTIndexRowCache();
   ~ObFTIndexRowCache();

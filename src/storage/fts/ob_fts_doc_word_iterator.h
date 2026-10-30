@@ -70,6 +70,7 @@ private:
   storage::ObTableScanParam scan_param_;
   common::ObNewRowIterator *doc_word_iter_;
   ObDocIDType docid_type_;
+  int64_t rowkey_column_count_;
   bool is_inited_;
 
   DISALLOW_COPY_AND_ASSIGN(ObFTDocWordScanIterator);
