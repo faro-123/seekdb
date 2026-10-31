@@ -17,9 +17,12 @@
 #include "sql/engine/expr/ob_expr_tokenize.h"
 
 #include "lib/alloc/alloc_struct.h"
+#include "lib/allocator/ob_malloc.h"
 #include "lib/allocator/page_arena.h"
 #include "lib/charset/ob_charset.h"
+#include "lib/lock/ob_mutex.h"
 #include "common/json_type/ob_json_base.h"
+#include "common/json_type/ob_json_bin.h"
 #include "common/json_type/ob_json_tree.h"
 #include "lib/ob_errno.h"
 #include "lib/oblog/ob_log_module.h"
@@ -51,6 +54,192 @@ ObExprTokenize::ObExprTokenize(common::ObIAllocator &alloc)
 
 ObExprTokenize::~ObExprTokenize() {}
 
+namespace
+{
+// Direct-mapped process-wide cache of TOKENIZE results. The result depends only
+// on the parser name, the raw properties, the collation, the dictionary
+// generation and the input text, so repeated evaluations (plan reuse, prepared
+// statements) skip parameter parsing, segmentation and JSON building.
+struct ObTokenizeCacheEntry
+{
+  ObTokenizeCacheEntry()
+    : hash_(0), parser_name_(nullptr), parser_name_len_(0), properties_(nullptr),
+      properties_len_(0), fulltext_(nullptr), fulltext_len_(0), mode_(0),
+      collation_(CS_TYPE_INVALID), dict_guard_(nullptr), value_(nullptr), value_len_(0)
+  {}
+
+  void reset()
+  {
+    if (nullptr != parser_name_) {
+      common::ob_free(parser_name_);
+      parser_name_ = nullptr;
+    }
+    if (nullptr != properties_) {
+      common::ob_free(properties_);
+      properties_ = nullptr;
+    }
+    if (nullptr != fulltext_) {
+      common::ob_free(fulltext_);
+      fulltext_ = nullptr;
+    }
+    if (nullptr != value_) {
+      common::ob_free(value_);
+      value_ = nullptr;
+    }
+    hash_ = 0;
+    parser_name_len_ = 0;
+    properties_len_ = 0;
+    fulltext_len_ = 0;
+    value_len_ = 0;
+    mode_ = 0;
+    collation_ = CS_TYPE_INVALID;
+    dict_guard_ = nullptr;
+  }
+
+  uint64_t hash_;
+  char *parser_name_;
+  int32_t parser_name_len_;
+  char *properties_;
+  int32_t properties_len_;
+  char *fulltext_;
+  int32_t fulltext_len_;
+  int64_t mode_;
+  ObCollationType collation_;
+  const void *dict_guard_;
+  char *value_;
+  int32_t value_len_;
+};
+
+class ObTokenizeResultCache
+{
+public:
+  static const int64_t CACHE_SLOTS = 64;
+  static const int64_t MAX_TEXT_LEN = 8 * 1024;
+  static const int64_t MAX_VALUE_LEN = 16 * 1024;
+
+  static ObTokenizeResultCache *get_instance()
+  {
+    static ObTokenizeResultCache cache;
+    return &cache;
+  }
+
+  static uint64_t calc_hash(const common::ObString &parser_name,
+                            const common::ObString &properties,
+                            const common::ObString &fulltext,
+                            const int64_t mode,
+                            const ObCollationType collation,
+                            const void *dict_guard)
+  {
+    uint64_t hash = 1469598103934665603ULL;
+    hash = mix(hash, parser_name.ptr(), parser_name.length());
+    hash = mix(hash, properties.ptr(), properties.length());
+    hash = mix(hash, fulltext.ptr(), fulltext.length());
+    hash = mix(hash, reinterpret_cast<const char *>(&mode), sizeof(mode));
+    hash = mix(hash, reinterpret_cast<const char *>(&collation), sizeof(collation));
+    hash = mix(hash, reinterpret_cast<const char *>(&dict_guard), sizeof(dict_guard));
+    return hash;
+  }
+
+  bool lookup(const uint64_t hash,
+              const common::ObString &parser_name,
+              const common::ObString &properties,
+              const common::ObString &fulltext,
+              const int64_t mode,
+              const ObCollationType collation,
+              const void *dict_guard,
+              common::ObString &value,
+              common::ObIAllocator &allocator)
+  {
+    bool hit = false;
+    lib::ObMutexGuard guard(mutex_);
+    ObTokenizeCacheEntry &entry = slots_[hash % CACHE_SLOTS];
+    if (entry.hash_ == hash && entry.mode_ == mode && entry.collation_ == collation
+        && entry.dict_guard_ == dict_guard
+        && match(entry.parser_name_, entry.parser_name_len_, parser_name)
+        && match(entry.properties_, entry.properties_len_, properties)
+        && match(entry.fulltext_, entry.fulltext_len_, fulltext)) {
+      char *buf = static_cast<char *>(allocator.alloc(entry.value_len_));
+      if (nullptr != buf) {
+        MEMCPY(buf, entry.value_, entry.value_len_);
+        value.assign_ptr(buf, entry.value_len_);
+        hit = true;
+      }
+    }
+    return hit;
+  }
+
+  void insert(const uint64_t hash,
+              const common::ObString &parser_name,
+              const common::ObString &properties,
+              const common::ObString &fulltext,
+              const int64_t mode,
+              const ObCollationType collation,
+              const void *dict_guard,
+              const common::ObString &value)
+  {
+    if (fulltext.length() > MAX_TEXT_LEN || value.length() > MAX_VALUE_LEN) {
+      return;
+    }
+    lib::ObMutexGuard guard(mutex_);
+    char *parser_buf = copy_string(parser_name);
+    char *properties_buf = copy_string(properties);
+    char *fulltext_buf = copy_string(fulltext);
+    char *value_buf = copy_string(value);
+    if (nullptr != parser_buf && nullptr != properties_buf
+        && nullptr != fulltext_buf && nullptr != value_buf) {
+      ObTokenizeCacheEntry &entry = slots_[hash % CACHE_SLOTS];
+      entry.reset();
+      entry.hash_ = hash;
+      entry.parser_name_ = parser_buf;
+      entry.parser_name_len_ = parser_name.length();
+      entry.properties_ = properties_buf;
+      entry.properties_len_ = properties.length();
+      entry.fulltext_ = fulltext_buf;
+      entry.fulltext_len_ = fulltext.length();
+      entry.mode_ = mode;
+      entry.collation_ = collation;
+      entry.dict_guard_ = dict_guard;
+      entry.value_ = value_buf;
+      entry.value_len_ = value.length();
+    } else {
+      if (nullptr != parser_buf) { common::ob_free(parser_buf); }
+      if (nullptr != properties_buf) { common::ob_free(properties_buf); }
+      if (nullptr != fulltext_buf) { common::ob_free(fulltext_buf); }
+      if (nullptr != value_buf) { common::ob_free(value_buf); }
+    }
+  }
+
+private:
+  static uint64_t mix(uint64_t hash, const char *ptr, const int64_t len)
+  {
+    for (int64_t i = 0; i < len; ++i) {
+      hash ^= static_cast<uint8_t>(ptr[i]);
+      hash *= 1099511628211ULL;
+    }
+    return hash;
+  }
+
+  static bool match(const char *cached, const int32_t cached_len, const common::ObString &value)
+  {
+    return cached_len == value.length()
+        && (0 == value.length() || 0 == MEMCMP(cached, value.ptr(), value.length()));
+  }
+
+  static char *copy_string(const common::ObString &value)
+  {
+    char *buf = static_cast<char *>(common::ob_malloc(
+        value.length() > 0 ? value.length() : 1, common::ObMemAttr("TokResultCache")));
+    if (nullptr != buf && value.length() > 0) {
+      MEMCPY(buf, value.ptr(), value.length());
+    }
+    return buf;
+  }
+
+  lib::ObMutex mutex_;
+  ObTokenizeCacheEntry slots_[CACHE_SLOTS];
+};
+} // namespace
+
 int ObExprTokenize::eval_tokenize(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &expr_datum)
 {
   int ret = OB_SUCCESS;
@@ -64,13 +253,77 @@ int ObExprTokenize::eval_tokenize(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &e
   // check param num, which is checked in ObExprOperator::calc_result_typeN.
   if (OB_UNLIKELY(expr.arg_cnt_ < 1 || expr.arg_cnt_ > 3)) {
     ret = OB_INVALID_ARGUMENT;
-  } else if (OB_FAIL(parse_param(expr, ctx, temp_allocator, param))) {
-  } else if (OB_FAIL(tokenize_fulltext(param, param.output_mode_, temp_allocator, json_result))) {
-  } else if (OB_FAIL(ObJsonExprHelper::pack_json_res(expr,
-                                                     ctx,
-                                                     temp_allocator,
-                                                     json_result,
-                                                     expr_datum))) {
+  } else {
+    ObTokenizeResultCache *cache = ObTokenizeResultCache::get_instance();
+    const void *dict_guard = static_cast<const void *>(
+        storage::ObFTParseData::instance().stop_word_checker());
+    ObString raw_text;
+    ObString raw_name = ObString::make_string(OB_DEFAULT_FULLTEXT_PARSER_NAME);
+    ObString raw_props;
+    const ObCollationType raw_collation = expr.args_[0]->obj_meta_.get_collation_type();
+    uint64_t cache_hash = 0;
+    ObString cached_value;
+    bool cache_hit = false;
+    bool cacheable = (nullptr != cache && !expr.args_[0]->obj_meta_.is_lob_storage());
+    if (cacheable) {
+      ObDatum *text_datum = nullptr;
+      ObDatum *name_datum = nullptr;
+      ObDatum *props_datum = nullptr;
+      if (OB_FAIL(expr.args_[0]->eval(ctx, text_datum))) {
+      } else if (OB_ISNULL(text_datum) || text_datum->is_null()) {
+        cacheable = false;
+      } else if (FALSE_IT(raw_text = text_datum->get_string())) {
+      } else if (expr.arg_cnt_ >= 2) {
+        if (OB_FAIL(expr.args_[1]->eval(ctx, name_datum))) {
+        } else if (OB_ISNULL(name_datum) || name_datum->is_null()
+                   || !ob_is_string_type(expr.args_[1]->datum_meta_.type_)) {
+          cacheable = false;
+        } else {
+          raw_name = name_datum->get_string();
+        }
+      }
+      if (OB_SUCC(ret) && cacheable && expr.arg_cnt_ >= 3) {
+        if (OB_FAIL(expr.args_[2]->eval(ctx, props_datum))) {
+        } else if (OB_ISNULL(props_datum) || props_datum->is_null()
+                   || !ob_is_string_type(expr.args_[2]->datum_meta_.type_)) {
+          cacheable = false;
+        } else {
+          raw_props = props_datum->get_string();
+        }
+      }
+      if (OB_SUCC(ret) && cacheable) {
+        cache_hash = ObTokenizeResultCache::calc_hash(raw_name, raw_props, raw_text,
+                                                      0, raw_collation, dict_guard);
+        cache_hit = cache->lookup(cache_hash, raw_name, raw_props, raw_text,
+                                  0, raw_collation, dict_guard,
+                                  cached_value, temp_allocator);
+      }
+    }
+    if (OB_FAIL(ret)) {
+    } else if (cache_hit) {
+      if (OB_FAIL(ObJsonExprHelper::pack_json_str_res(expr, ctx, expr_datum, cached_value))) {
+      }
+    } else if (OB_FAIL(parse_param(expr, ctx, temp_allocator, param))) {
+    } else if (OB_FAIL(tokenize_fulltext(param, param.output_mode_, temp_allocator, json_result))) {
+    } else {
+      bool should_pack_diff = false;
+      ObString raw_binary;
+      if (OB_ISNULL(json_result)) {
+        ret = OB_ERR_UNEXPECTED;
+      } else if (json_result->is_bin()) {
+        ObJsonBin *json_bin = static_cast<ObJsonBin *>(json_result);
+        ret = json_bin->should_pack_diff(should_pack_diff);
+      }
+      if (OB_FAIL(ret)) {
+      } else if (should_pack_diff) {
+        ret = ObJsonExprHelper::pack_json_res(expr, ctx, temp_allocator, json_result, expr_datum);
+      } else if (OB_FAIL(share::ObJsonWrapper::get_raw_binary(json_result, raw_binary, &temp_allocator))) {
+      } else if (OB_FAIL(ObJsonExprHelper::pack_json_str_res(expr, ctx, expr_datum, raw_binary))) {
+      } else if (cacheable) {
+        cache->insert(cache_hash, raw_name, raw_props, raw_text, 0, raw_collation,
+                      dict_guard, raw_binary);
+      }
+    }
   }
 
   return ret;
