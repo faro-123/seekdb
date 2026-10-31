@@ -1898,7 +1898,9 @@ int ObTscCgService::generate_text_ir_ctdef(const ObLogTableScan &op,
       } else {
         partition_row_cnt = est_cost_info->table_meta_info_->table_row_count_ / est_cost_info->table_meta_info_->part_count_;
       }
-      ir_scan_ctdef->estimated_total_doc_cnt_ = partition_row_cnt;
+      // Without relevance the total document count is never consumed, so a
+      // non-zero placeholder suppresses the extra doc-count aggregation scan.
+      ir_scan_ctdef->estimated_total_doc_cnt_ = tr_info.need_calc_relevance_ ? partition_row_cnt : 1;
       if (tr_info.match_expr_->get_columns_boosts().count() > 0) {
         if (tr_info.column_boost_idx_ < 0 || tr_info.column_boost_idx_ >= tr_info.match_expr_->get_columns_boosts().count()) {
           ret = OB_ERR_UNEXPECTED;
@@ -2321,9 +2323,13 @@ int ObTscCgService::extract_text_ir_access_columns(
   } else {
     switch (scan_ctdef.ir_scan_type_) {
     case ObTSCIRScanType::OB_IR_INV_IDX_SCAN:
-      if (OB_FAIL(add_var_to_array_no_dup(access_exprs, static_cast<ObRawExpr*>(tr_info.token_cnt_column_)))) {
+      // Without relevance only the document id is consumed from the posting
+      // rows, so the score-only columns are left out of the scan entirely.
+      if (tr_info.need_calc_relevance_
+          && OB_FAIL(add_var_to_array_no_dup(access_exprs, static_cast<ObRawExpr*>(tr_info.token_cnt_column_)))) {
       } else if (OB_FAIL(add_var_to_array_no_dup(access_exprs, static_cast<ObRawExpr*>(tr_info.docid_or_rowkey_column_)))) {
-      } else if (OB_FAIL(add_var_to_array_no_dup(access_exprs, static_cast<ObRawExpr*>(tr_info.doc_length_column_)))) {
+      } else if (tr_info.need_calc_relevance_
+                 && OB_FAIL(add_var_to_array_no_dup(access_exprs, static_cast<ObRawExpr*>(tr_info.doc_length_column_)))) {
       }
       break;
     case ObTSCIRScanType::OB_IR_DOC_ID_IDX_AGG:
@@ -2680,12 +2686,14 @@ int ObTscCgService::extract_text_ir_das_output_column_ids(
 {
   int ret = OB_SUCCESS;
   if (ObTSCIRScanType::OB_IR_INV_IDX_SCAN == scan_ctdef.ir_scan_type_) {
-    if (OB_FAIL(output_cids.push_back(
-        static_cast<ObColumnRefRawExpr *>(tr_info.token_cnt_column_)->get_column_id()))) {
-    } else if (OB_FAIL(output_cids.push_back(
-        static_cast<ObColumnRefRawExpr *>(tr_info.docid_or_rowkey_column_)->get_column_id()))) {
-    } else if (OB_FAIL(output_cids.push_back(
-        static_cast<ObColumnRefRawExpr *>(tr_info.doc_length_column_)->get_column_id()))) {
+    if ((tr_info.need_calc_relevance_
+         && OB_FAIL(output_cids.push_back(
+             static_cast<ObColumnRefRawExpr *>(tr_info.token_cnt_column_)->get_column_id())))
+        || OB_FAIL(output_cids.push_back(
+             static_cast<ObColumnRefRawExpr *>(tr_info.docid_or_rowkey_column_)->get_column_id()))
+        || (tr_info.need_calc_relevance_
+            && OB_FAIL(output_cids.push_back(
+                static_cast<ObColumnRefRawExpr *>(tr_info.doc_length_column_)->get_column_id())))) {
     }
   }
   return ret;
@@ -3005,20 +3013,22 @@ int ObTscCgService::generate_text_ir_spec_exprs(const ObTextRetrievalInfo &tr_in
 
     int64_t doc_id_col_idx = -1;
     int64_t doc_length_col_idx = -1;
+    const bool need_doc_length = tr_info.need_calc_relevance_;
     for (int64_t i = 0; i < inv_scan_col_id.count(); ++i) {
       if (inv_scan_col_id.at(i) == doc_id_column->get_column_id()) {
         doc_id_col_idx = i;
-      } else if (inv_scan_col_id.at(i) == doc_length_column->get_column_id()) {
+      } else if (need_doc_length && inv_scan_col_id.at(i) == doc_length_column->get_column_id()) {
         doc_length_col_idx = i;
       }
     }
-    if (OB_UNLIKELY(-1 == doc_id_col_idx || -1 == doc_length_col_idx)) {
+    if (OB_UNLIKELY(-1 == doc_id_col_idx || (need_doc_length && -1 == doc_length_col_idx))) {
       ret = OB_ERR_UNEXPECTED;
     } else {
       text_ir_scan_ctdef.inv_scan_domain_id_col_ =
           text_ir_scan_ctdef.get_inv_idx_scan_ctdef()->pd_expr_spec_.access_exprs_.at(doc_id_col_idx);
-      text_ir_scan_ctdef.inv_scan_doc_length_col_ =
-          text_ir_scan_ctdef.get_inv_idx_scan_ctdef()->pd_expr_spec_.access_exprs_.at(doc_length_col_idx);
+      text_ir_scan_ctdef.inv_scan_doc_length_col_ = need_doc_length
+          ? text_ir_scan_ctdef.get_inv_idx_scan_ctdef()->pd_expr_spec_.access_exprs_.at(doc_length_col_idx)
+          : nullptr;
       if (OB_FAIL(result_output.push_back(text_ir_scan_ctdef.inv_scan_domain_id_col_))) {
       }
     }
