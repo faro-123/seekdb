@@ -143,11 +143,14 @@ int ObJsonSortedResult::insert_unique(ObIJsonBase* node)
     // if have two result, should append json_point_ first, then append new node.
     if (OB_ISNULL(json_point_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to get first node", K(ret));
     } else if (sort_vector_.remain() < 2 && OB_FAIL(sort_vector_.reserve(OB_PATH_RESULT_EXPAND_SIZE))) {
+      LOG_WARN("fail to expand vactor", K(ret));
     } else if (OB_FAIL(sort_vector_.insert_unique(json_point_, pos, cmp, unique))) {
     } else if (OB_FAIL(sort_vector_.insert_unique(node, pos, cmp, unique))) {
     }
   } else if (sort_vector_.remain() == 0 && OB_FAIL(sort_vector_.reserve(OB_PATH_RESULT_EXPAND_SIZE))) {
+    LOG_WARN("fail to expand vactor", K(ret));
   } else if (OB_FAIL(sort_vector_.insert_unique(node, pos, cmp, unique))) {
   }
   if (OB_SUCC(ret)) {
@@ -172,6 +175,7 @@ int ObIJsonBase::add_if_missing(ObJsonSortedResult &dup, ObJsonSeekResult &res, 
     if (OB_FAIL((static_cast<ObJsonBin*>(cur_json))->clone_new_node(json_bin, allocator))) {
     } else if (OB_ISNULL(cur_json = json_bin)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("failed to get json binary value", K(ret));
     } 
   }
   if (OB_FAIL(ret)) {
@@ -203,6 +207,7 @@ int ObIJsonBase::find_array_range(ObIAllocator* allocator, ObSeekParentInfo &par
         ret = get_array_element(i, jb_ptr);
         if (OB_ISNULL(jb_ptr)) {
           ret = OB_ERR_NULL_VALUE;
+          LOG_WARN("fail to get array child dom", K(ret), K(i));
         } else if (OB_FAIL(jb_ptr->find_child(allocator, parent_info, cur_node + 1, 
                                               last_node, is_auto_wrap, only_need_one, 
                                               is_lax, dup, res, sql_var))) {
@@ -232,6 +237,7 @@ int ObIJsonBase::find_array_cell(ObIAllocator* allocator, ObSeekParentInfo &pare
         ret = get_array_element(idx.get_array_index(), jb_ptr);
         if (OB_ISNULL(jb_ptr)) {
           ret = OB_ERR_NULL_VALUE;
+          LOG_WARN("fail to get array child dom", K(ret), K(idx.get_array_index()));
         } else if (OB_FAIL(jb_ptr->find_child(allocator, parent_info, cur_node + 1, 
                                               last_node, is_auto_wrap, only_need_one, 
                                               is_lax, dup, res, sql_var))) {
@@ -254,6 +260,7 @@ int ObIJsonBase::seek(const ObJsonPath &path, uint32_t node_cnt, bool is_auto_wr
 
   if (OB_ISNULL(allocator_)) { // check allocator
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("param allocator is NULL", K(ret), KP(allocator_));
   } else if (!path.is_mysql_) {
     parent_info.parent_jb_ = const_cast<ObIJsonBase*> (this);
     parent_info.parent_path_ = path.begin();
@@ -295,6 +302,7 @@ int ObIJsonBase::seek(ObIAllocator* allocator, const ObJsonPath &path,
     }
   } else {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("supposed to be SQL/JSON lax mode.", K(ret), K(is_lax));
   }
 
   return ret;
@@ -324,6 +332,7 @@ int ObIJsonBase::find_member(ObIAllocator* allocator, ObSeekParentInfo &parent_i
       // not found, it is normal.
       ret = OB_SUCCESS;
     } else {
+      LOG_WARN("fail to get object value", K(ret), K(key_name));
     }
   // Loose mode, find each node in the array
   } else if (is_lax && is_auto_wrap && json_type() == ObJsonNodeType::J_ARRAY) {
@@ -333,6 +342,7 @@ int ObIJsonBase::find_member(ObIAllocator* allocator, ObSeekParentInfo &parent_i
       ret = get_array_element(i, jb_ptr);
       if (OB_ISNULL(jb_ptr)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("fail to get array child dom", K(ret), K(i));
       } else if (OB_FAIL(jb_ptr->find_child(allocator, parent_info, cur_node,
                                             last_node, false, only_need_one,
                                             is_lax, dup, res, sql_var))) {
@@ -366,6 +376,7 @@ int ObIJsonBase::find_member_wildcard(ObIAllocator* allocator, ObSeekParentInfo 
       ret = get_object_value(i, jb_ptr);
       if (OB_ISNULL(jb_ptr)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("fail to get object child dom",K(ret), K(i));
       } else if (OB_FAIL(jb_ptr->find_child(allocator, parent_info, cur_node + 1, 
                                             last_node, is_auto_wrap, only_need_one, 
                                             is_lax, dup, res, sql_var))) {
@@ -381,6 +392,7 @@ int ObIJsonBase::find_member_wildcard(ObIAllocator* allocator, ObSeekParentInfo 
       ret = get_array_element(i, jb_ptr);
       if (OB_ISNULL(jb_ptr)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("fail to get array child dom", K(ret), K(i));
       } else if (OB_FAIL(jb_ptr->find_child(allocator, parent_info, cur_node, 
                                             last_node, false, only_need_one, 
                                             is_lax, dup, res, sql_var))) {
@@ -412,6 +424,7 @@ int ObIJsonBase::find_ellipsis(ObIAllocator* allocator, ObSeekParentInfo &parent
       ret = get_array_element(i, jb_ptr);
       if (OB_ISNULL(jb_ptr)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("fail to get array child dom",K(ret), K(i));
       } else if (OB_FAIL(jb_ptr->find_child(allocator, parent_info, cur_node, 
                                             last_node, is_auto_wrap, only_need_one,
                                             is_lax, dup, res, sql_var))) {
@@ -427,6 +440,7 @@ int ObIJsonBase::find_ellipsis(ObIAllocator* allocator, ObSeekParentInfo &parent
       ret = get_object_value(i, jb_ptr);
       if (OB_ISNULL(jb_ptr)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("fail to get object child dom",K(ret), K(i));
       } else if (OB_FAIL(jb_ptr->find_child(allocator, parent_info, cur_node,
                                             last_node, is_auto_wrap, only_need_one,
                                             is_lax, dup, res, sql_var))) {
@@ -454,6 +468,7 @@ int ObIJsonBase::find_array_wildcard(ObIAllocator* allocator, ObSeekParentInfo &
     ret = get_array_element(i, jb_ptr);
     if (OB_ISNULL(jb_ptr)) {
       ret = OB_ERR_NULL_VALUE;
+      LOG_WARN("fail to get array child dom", K(ret), K(i));
     } else if (OB_FAIL(jb_ptr->find_child(allocator, parent_info, cur_node + 1, 
                                           last_node, is_auto_wrap, only_need_one, 
                                           is_lax, dup, res, sql_var))) {
@@ -487,6 +502,7 @@ int ObIJsonBase::find_multi_array_ranges(ObIAllocator* allocator, ObSeekParentIn
           ret = get_array_element(i, jb_ptr);
           if (OB_ISNULL(jb_ptr)) {
             ret = OB_ERR_NULL_VALUE;
+            LOG_WARN("fail to get array child dom", K(ret), K(i));
           } else if (OB_FAIL(jb_ptr->find_child(allocator, parent_info, cur_node + 1, 
                                                 last_node, is_auto_wrap, only_need_one, 
                                                 is_lax, tmp_dup, res, sql_var))) {
@@ -548,6 +564,7 @@ int ObIJsonBase::find_basic_child(ObIAllocator* allocator, ObSeekParentInfo &par
     }
     default:{
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("supposed to be SQL/JSON basic node type.", K(ret), K(path_node->get_node_type()));
     }
   }
   return ret;
@@ -584,6 +601,7 @@ int ObIJsonBase::find_array_child(ObIAllocator* allocator, ObSeekParentInfo &par
     case JPN_MULTIPLE_ARRAY: {
       if (!is_lax) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("multiple array path requires lax mode", K(ret), K(only_need_one));
       } else if (cur_json_type == ObJsonNodeType::J_ARRAY) {
         if (OB_FAIL(find_multi_array_ranges(allocator, parent_info, cur_node, last_node, path_node,
                                             is_auto_wrap, only_need_one, is_lax, dup, res, sql_var))) {
@@ -599,6 +617,7 @@ int ObIJsonBase::find_array_child(ObIAllocator* allocator, ObSeekParentInfo &par
     case JPN_ARRAY_CELL: {
       if (is_lax) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("should be mysql mode!", K(ret), K(only_need_one));
       } else if (cur_json_type == ObJsonNodeType::J_ARRAY) {
         if (OB_FAIL(find_array_cell(allocator, parent_info, cur_node, last_node, path_node,
                                     is_auto_wrap, only_need_one, is_lax, dup, res, sql_var))) {
@@ -615,6 +634,7 @@ int ObIJsonBase::find_array_child(ObIAllocator* allocator, ObSeekParentInfo &par
     case JPN_ARRAY_RANGE: {
       if (is_lax) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("should be mysql mode!", K(ret), K(only_need_one));
       } else if (cur_json_type == ObJsonNodeType::J_ARRAY) {
         if (OB_FAIL(find_array_range(allocator, parent_info, cur_node, last_node, path_node,
                                     is_auto_wrap, only_need_one, is_lax, dup, res, sql_var))) {
@@ -630,6 +650,7 @@ int ObIJsonBase::find_array_child(ObIAllocator* allocator, ObSeekParentInfo &par
 
     default:{
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("supposed to be array node type.", K(ret), K(path_node->get_node_type()));
     }
   }
 
@@ -650,6 +671,7 @@ int ObIJsonBase::find_abs_method(ObIAllocator* allocator, ObSeekParentInfo &pare
       ObJsonDecimal* tmp_ans = static_cast<ObJsonDecimal*> (allocator->alloc(sizeof(ObJsonDecimal)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonDecimal(tmp_num);
         jb_ptr = tmp_ans;
@@ -659,6 +681,7 @@ int ObIJsonBase::find_abs_method(ObIAllocator* allocator, ObSeekParentInfo &pare
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         }
       }
       break;
@@ -674,6 +697,7 @@ int ObIJsonBase::find_abs_method(ObIAllocator* allocator, ObSeekParentInfo &pare
       ObJsonDouble * tmp_ans = static_cast<ObJsonDouble *> (allocator->alloc(sizeof(ObJsonDouble)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonDouble(tmp_num);
         jb_ptr = tmp_ans;
@@ -683,6 +707,7 @@ int ObIJsonBase::find_abs_method(ObIAllocator* allocator, ObSeekParentInfo &pare
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         }
       }
       break;
@@ -698,6 +723,7 @@ int ObIJsonBase::find_abs_method(ObIAllocator* allocator, ObSeekParentInfo &pare
       ObJsonInt* tmp_ans = static_cast<ObJsonInt *> (allocator->alloc(sizeof(ObJsonInt)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonInt(tmp_num);
         jb_ptr = tmp_ans;
@@ -706,6 +732,7 @@ int ObIJsonBase::find_abs_method(ObIAllocator* allocator, ObSeekParentInfo &pare
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         }
       }
       break;
@@ -718,6 +745,7 @@ int ObIJsonBase::find_abs_method(ObIAllocator* allocator, ObSeekParentInfo &pare
     }
     default:{
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected json type.", K(ret), K(json_type()));
     }
   }
   return ret;
@@ -739,6 +767,7 @@ int ObIJsonBase::find_ceiling_method(ObIAllocator* allocator, ObSeekParentInfo &
         ObJsonDecimal* tmp_ans = static_cast<ObJsonDecimal*> (allocator->alloc(sizeof(ObJsonDecimal)));
         if (OB_ISNULL(tmp_ans)) {
           ret = OB_ALLOCATE_MEMORY_FAILED;
+          LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
         } else {
           tmp_ans = new (tmp_ans) ObJsonDecimal(tmp_num);
           jb_ptr = tmp_ans;
@@ -747,6 +776,7 @@ int ObIJsonBase::find_ceiling_method(ObIAllocator* allocator, ObSeekParentInfo &
             int old_ret = ret;
             allocator->free(tmp_ans);
             ret = old_ret;
+            LOG_WARN("fail to seek recursively", K(ret));
           }
         }
       }
@@ -760,6 +790,7 @@ int ObIJsonBase::find_ceiling_method(ObIAllocator* allocator, ObSeekParentInfo &
       ObJsonInt* tmp_ans = static_cast<ObJsonInt *> (allocator->alloc(sizeof(ObJsonInt)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonInt(tmp_num);
         jb_ptr = tmp_ans;
@@ -768,6 +799,7 @@ int ObIJsonBase::find_ceiling_method(ObIAllocator* allocator, ObSeekParentInfo &
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         }
       }
       break;
@@ -783,6 +815,7 @@ int ObIJsonBase::find_ceiling_method(ObIAllocator* allocator, ObSeekParentInfo &
     }
     default:{
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected json type.", K(ret), K(json_type()));
     }
   }
   return ret;
@@ -804,6 +837,7 @@ int ObIJsonBase::find_floor_method(ObIAllocator* allocator, ObSeekParentInfo &pa
         ObJsonDecimal* tmp_ans = static_cast<ObJsonDecimal*> (allocator->alloc(sizeof(ObJsonDecimal)));
         if (OB_ISNULL(tmp_ans)) {
           ret = OB_ALLOCATE_MEMORY_FAILED;
+          LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
         } else {
           tmp_ans = new (tmp_ans) ObJsonDecimal(tmp_num);
           jb_ptr = tmp_ans;
@@ -812,6 +846,7 @@ int ObIJsonBase::find_floor_method(ObIAllocator* allocator, ObSeekParentInfo &pa
             int old_ret = ret;
             allocator->free(tmp_ans);
             ret = old_ret;
+            LOG_WARN("fail to seek recursively", K(ret));
           }
         }
       }
@@ -827,6 +862,7 @@ int ObIJsonBase::find_floor_method(ObIAllocator* allocator, ObSeekParentInfo &pa
       ObJsonInt* tmp_ans = static_cast<ObJsonInt *> (allocator->alloc(sizeof(ObJsonInt)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonInt(tmp_num);
         jb_ptr = tmp_ans;
@@ -835,6 +871,7 @@ int ObIJsonBase::find_floor_method(ObIAllocator* allocator, ObSeekParentInfo &pa
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         }
       }
       break;
@@ -850,6 +887,7 @@ int ObIJsonBase::find_floor_method(ObIAllocator* allocator, ObSeekParentInfo &pa
     }
     default:{
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected json type.", K(ret), K(json_type()));
     }
   }
   return ret;
@@ -870,6 +908,7 @@ int ObIJsonBase::find_numeric_item_method(ObIAllocator* allocator, ObSeekParentI
       ret = get_array_element(i, jb_ptr);
       if (OB_ISNULL(jb_ptr)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("fail to get array child dom", K(ret), K(i));
       } else if (OB_FAIL(jb_ptr->find_child(allocator, parent_info, cur_node, last_node,
                                             false, only_need_one, is_lax, dup, res))) {
       } else {
@@ -899,12 +938,14 @@ int ObIJsonBase::find_numeric_item_method(ObIAllocator* allocator, ObSeekParentI
 
       default: {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected node type.", K(ret), K(path_node->get_node_type()));
       }
     }
   } else {
     ObJsonNull* tmp_ans = static_cast<ObJsonNull*> (allocator->alloc(sizeof(ObJsonNull)));
     if (OB_ISNULL(tmp_ans)) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
     } else {
       tmp_ans = new (tmp_ans) ObJsonNull(true);
       jb_ptr = tmp_ans;
@@ -914,6 +955,7 @@ int ObIJsonBase::find_numeric_item_method(ObIAllocator* allocator, ObSeekParentI
         int old_ret = ret;
         allocator->free(tmp_ans);
         ret = old_ret;
+        LOG_WARN("fail to seek recursively", K(ret));
       } 
     }
   }
@@ -986,6 +1028,7 @@ int ObIJsonBase::find_type_method(ObIAllocator* allocator, ObSeekParentInfo &par
     }
     default :{
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected json node type.", K(ret), K(path_node->get_node_type()));
     }
   }
 
@@ -994,6 +1037,7 @@ int ObIJsonBase::find_type_method(ObIAllocator* allocator, ObSeekParentInfo &par
     ObJsonString* tmp_ans = static_cast<ObJsonString*> (allocator->alloc(sizeof(ObJsonString)));
     if (OB_ISNULL(tmp_ans)) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
     } else {
       tmp_ans = new (tmp_ans) ObJsonString(ans_char, ans_len);
       jb_ptr = tmp_ans;
@@ -1003,6 +1047,7 @@ int ObIJsonBase::find_type_method(ObIAllocator* allocator, ObSeekParentInfo &par
         int old_ret = ret;
         allocator->free(tmp_ans);
         ret = old_ret;
+        LOG_WARN("fail to seek recursively", K(ret));
       }
     }
   }
@@ -1019,6 +1064,7 @@ int ObIJsonBase::find_length_method(ObIAllocator* allocator, ObSeekParentInfo &p
   bool null_ans = false;
   if (OB_ISNULL(allocator)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("allocator is null", K(ret));
   } else if (is_json_number(json_type()) && !parent_info.is_subpath_) {
     if ((OB_FAIL(find_child(allocator, parent_info, cur_node + 1, 
                             last_node, is_auto_wrap,
@@ -1028,6 +1074,7 @@ int ObIJsonBase::find_length_method(ObIAllocator* allocator, ObSeekParentInfo &p
     ObJsonUint* tmp_ans = static_cast<ObJsonUint*> (allocator->alloc(sizeof(ObJsonUint)));
     if (OB_ISNULL(tmp_ans)) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
     } else {
       tmp_ans = new (tmp_ans) ObJsonUint(get_data_length());
       tmp_ans->set_is_string_length(true);
@@ -1038,12 +1085,14 @@ int ObIJsonBase::find_length_method(ObIAllocator* allocator, ObSeekParentInfo &p
         int old_ret = ret;
         allocator->free(tmp_ans);
         ret = old_ret;
+        LOG_WARN("fail to seek recursively", K(ret));
       }
     }
   } else {
     ObJsonNull* tmp_ans = static_cast<ObJsonNull*> (allocator->alloc(sizeof(ObJsonNull)));
     if (OB_ISNULL(tmp_ans)) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
     } else {
       tmp_ans = new (tmp_ans) ObJsonNull(true);
       jb_ptr = tmp_ans;
@@ -1053,6 +1102,7 @@ int ObIJsonBase::find_length_method(ObIAllocator* allocator, ObSeekParentInfo &p
         int old_ret = ret;
         allocator->free(tmp_ans);
         ret = old_ret;
+        LOG_WARN("fail to seek recursively", K(ret));
       } 
     }
   }
@@ -1076,6 +1126,7 @@ int ObIJsonBase::find_size_method(ObIAllocator* allocator, ObSeekParentInfo &par
   ObJsonUint* tmp_ans = static_cast<ObJsonUint*> (allocator->alloc(sizeof(ObJsonUint)));
   if (OB_ISNULL(tmp_ans)) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
   } else {
     tmp_ans = new (tmp_ans) ObJsonUint(ans_size);
     jb_ptr = tmp_ans;
@@ -1085,6 +1136,7 @@ int ObIJsonBase::find_size_method(ObIAllocator* allocator, ObSeekParentInfo &par
       int old_ret = ret;
       allocator->free(tmp_ans);
       ret = old_ret;
+      LOG_WARN("fail to seek recursively", K(ret));
     }
   }
   return ret;
@@ -1145,6 +1197,7 @@ int ObIJsonBase::find_boolean_method(ObIAllocator* allocator, ObSeekParentInfo &
           ObJsonBoolean* tmp_ans = static_cast<ObJsonBoolean*> (allocator->alloc(sizeof(ObJsonBoolean)));
           if (OB_ISNULL(tmp_ans)) {
             ret = OB_ALLOCATE_MEMORY_FAILED;
+            LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
           } else {
             tmp_ans = new (tmp_ans) ObJsonBoolean(is_true);
             jb_ptr = tmp_ans;
@@ -1154,6 +1207,7 @@ int ObIJsonBase::find_boolean_method(ObIAllocator* allocator, ObSeekParentInfo &
               int old_ret = ret;
               allocator->free(tmp_ans);
               ret = old_ret;
+              LOG_WARN("fail to seek recursively", K(ret));
             }
           }
         } else {
@@ -1196,6 +1250,7 @@ int ObIJsonBase::find_boolean_method(ObIAllocator* allocator, ObSeekParentInfo &
     ObJsonNull* tmp_ans = static_cast<ObJsonNull*> (allocator->alloc(sizeof(ObJsonNull)));
     if (OB_ISNULL(tmp_ans)) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
     } else {
       tmp_ans = new (tmp_ans) ObJsonNull(true);
       jb_ptr = tmp_ans;
@@ -1205,6 +1260,7 @@ int ObIJsonBase::find_boolean_method(ObIAllocator* allocator, ObSeekParentInfo &
         int old_ret = ret;
         allocator->free(tmp_ans);
         ret = old_ret;
+        LOG_WARN("fail to seek recursively", K(ret));
       } 
     }
   }
@@ -1255,6 +1311,7 @@ int ObIJsonBase::find_date_method(ObIAllocator* allocator, ObSeekParentInfo &par
         ObJsonDatetime* tmp_ans = static_cast<ObJsonDatetime*> (allocator->alloc(sizeof(ObJsonDatetime)));
         if (OB_ISNULL(tmp_ans)) {
           ret = OB_ALLOCATE_MEMORY_FAILED;
+          LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
         } else {
           tmp_ans = new (tmp_ans) ObJsonDatetime(ObJsonNodeType::J_DATE, ob_time);
           jb_ptr = tmp_ans;
@@ -1264,6 +1321,7 @@ int ObIJsonBase::find_date_method(ObIAllocator* allocator, ObSeekParentInfo &par
             int old_ret = ret;
             allocator->free(tmp_ans);
             ret = old_ret;
+            LOG_WARN("fail to seek recursively", K(ret));
           }
         }
       }
@@ -1290,6 +1348,7 @@ int ObIJsonBase::find_date_method(ObIAllocator* allocator, ObSeekParentInfo &par
       ObJsonNull* tmp_ans = static_cast<ObJsonNull*> (allocator->alloc(sizeof(ObJsonNull)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonNull(true);
         jb_ptr = tmp_ans;
@@ -1299,6 +1358,7 @@ int ObIJsonBase::find_date_method(ObIAllocator* allocator, ObSeekParentInfo &par
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         } 
       }
     } else if (trans_fail) {
@@ -1350,6 +1410,7 @@ int ObIJsonBase::find_timestamp_method(ObIAllocator* allocator, ObSeekParentInfo
       ObJsonNull* tmp_ans = static_cast<ObJsonNull*> (allocator->alloc(sizeof(ObJsonNull)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonNull(true);
         jb_ptr = tmp_ans;
@@ -1359,6 +1420,7 @@ int ObIJsonBase::find_timestamp_method(ObIAllocator* allocator, ObSeekParentInfo
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         } 
       }
     } else if (trans_fail ) { 
@@ -1395,6 +1457,7 @@ int ObIJsonBase::find_double_method(ObIAllocator* allocator, ObSeekParentInfo &p
       ObJsonDouble* tmp_ans = static_cast<ObJsonDouble*> (allocator->alloc(sizeof(ObJsonDouble)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonDouble(num);
         jb_ptr = tmp_ans;
@@ -1404,6 +1467,7 @@ int ObIJsonBase::find_double_method(ObIAllocator* allocator, ObSeekParentInfo &p
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         }
       }
     }
@@ -1427,6 +1491,7 @@ int ObIJsonBase::find_double_method(ObIAllocator* allocator, ObSeekParentInfo &p
       ObJsonNull* tmp_ans = static_cast<ObJsonNull*> (allocator->alloc(sizeof(ObJsonNull)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonNull(true);
         jb_ptr = tmp_ans;
@@ -1436,6 +1501,7 @@ int ObIJsonBase::find_double_method(ObIAllocator* allocator, ObSeekParentInfo &p
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         } 
       }
     } else if (trans_fail) {
@@ -1489,6 +1555,7 @@ int ObIJsonBase::find_number_method(ObIAllocator* allocator, ObSeekParentInfo &p
       ObJsonNull* tmp_ans = static_cast<ObJsonNull*> (allocator->alloc(sizeof(ObJsonNull)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonNull(true);
         jb_ptr = tmp_ans;
@@ -1498,6 +1565,7 @@ int ObIJsonBase::find_number_method(ObIAllocator* allocator, ObSeekParentInfo &p
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         } 
       }
     } else if (fail_to_number) {
@@ -1542,6 +1610,7 @@ int ObIJsonBase::find_string_method(ObIAllocator* allocator, ObSeekParentInfo &p
       ObJsonString* tmp_ans = static_cast<ObJsonString*> (allocator->alloc(sizeof(ObJsonString)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonString(j_buf.ptr(), j_buf.length());
         jb_ptr = tmp_ans;
@@ -1551,6 +1620,7 @@ int ObIJsonBase::find_string_method(ObIAllocator* allocator, ObSeekParentInfo &p
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         }
       }
     }
@@ -1563,6 +1633,7 @@ int ObIJsonBase::find_string_method(ObIAllocator* allocator, ObSeekParentInfo &p
       ObJsonNull* tmp_ans = static_cast<ObJsonNull*> (allocator->alloc(sizeof(ObJsonNull)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonNull(true);
         jb_ptr = tmp_ans;
@@ -1572,6 +1643,7 @@ int ObIJsonBase::find_string_method(ObIAllocator* allocator, ObSeekParentInfo &p
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         } 
       }
     } else if (trans_fail && OB_SUCC(ret)) {
@@ -1597,6 +1669,7 @@ int ObIJsonBase::find_trans_method(ObIAllocator* allocator, ObSeekParentInfo &pa
   ObJsonNodeType type = json_type();
   if (OB_ISNULL(allocator)) { // check allocator
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("param allocator is NULL", K(ret), KP(allocator));
   } else if (!is_json_scalar(json_type())) {
     if (parent_info.is_subpath_) {
       return_null = true;
@@ -1626,6 +1699,7 @@ int ObIJsonBase::find_trans_method(ObIAllocator* allocator, ObSeekParentInfo &pa
     ObString dst;
     if (OB_FAIL(ret) || OB_ISNULL(src.ptr())) {
       ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("param allocator is NULL", K(ret));
     } else if (path_node->get_node_type() == JPN_UPPER) {
       if (OB_FAIL(ObJsonBaseUtil::str_low_to_up(allocator, src, dst))) {
       }
@@ -1638,6 +1712,7 @@ int ObIJsonBase::find_trans_method(ObIAllocator* allocator, ObSeekParentInfo &pa
       ObJsonString* tmp_ans = static_cast<ObJsonString*> (allocator->alloc(sizeof(ObJsonString)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonString(dst.ptr(), dst.length());
         tmp_ans->set_is_null_to_str(is_null_to_str);
@@ -1648,6 +1723,7 @@ int ObIJsonBase::find_trans_method(ObIAllocator* allocator, ObSeekParentInfo &pa
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         }
       }
     } else {
@@ -1662,6 +1738,7 @@ int ObIJsonBase::find_trans_method(ObIAllocator* allocator, ObSeekParentInfo &pa
       ObJsonNull* tmp_ans = static_cast<ObJsonNull*> (allocator->alloc(sizeof(ObJsonNull)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonNull(true);
         jb_ptr = tmp_ans;
@@ -1671,6 +1748,7 @@ int ObIJsonBase::find_trans_method(ObIAllocator* allocator, ObSeekParentInfo &pa
           int old_ret = ret;
           allocator->free(tmp_ans);
           ret = old_ret;
+          LOG_WARN("fail to seek recursively", K(ret));
         } 
       }
     } else if (trans_fail && OB_SUCC(ret)) {
@@ -1695,8 +1773,10 @@ int ObIJsonBase::find_func_child(ObIAllocator* allocator, ObSeekParentInfo &pare
   // make sure function item is the last path_node
   if (OB_ISNULL(allocator)) { // check allocator
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("param allocator is NULL", K(ret), KP(allocator));
   }else if (cur_node + 1 != last_node) {
     ret = ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("function item must be the last path_node", K(ret));
   } else {
   // Although the documentation states that each function handles only specific types (such as abs, floor only handle numbers)
   //  but actually it won't throw an error if it's not a specific type
@@ -1787,6 +1867,8 @@ int ObIJsonBase::find_func_child(ObIAllocator* allocator, ObSeekParentInfo &pare
       }
       default: {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("supposed to be SQL/JSON function node type.",
+                  K(ret), K(path_node->get_node_type()));
       }
     }
   }
@@ -1831,6 +1913,7 @@ int ObIJsonBase::cmp_based_on_node_type(ObJsonPathNodeType node_type, int res, b
       }
       default: {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("wrong node type, should be path_sign_cmp.", K(ret), K(node_type));
       }
     }
   } else {
@@ -1872,6 +1955,7 @@ int ObIJsonBase::trans_to_json_number(ObIAllocator* allocator, ObString str, ObI
         || !is_json_number(jb_ptr->json_type())) {
     allocator->free(jb_ptr);
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("fail to parse json_text", K(ret));
   } else {
     origin = jb_ptr;
   }
@@ -1896,6 +1980,7 @@ int ObIJsonBase::trans_to_date_timestamp(ObIAllocator* allocator,
         ObJsonDatetime* tmp_ans = static_cast<ObJsonDatetime*> (allocator->alloc(sizeof(ObJsonDatetime)));
         if (OB_ISNULL(tmp_ans)) {
           ret = OB_ALLOCATE_MEMORY_FAILED;
+          LOG_WARN("allocate row buffer failed at ObJsonDate", K(ret));
         } else {
           tmp_ans = new (tmp_ans) ObJsonDatetime(ObJsonNodeType::J_DATE, ob_time);
           jb_ptr = tmp_ans;
@@ -1904,6 +1989,7 @@ int ObIJsonBase::trans_to_date_timestamp(ObIAllocator* allocator,
     }
   } else {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("fail to convert string to otimestamp", K(ret));
   }
   
   if (OB_SUCC(ret)) {
@@ -1933,6 +2019,7 @@ int ObIJsonBase::trans_to_mdate(ObIAllocator* allocator,
       ObJsonDatetime* tmp_ans = static_cast<ObJsonDatetime*> (allocator->alloc(sizeof(ObJsonDatetime)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDate", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonDatetime(ObJsonNodeType::J_MYSQL_DATE, ob_time);
         jb_ptr = tmp_ans;
@@ -1958,6 +2045,7 @@ int ObIJsonBase::trans_to_boolean(ObIAllocator* allocator, ObString str, ObIJson
   ObJsonBoolean* tmp_ans = static_cast<ObJsonBoolean*> (allocator->alloc(sizeof(ObJsonBoolean)));
   if (OB_ISNULL(tmp_ans)) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("allocate row buffer failed at ObJsonBoolean", K(ret));
   } else {
     if ((str.length() == strlen("\"true\"") && 0 == strncasecmp(str.ptr(), "\"true\"", strlen("\"true\"")))
       ||(str.length() == strlen("true") && 0 == strncasecmp(str.ptr(), "true", strlen("true"))) ) {
@@ -1967,6 +2055,7 @@ int ObIJsonBase::trans_to_boolean(ObIAllocator* allocator, ObString str, ObIJson
       is_true = 0;
     } else {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("String fail to convert to Boolean", K(ret));
     }
   }
 
@@ -2048,6 +2137,7 @@ int ObIJsonBase::trans_json_node(ObIAllocator* allocator, ObIJsonBase* &scalar, 
       }
     } else if (right_type != ObJsonNodeType::J_ARRAY && right_type != ObJsonNodeType::J_OBJECT) {
       ret = ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("CAN'T TRANS", K(ret));
     }
   } else if (left_type == ObJsonNodeType::J_NULL) { 
     // return error code, mean can't cast, return false ans directly
@@ -2073,12 +2163,14 @@ int ObIJsonBase::trans_json_node(ObIAllocator* allocator, ObIJsonBase* &scalar, 
       ret = trans_to_boolean(allocator, str, path_res);
     } else if (left_type != ObJsonNodeType::J_ARRAY && left_type != ObJsonNodeType::J_OBJECT) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("CAN'T TRANS", K(ret));
     }
   } else if (left_type == ObJsonNodeType::J_BOOLEAN || is_json_number(left_type)) { 
     // scalar is boolean or number, and path_res is not string, return false
     ret = OB_NOT_SUPPORTED;
   } else {
     // do nothing
+    LOG_WARN("CAN'T TRANS", K(ret));
   }
   return ret;
 }
@@ -2096,6 +2188,7 @@ int ObIJsonBase::cmp_to_right_recursively(ObIAllocator* allocator, ObJsonSeekRes
   ObJsonBin st_json(allocator_); // use stack variable instead of deep copy
   if (OB_ISNULL(right_arg)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("compare value is null.", K(ret));
   }
   for (uint32_t i = 0; !null_flag && i < hit.size() && !cmp_result && OB_SUCC(ret); ++i) {
     if (OB_ISNULL(hit[i])) {
@@ -2116,6 +2209,7 @@ int ObIJsonBase::cmp_to_right_recursively(ObIAllocator* allocator, ObJsonSeekRes
           // Types are the same, you can directly use the compare function to compare
           if(OB_FAIL(ret) || OB_ISNULL(jb_ptr)) {
             ret = OB_ERR_NULL_VALUE;
+            LOG_WARN("compare value is null.", K(ret));
           } else if (is_same_type(right_arg, jb_ptr)) {
             if (OB_SUCC(jb_ptr->compare((*right_arg), cmp_res, true))) {
               cmp_based_on_node_type(node_type, cmp_res, cmp_result);
@@ -2183,6 +2277,7 @@ int ObIJsonBase::cmp_to_left_recursively(ObIAllocator* allocator, ObJsonSeekResu
   ObJsonBin st_json(allocator_); // use stack variable instead of deep copy
   if (OB_ISNULL(left_arg)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("compare value is null.", K(ret));
   }
   for (uint32_t i = 0; !null_flag && i < hit.size() && !cmp_result && OB_SUCC(ret); ++i) {
     if (OB_ISNULL(hit[i])) {
@@ -2203,6 +2298,7 @@ int ObIJsonBase::cmp_to_left_recursively(ObIAllocator* allocator, ObJsonSeekResu
           // Types are the same, you can directly use the compare function to compare
           if(OB_FAIL(ret) || OB_ISNULL(jb_ptr)) {
             ret = OB_ERR_NULL_VALUE;
+            LOG_WARN("compare value is null.", K(ret));
           } else if (is_same_type(left_arg, jb_ptr)) {
             if (OB_SUCC(left_arg->compare((*jb_ptr), cmp_res, true))) {
               cmp_based_on_node_type(node_type, cmp_res, cmp_result);
@@ -2283,11 +2379,13 @@ int ObIJsonBase::cmp_to_right_strictly(ObIAllocator* allocator, ObIJsonBase* hit
   ObJsonNodeType right_type;
   if (OB_ISNULL(right_arg)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("compare value is null.", K(ret));
   } else {
     right_type = right_arg->json_type();
   }
   if (OB_FAIL(ret) ||  OB_ISNULL(hit)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("compare value is null.", K(ret));
   } else if (hit->json_type() == ObJsonNodeType::J_NULL && !is_real_json_null(hit)) {
     cmp_result = false;
   } else {
@@ -2308,6 +2406,7 @@ int ObIJsonBase::cmp_to_right_strictly(ObIAllocator* allocator, ObIJsonBase* hit
           }
         } else {
           ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+          LOG_WARN("type incompatibility to compare.", K(ret));
         }
         break;
       }
@@ -2323,6 +2422,7 @@ int ObIJsonBase::cmp_to_right_strictly(ObIAllocator* allocator, ObIJsonBase* hit
           ObString str(right_arg->get_data_length(), right_arg->get_data());
           if (OB_FAIL(trans_to_boolean(allocator, str, right_arg))) {
             ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+            LOG_WARN("type incompatibility to compare.", K(ret));
           } else {
             int cmp_res = -3;
             if (OB_SUCC(hit->compare((*right_arg), cmp_res, true))) {
@@ -2331,6 +2431,7 @@ int ObIJsonBase::cmp_to_right_strictly(ObIAllocator* allocator, ObIJsonBase* hit
           }
         } else {
           ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+          LOG_WARN("type incompatibility to compare.", K(ret));
         }
         break;
       }
@@ -2346,6 +2447,7 @@ int ObIJsonBase::cmp_to_right_strictly(ObIAllocator* allocator, ObIJsonBase* hit
           if (OB_FAIL(trans_to_date_timestamp(allocator, str, right_arg, 
                       last_sub_path_node_type == JPN_DATE))) {
             ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+            LOG_WARN("type incompatibility to compare.", K(ret));
           } else {
             int cmp_res = -3;
             if (OB_SUCC(hit->compare((*right_arg), cmp_res, true))) {
@@ -2354,6 +2456,7 @@ int ObIJsonBase::cmp_to_right_strictly(ObIAllocator* allocator, ObIJsonBase* hit
           }
         } else {
           ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+          LOG_WARN("type incompatibility to compare.", K(ret));
         }
         break;
       }
@@ -2369,11 +2472,13 @@ int ObIJsonBase::cmp_to_right_strictly(ObIAllocator* allocator, ObIJsonBase* hit
           }
         } else {
           ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+          LOG_WARN("type incompatibility to compare.", K(ret));
         }
         break;
       }
       default: {
         ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+        LOG_WARN("type incompatibility to compare.", K(ret));
       }
     }
   }
@@ -2397,11 +2502,13 @@ int ObIJsonBase::cmp_to_left_strictly(ObIAllocator* allocator, ObIJsonBase* hit,
   ObJsonNodeType left_type;
   if (OB_ISNULL(left_arg)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("compare value is null.", K(ret));
   } else {
     left_type = left_arg->json_type();
   } 
   if (OB_FAIL(ret) || OB_ISNULL(hit)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("compare value is null.", K(ret));
   } else if (hit->json_type() == ObJsonNodeType::J_NULL && !is_real_json_null(hit)) {
     cmp_result = false;
   } else {
@@ -2422,6 +2529,7 @@ int ObIJsonBase::cmp_to_left_strictly(ObIAllocator* allocator, ObIJsonBase* hit,
           }
         } else {
           ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+          LOG_WARN("type incompatibility to compare.", K(ret));
         }
         break;
       }
@@ -2437,6 +2545,7 @@ int ObIJsonBase::cmp_to_left_strictly(ObIAllocator* allocator, ObIJsonBase* hit,
           ObString str(left_arg->get_data_length(), left_arg->get_data());
           if (OB_FAIL(trans_to_boolean(allocator, str, left_arg))) {
             ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+            LOG_WARN("type incompatibility to compare.", K(ret));
           } else {
             int cmp_res = -3;
             if (OB_SUCC(left_arg->compare((*hit), cmp_res, true))) {
@@ -2445,6 +2554,7 @@ int ObIJsonBase::cmp_to_left_strictly(ObIAllocator* allocator, ObIJsonBase* hit,
           }
         } else {
           ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+          LOG_WARN("type incompatibility to compare.", K(ret));
         }
         break;
       }
@@ -2460,6 +2570,7 @@ int ObIJsonBase::cmp_to_left_strictly(ObIAllocator* allocator, ObIJsonBase* hit,
           if (OB_FAIL(trans_to_date_timestamp(allocator, str, left_arg, 
                       last_sub_path_node_type == JPN_DATE))) {
             ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+            LOG_WARN("type incompatibility to compare.", K(ret));
           } else {
             int cmp_res = -3;
             if (OB_SUCC(left_arg->compare((*hit), cmp_res, true))) {
@@ -2468,6 +2579,7 @@ int ObIJsonBase::cmp_to_left_strictly(ObIAllocator* allocator, ObIJsonBase* hit,
           }
         } else {
           ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+          LOG_WARN("type incompatibility to compare.", K(ret));
         }
         break;
       }
@@ -2483,11 +2595,13 @@ int ObIJsonBase::cmp_to_left_strictly(ObIAllocator* allocator, ObIJsonBase* hit,
           }
         } else {
           ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+          LOG_WARN("type incompatibility to compare.", K(ret));
         }
         break;
       }
       default: {
         ret = OB_ERR_JSON_PATH_EXPRESSION_SYNTAX_ERROR;
+        LOG_WARN("type incompatibility to compare.", K(ret));
       }
     }
   }
@@ -2505,6 +2619,7 @@ int ObIJsonBase::get_sign_result_left_subpath(ObIAllocator* allocator, ObSeekPar
   INIT_SUCC(ret);
   if (OB_ISNULL(right_arg)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("compare value is null.", K(ret));
   } else {
     ObPathComparison comp_content = path_node->node_content_.comp_;
 
@@ -2552,6 +2667,7 @@ int ObIJsonBase::get_sign_result_right_subpath(ObIAllocator* allocator, ObSeekPa
   INIT_SUCC(ret);
   if (OB_ISNULL(left_arg)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("compare value is null.", K(ret));
   } else {
     ObPathComparison comp_content = path_node->node_content_.comp_;
 
@@ -2599,6 +2715,7 @@ int ObIJsonBase::get_scalar(ObIAllocator* allocator, const ObJsonPathNodeType ty
       ObJsonBoolean* tmp_ans = static_cast<ObJsonBoolean*> (allocator->alloc(sizeof(ObJsonBoolean)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonBoolean(true);
         scalar = tmp_ans;
@@ -2609,6 +2726,7 @@ int ObIJsonBase::get_scalar(ObIAllocator* allocator, const ObJsonPathNodeType ty
       ObJsonBoolean* tmp_ans = static_cast<ObJsonBoolean*> (allocator->alloc(sizeof(ObJsonBoolean)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonBoolean(false);
         scalar = tmp_ans;
@@ -2619,6 +2737,7 @@ int ObIJsonBase::get_scalar(ObIAllocator* allocator, const ObJsonPathNodeType ty
       ObJsonNull* tmp_ans = static_cast<ObJsonNull*> (allocator->alloc(sizeof(ObJsonNull)));
       if (OB_ISNULL(tmp_ans)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate row buffer failed at ObJsonDecimal", K(ret));
       } else {
         tmp_ans = new (tmp_ans) ObJsonNull();
         scalar = tmp_ans;
@@ -2631,6 +2750,7 @@ int ObIJsonBase::get_scalar(ObIAllocator* allocator, const ObJsonPathNodeType ty
       if (OB_FAIL(ObJsonBaseFactory::get_json_base(allocator, j_text,
           ObJsonInType::JSON_TREE, ObJsonInType::JSON_TREE, j_tree))) {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("fail to parse j_text", K(ret), K(j_text));
       } else {
         scalar = j_tree;
       }
@@ -2638,6 +2758,7 @@ int ObIJsonBase::get_scalar(ObIAllocator* allocator, const ObJsonPathNodeType ty
     }
     default:{
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("supposed to be scalar", K(ret), K(type));
     }
   }
   return ret;
@@ -2660,6 +2781,7 @@ int ObIJsonBase::compare_scalar(ObIAllocator* allocator, const ObJsonPathFilterN
         cmp_based_on_node_type(path_node->get_node_type(), res, filter_result);
       } else {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("type incompatibility for comparison", K(ret),K(left_type),K(right_type));
       }
       break;
     }
@@ -2680,9 +2802,11 @@ int ObIJsonBase::compare_scalar(ObIAllocator* allocator, const ObJsonPathFilterN
           cmp_based_on_node_type(path_node->get_node_type(), res, filter_result);
         } else {
           ret = OB_INVALID_ARGUMENT;
+          LOG_WARN("type incompatibility for comparison", K(ret),K(left_type),K(right_type));
         }
       } else {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("type incompatibility for comparison", K(ret),K(left_type),K(right_type));
       }
       break;
     }
@@ -2693,6 +2817,7 @@ int ObIJsonBase::compare_scalar(ObIAllocator* allocator, const ObJsonPathFilterN
         ObIJsonBase *right_s = NULL;
         if (OB_FAIL(get_scalar(allocator, left_type, path_node->node_content_.comp_.comp_left_.path_scalar_, left_s))
           || OB_FAIL(get_scalar(allocator, right_type, path_node->node_content_.comp_.comp_right_.path_scalar_, right_s))) {
+          LOG_WARN("fail to get scalar.", K(ret), K(right_type));
         } else {
           if ((is_json_number(left_s->json_type()) && is_json_number(right_s->json_type()))
             || (is_json_string(left_s->json_type()) && is_json_string(right_s->json_type()))) {
@@ -2701,9 +2826,11 @@ int ObIJsonBase::compare_scalar(ObIAllocator* allocator, const ObJsonPathFilterN
               cmp_based_on_node_type(path_node->get_node_type(), cmp_res, filter_result);
             } else {
               ret = OB_INVALID_ARGUMENT;
+              LOG_WARN("type incompatibility for comparison", K(ret),K(left_type),K(right_type));
             }
           } else {
             ret = OB_INVALID_ARGUMENT;
+            LOG_WARN("type incompatibility for comparison", K(ret),K(left_type),K(right_type));
           }
         }
       } else if (right_type == JPN_BOOL_TRUE || right_type == JPN_BOOL_FALSE ) {
@@ -2717,14 +2844,17 @@ int ObIJsonBase::compare_scalar(ObIAllocator* allocator, const ObJsonPathFilterN
           cmp_based_on_node_type(path_node->get_node_type(), res, filter_result);
         } else {
           ret = OB_INVALID_ARGUMENT;
+          LOG_WARN("type incompatibility for comparison", K(ret),K(left_type),K(right_type));
         }
       } else {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("type incompatibility for comparison", K(ret),K(left_type),K(right_type));
       }
       break;
     }
     default: {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("should be scalar.", K(ret), K(left_type));
     }
   }
   return ret;
@@ -2750,6 +2880,7 @@ int ObIJsonBase::get_sign_comp_result(ObIAllocator* allocator, ObSeekParentInfo 
                             comp_content.comp_right_.path_scalar_, scalar)) 
                   || OB_ISNULL(scalar)) {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("fail to get scalar.", K(ret));
       } else {
         if (OB_FAIL(SMART_CALL(get_sign_result_left_subpath(allocator, parent_info, path_node, 
                                                 filter_result, scalar)))) {
@@ -2759,6 +2890,7 @@ int ObIJsonBase::get_sign_comp_result(ObIAllocator* allocator, ObSeekParentInfo 
     // Right side is sql_var, get sql according to var_name
       if (OB_ISNULL(sql_var) ) {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("sql_var is nullptr.", K(ret)); 
       } else {
         // get sql_var
         ObString var_name(comp_content.comp_right_.path_var_.v_length_, comp_content.comp_right_.path_var_.var_);
@@ -2773,6 +2905,7 @@ int ObIJsonBase::get_sign_comp_result(ObIAllocator* allocator, ObSeekParentInfo 
       }
     } else {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("wrong node type.", K(ret));
     }
   // (scalar, subpath) or (sql_var, subpath)
   } else if (comp_content.right_type_ == ObJsonPathNodeType::JPN_SUB_PATH) {
@@ -2783,6 +2916,7 @@ int ObIJsonBase::get_sign_comp_result(ObIAllocator* allocator, ObSeekParentInfo 
                             comp_content.comp_left_.path_scalar_, scalar)) 
                   || OB_ISNULL(scalar)) {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("fail to get scalar.", K(ret));
       } else {
         if (OB_FAIL(SMART_CALL(get_sign_result_right_subpath(allocator, parent_info, path_node, 
                                                   filter_result, scalar)))) {
@@ -2792,6 +2926,7 @@ int ObIJsonBase::get_sign_comp_result(ObIAllocator* allocator, ObSeekParentInfo 
     // The left side is sql_var, get the corresponding ObIJsonBase according to the variable name
       if (OB_ISNULL(sql_var) ) {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("sql_var is nullptr.", K(ret)); 
       } else {
         // get sql_var
         ObString var_name(comp_content.comp_left_.path_var_.v_length_, comp_content.comp_left_.path_var_.var_);
@@ -2806,6 +2941,7 @@ int ObIJsonBase::get_sign_comp_result(ObIAllocator* allocator, ObSeekParentInfo 
       }
     } else {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("wrong node type.", K(ret));
     }
   } else if (ObJsonPathUtil::is_scalar(comp_content.left_type_)
             && ObJsonPathUtil::is_scalar(comp_content.right_type_)) {
@@ -2816,6 +2952,7 @@ int ObIJsonBase::get_sign_comp_result(ObIAllocator* allocator, ObSeekParentInfo 
     }
   } else {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("wrong node type.", K(ret));
   }
   return ret;
 }
@@ -2878,6 +3015,7 @@ int ObIJsonBase::str_comp_predicate(const ObString& left, const ObString& right,
       }
       default: {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("should be str_comp_predicate.", K(ret), K(pnode_type));
         break;
       }
     }
@@ -2902,6 +3040,7 @@ int ObIJsonBase::str_cmp_autowrap(ObIAllocator* allocator, const ObString& right
         ret = get_array_element(i, jb_ptr);
         if (OB_ISNULL(jb_ptr)) {
           ret = OB_ERR_NULL_VALUE;
+          LOG_WARN("fail to get array child dom", K(ret), K(i));
         // Array only queries the first level of expansion
         } else if (OB_FAIL(jb_ptr->str_cmp_autowrap(allocator, right_str, 
                                                     path_node, false, filter_result))) {
@@ -2941,6 +3080,7 @@ int ObIJsonBase::get_str_comp_result(ObIAllocator* allocator, ObSeekParentInfo &
     // Determine if it is a string type
     if (tmp.length() < 2 || tmp[0] != '\"' || tmp[tmp.length()-1] != '\"') {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("right scalar must be string.", K(ret));
     } else {
       right_str = ObString(tmp.length() - 2, tmp.ptr() + 1);
     }
@@ -2948,6 +3088,7 @@ int ObIJsonBase::get_str_comp_result(ObIAllocator* allocator, ObSeekParentInfo &
     // The left side is sql_var, get the corresponding ObIJsonBase according to the variable name
     if (OB_ISNULL(sql_var) ) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("sql_var is nullptr.", K(ret)); 
     } else {
       // get sql_var
       ObString var_name(comp_content.comp_right_.path_var_.v_length_, comp_content.comp_right_.path_var_.var_);
@@ -2967,6 +3108,7 @@ int ObIJsonBase::get_str_comp_result(ObIAllocator* allocator, ObSeekParentInfo &
     }
   } else {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("wrong node type of right string comparison arg.", K(ret));
   }
 
   if (OB_SUCC(ret) && !end_comp && comp_content.left_type_ == ObJsonPathNodeType::JPN_SUB_PATH) {
@@ -2976,9 +3118,12 @@ int ObIJsonBase::get_str_comp_result(ObIAllocator* allocator, ObSeekParentInfo &
       if (sub_path->path_not_str()) {
         // If the type of the last node is item function, and the return value is definitely not a string, such as number/abs/length..., it will throw an error
         ret = OB_OP_NOT_ALLOW;
+        LOG_WARN("wrong argument data type for function call.",
+                  K(ret), K(sub_path->get_last_node_type()));
       } else {
         if (SMART_CALL(OB_FAIL(parent_info.parent_jb_->seek(allocator, (*sub_path), 
                     sub_path->path_node_cnt(), true, false, true, hit, sql_var)))) {
+          LOG_WARN("fail to seek sub_path.", K(ret));
         } else {
           for (int i = 0; OB_SUCC(ret) && i < hit.size() && !OB_ISNULL(hit[i]) && !filter_result; ++i) {
             if (OB_FAIL(hit[i]->str_cmp_autowrap(allocator, right_str, path_node, 
@@ -2993,6 +3138,7 @@ int ObIJsonBase::get_str_comp_result(ObIAllocator* allocator, ObSeekParentInfo &
     // Determine if it is a string type
     if (tmp.length() < 2 || tmp[0] != '\"' || tmp[tmp.length()-1] != '\"') {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("right scalar must be string.", K(ret));
     } else {
       ObString left_str(tmp.length() - 2, tmp.ptr() + 1);
       if (OB_FAIL(str_comp_predicate(left_str, right_str, path_node, filter_result))) {
@@ -3000,6 +3146,8 @@ int ObIJsonBase::get_str_comp_result(ObIAllocator* allocator, ObSeekParentInfo &
     }
   } else {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("the left_arg of string_comp_predicate should sub_path or scalar.", 
+              K(ret), K(comp_content.left_type_));
   }
 
   return ret;
@@ -3026,6 +3174,7 @@ int ObIJsonBase::find_comp_result(ObIAllocator* allocator, ObSeekParentInfo &par
     // only have right arg
     if (path_node->node_content_.comp_.right_type_ != JPN_SUB_PATH) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("wrong argument of exists.", K(ret), K(pnode_type));
     } else {
       ObJsonPath* sub_path = path_node->node_content_.comp_.comp_right_.filter_path_;
       ObJsonPathNodeType last_node_type = sub_path->get_last_node_type();
@@ -3076,6 +3225,7 @@ int ObIJsonBase::find_comp_result(ObIAllocator* allocator, ObSeekParentInfo &par
     } // end of exists or !exists
   } else {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("should be comp_path_node.", K(ret), K(pnode_type));
   }
   return ret;
 }
@@ -3095,6 +3245,7 @@ int ObIJsonBase::get_half_ans(ObIAllocator* allocator, ObSeekParentInfo &parent_
     } 
   } else {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("should be filter_path_node.", K(ret), K(path_node->get_node_type()));
   }
   return ret;
 }
@@ -3142,6 +3293,7 @@ int ObIJsonBase::find_cond_result(ObIAllocator* allocator, ObSeekParentInfo &par
     
   } else {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("should be cond_path_node.", K(ret), K(path_node->get_node_type()));
   }
   return ret;
 }
@@ -3231,6 +3383,7 @@ int ObIJsonBase::find_child(ObIAllocator* allocator, ObSeekParentInfo &parent_in
       }
     } else {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected path node type.", K(ret), K(cur_node_type)); 
     }
   }
 
@@ -3280,7 +3433,9 @@ int ObIJsonBase::print_array(ObJsonBuffer &j_buf, uint64_t depth, bool is_pretty
     uint64_t arr_size = element_count();
     for (uint64_t i = 0; OB_SUCC(ret) && i < arr_size; ++i) {
       if (i > 0 && OB_FAIL(ObJsonBaseUtil::append_comma(j_buf, is_pretty))) {
+        LOG_WARN("fail to append comma", K(ret), K(is_pretty));
       } else if (is_pretty && OB_FAIL(ObJsonBaseUtil::append_newline_and_indent(j_buf, depth))) {
+        LOG_WARN("fail to append newline and indent", K(ret), K(depth));
       } else {
         ObIJsonBase *jb_ptr = NULL;
         ObJsonBin j_bin(allocator_);
@@ -3294,6 +3449,7 @@ int ObIJsonBase::print_array(ObJsonBuffer &j_buf, uint64_t depth, bool is_pretty
     if (OB_SUCC(ret)) {
       if (is_pretty && arr_size > 0
           && OB_FAIL(ObJsonBaseUtil::append_newline_and_indent(j_buf, depth - 1))) {
+        LOG_WARN("fail to append newline and indent", K(ret), K(depth), K(arr_size));
       } else if (OB_FAIL(j_buf.append("]"))) {
       }
     }
@@ -3321,13 +3477,17 @@ int ObIJsonBase::print_object(ObJsonBuffer &j_buf, uint64_t depth, bool is_prett
     uint64_t count = element_count();
     for (uint64_t i = 0; OB_SUCC(ret) && i < count; i++) {
       if (!is_first && OB_FAIL(ObJsonBaseUtil::append_comma(j_buf, is_pretty))) {
+        LOG_WARN("fail to append comma", K(ret), K(is_pretty));
       } else {
         is_first = false;
         ObString key;
         if (OB_FAIL(get_key(i, key))) {
         } else if (is_pretty && OB_FAIL(ObJsonBaseUtil::append_newline_and_indent(j_buf, depth))) {
+          LOG_WARN("fail to newline and indent", K(ret), K(depth), K(i), K(key));
         } else if (key.empty() && OB_FAIL(ObJsonBaseUtil::append_string(j_buf, false, "\"\"", 2))) {
+          LOG_WARN("fail to newline and indent", K(ret), K(depth), K(i), K(key));
         } else if (!key.empty() && OB_FAIL(ObJsonBaseUtil::append_string(j_buf, true, key.ptr(), key.length()))) { // key
+          LOG_WARN("fail to print string", K(ret), K(depth), K(i), K(key));
         } else if (OB_FAIL(pint_colon(j_buf, is_pretty))) {
         } else if (OB_FAIL(j_buf.append(" "))) {
         } else {
@@ -3344,6 +3504,7 @@ int ObIJsonBase::print_object(ObJsonBuffer &j_buf, uint64_t depth, bool is_prett
     if (OB_SUCC(ret)) {
       if (is_pretty && count > 0
           && OB_FAIL(ObJsonBaseUtil::append_newline_and_indent(j_buf, depth - 1))) {
+        LOG_WARN("fail to newline and indent", K(ret), K(is_pretty), K(depth));
       } else if (OB_FAIL(j_buf.append("}"))) {
       }
     }
@@ -3488,6 +3649,7 @@ int ObIJsonBase::print_opaque(ObJsonBuffer &j_buf, uint64_t depth, bool is_quote
 
   if (f_type >= ObMaxType) {
     ret = OB_ERR_MAX_VALUE;
+    LOG_WARN("fail to convert ob type to mysql type", K(ret), K(f_type));
   } else {
     const uint64_t need_len = ObBase64Encoder::needed_encoded_length(data_length);
     obmysql::EMySQLFieldType mysql_type = obmysql::EMySQLFieldType::MYSQL_TYPE_NOT_DEFINED;
@@ -3507,6 +3669,7 @@ int ObIJsonBase::print_opaque(ObJsonBuffer &j_buf, uint64_t depth, bool is_quote
       const uint8_t *input = reinterpret_cast<const uint8_t *>(data);
       if (OB_ISNULL(input)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("json string is null", K(ret));
       } else if (OB_FAIL(ObBase64Encoder::encode(input, data_length,
                                                  base64_buf.ptr() + base64_buf.length(),
                                                  need_len, pos))) {
@@ -3531,6 +3694,7 @@ int ObIJsonBase::print(ObJsonBuffer &j_buf, bool is_quoted, uint64_t reserve_len
   INIT_SUCC(ret);
   ObJsonNodeType j_type = json_type();
   if (reserve_len > 0 && OB_FAIL(j_buf.reserve(reserve_len * 1.2))) {
+    LOG_WARN("failed to reserve j_str", K(ret), K(reserve_len));
   } else {
     // consistent with mysql 5.7
     // in mysql 8.0, varstring is handled as json string, obvarchartype is considered as varstring.
@@ -3567,6 +3731,7 @@ int ObIJsonBase::print(ObJsonBuffer &j_buf, bool is_quoted, uint64_t reserve_len
       case ObJsonNodeType::J_BOOLEAN: {
         if (get_boolean() ? OB_FAIL(j_buf.append("true", sizeof("true") - 1, 0)) :
                             OB_FAIL(j_buf.append("false", sizeof("false") - 1, 0))) {
+          LOG_WARN("fail to append boolean", K(ret), K(get_boolean()), K(j_type));              
         }
         break;
       }
@@ -3593,7 +3758,9 @@ int ObIJsonBase::print(ObJsonBuffer &j_buf, bool is_quoted, uint64_t reserve_len
 
       case ObJsonNodeType::J_NULL: {
         if (!(this)->is_real_json_null(this) && OB_FAIL(j_buf.append("", 0, 0))) {
+          LOG_WARN("fail to append NULL upper string to buffer", K(ret), K(j_type));
         } else if ((this)->is_real_json_null(this) && OB_FAIL(j_buf.append("null", sizeof("null") - 1, 0))) {
+          LOG_WARN("fail to append null string to buffer", K(ret), K(j_type));
         }
         break;
       }
@@ -3618,6 +3785,7 @@ int ObIJsonBase::print(ObJsonBuffer &j_buf, bool is_quoted, uint64_t reserve_len
           }
         } else if (OB_ISNULL(data) && data_len != 0) {
           ret = OB_ERR_NULL_VALUE;
+          LOG_WARN("data is null", K(ret), K(data_len));
         } else if (OB_FAIL(ObJsonBaseUtil::append_string(j_buf, is_quoted, data, data_len))) {
         }
         break;
@@ -3643,6 +3811,7 @@ int ObIJsonBase::print(ObJsonBuffer &j_buf, bool is_quoted, uint64_t reserve_len
 
       default: {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("undefined json node type", K(ret), K(j_type));
         break;
       }
     }
@@ -3673,6 +3842,7 @@ int ObIJsonBase::calc_json_hash_value(uint64_t val, hash_algo hash_func, uint64_
         if (OB_FAIL(get_array_element(i, jb_ptr))) {
         } else if (OB_ISNULL(jb_ptr)) {
           ret = OB_ERR_NULL_VALUE;
+          LOG_WARN("null ptr", K(ret), K(i), K(size));
         } else if (OB_FAIL(jb_ptr->calc_json_hash_value(hash_value.get_hash_value(), hash_func, arr_res))) {
         } else {
           hash_value.calc_uint64(arr_res);
@@ -3799,6 +3969,7 @@ int ObIJsonBase::calc_json_hash_value(uint64_t val, hash_algo hash_func, uint64_
 
     default: {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpect json type", K(ret), K(j_type));
       break;
     }
   }
@@ -3825,6 +3996,7 @@ int ObIJsonBase::compare_array(const ObIJsonBase &other, int &res) const
 
   if (j_type_a != ObJsonNodeType::J_ARRAY || j_type_b != ObJsonNodeType::J_ARRAY) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid ObJsonNodeType", K(ret), K(j_type_a), K(j_type_b));
   } else {
     const uint64_t size_a = element_count();
     const uint64_t size_b = other.element_count();
@@ -3862,6 +4034,7 @@ int ObIJsonBase::compare_object(const ObIJsonBase &other, int &res) const
 
   if (j_type_a != ObJsonNodeType::J_OBJECT || j_type_b != ObJsonNodeType::J_OBJECT) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid ObJsonNodeType", K(ret), K(j_type_a), K(j_type_b));
   } else {
     const uint64_t len_a = element_count();
     const uint64_t len_b = other.element_count();
@@ -3902,6 +4075,7 @@ int ObIJsonBase::compare_int(const ObIJsonBase &other, int &res) const
   if (j_type_a != ObJsonNodeType::J_INT &&
       j_type_a != ObJsonNodeType::J_OINT) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid ObJsonNodeType", K(ret), K(j_type_a), K(j_type_b));
   } else {
     int64_t int_a = get_int();
     switch (j_type_b) {
@@ -3968,6 +4142,7 @@ int ObIJsonBase::compare_uint(const ObIJsonBase &other, int &res) const
   if (j_type_a != ObJsonNodeType::J_UINT &&
       j_type_a != ObJsonNodeType::J_OLONG) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid ObJsonNodeType", K(ret), K(j_type_a), K(j_type_b));
   } else {
     uint64_t uint_a = get_uint();
     switch (j_type_b) {
@@ -4035,6 +4210,7 @@ int ObIJsonBase::compare_double(const ObIJsonBase &other, int &res) const
       j_type_a != ObJsonNodeType::J_ODOUBLE &&
       j_type_a != ObJsonNodeType::J_OFLOAT) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid ObJsonNodeType", K(ret), K(j_type_a), K(j_type_b));
   } else {
     double double_a;
     if (j_type_a == ObJsonNodeType::J_OFLOAT) {
@@ -4104,6 +4280,7 @@ int ObIJsonBase::compare_decimal(const ObIJsonBase &other, int &res) const
   if (j_type_a != ObJsonNodeType::J_DECIMAL
       && j_type_a != ObJsonNodeType::J_ODECIMAL) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid ObJsonNodeType", K(ret), K(j_type_a), K(j_type_b));
   } else {
     number::ObNumber num_a = get_decimal_data();
     switch (j_type_b) {
@@ -4170,6 +4347,7 @@ int ObIJsonBase::compare_datetime(ObDTMode dt_mode_a, const ObIJsonBase &other, 
 
   if (!is_a_valid || !is_b_valid) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid ObJsonNodeType", K(ret), K(j_type_a), K(j_type_b));
   } else {
     ObDTMode dt_mode_b;
     if (OB_FAIL(ObJsonBaseUtil::get_dt_mode_by_json_type(j_type_b, dt_mode_b))) {
@@ -4412,6 +4590,7 @@ int ObIJsonBase::compare(const ObIJsonBase &other, int &res, bool is_path) const
         case ObJsonNodeType::J_NULL: {
           if (j_type_a != j_type_b || is_real_json_null(this) != is_real_json_null(&other)) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("both json type should be NULL", K(j_type_a), K(j_type_b));
           } else {
             res = 0;
           }
@@ -4454,6 +4633,7 @@ int ObIJsonBase::merge_tree(ObIAllocator *allocator, ObIJsonBase *other, ObIJson
 
   if (OB_ISNULL(allocator) || OB_ISNULL(other)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("param is null", K(ret), KP(allocator), KP(other));
   } else if (is_bin()) {
     ObIJsonBase *j_this_tree = NULL;
     ObIJsonBase *j_other_tree = NULL;
@@ -4535,6 +4715,7 @@ int ObIJsonBase::get_raw_binary(common::ObString &out, ObIAllocator *allocator)
   } else { // is tree
     if (OB_ISNULL(allocator)) { // check param
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("param allocator is null", K(ret));
     } else {
       ObIJsonBase *j_bin = NULL;
       if (OB_FAIL(ObJsonBaseFactory::transform(allocator, this, ObJsonInType::JSON_BIN, j_bin))) {
@@ -4557,6 +4738,7 @@ int ObIJsonBase::get_raw_binary_v0(common::ObString &out, ObIAllocator *allocato
   } else { // is tree
     if (OB_ISNULL(allocator)) { // check param
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("param allocator is null", K(ret));
     } else {
       ObIJsonBase *j_bin = NULL;
       if (OB_FAIL(ObJsonBaseFactory::transform(allocator, this, ObJsonInType::JSON_BIN, j_bin))) {
@@ -4584,6 +4766,7 @@ int ObIJsonBase::to_int(int64_t &value, bool check_range, bool force_convert) co
       uint64_t ui = get_uint();
       if (ui > INT64_MAX && check_range) {
         ret = OB_OPERATE_OVERFLOW;
+        LOG_WARN("fail to cast uint to int, out of range", K(ret), K(ui));
       } else {
         val = static_cast<int64_t>(ui);
       }
@@ -4601,6 +4784,7 @@ int ObIJsonBase::to_int(int64_t &value, bool check_range, bool force_convert) co
       const char *start = get_data();
       if (OB_ISNULL(start)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("data is null", K(ret));
       } else {
         const char *end = start + length;
         bool valid = false;
@@ -4610,6 +4794,7 @@ int ObIJsonBase::to_int(int64_t &value, bool check_range, bool force_convert) co
           val = ObFastAtoi<int64_t>::atoi(start, end, valid);
           if (valid == false) {
             ret = OB_ERR_DATA_TRUNCATED;
+            LOG_WARN("fail to cast string to int", K(ret), K(length), KCSTRING(start));
           }
           value = val;
         }
@@ -4672,6 +4857,7 @@ int ObIJsonBase::to_int(int64_t &value, bool check_range, bool force_convert) co
     }  
     default: {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to cast json type to int", K(ret), K(json_type()));
       break;
     }
   }
@@ -4699,6 +4885,7 @@ int ObIJsonBase::to_uint(uint64_t &value, bool fail_on_negative, bool check_rang
     case ObJsonNodeType::J_OINT: {
       int64_t signed_val = get_int();
       if (signed_val < 0 && fail_on_negative) {
+        LOG_WARN("json int value is negative, can't change to uint", K(ret));
         ret = OB_OPERATE_OVERFLOW;
       } else {
         val = static_cast<uint64_t>(signed_val);
@@ -4714,28 +4901,35 @@ int ObIJsonBase::to_uint(uint64_t &value, bool fail_on_negative, bool check_rang
       bool is_unsigned = true;
       if (OB_ISNULL(data) || length == 0) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("data is null", K(ret));
       } else if (data[0] == '-') {
         is_unsigned = false;
         if (fail_on_negative) {
           ret = OB_OPERATE_OVERFLOW;
+          LOG_WARN("value is negative, can't change to uin", K(ret), KP(data));
         }
       } else if (check_range && OB_UNLIKELY(NULL != memchr(data, '.', length))) {
         ret = OB_OPERATE_OVERFLOW;
+        LOG_WARN("value contains ., can't change to uin", K(ret), KP(data));
       }
 
       if (OB_SUCC(ret)) {
         val = ObCharset::strntoullrnd(data, length, is_unsigned, &endptr, &err);
         if (ERANGE == err && (UINT64_MAX == val || 0 == val)) {
           ret = OB_DATA_OUT_OF_RANGE;
+          LOG_WARN("faild to cast string to uint, cause data is out of range", K(ret), K(is_unsigned),
+                                                                               KP(data), K(length));
         } else {
           // check_convert_str_err
           // 1. only one of data and endptr is null, it is invalid input.
           if ((OB_ISNULL(data) || OB_ISNULL(endptr)) && data != endptr) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("null pointer(s)", K(ret), KP(data), KP(endptr));
           } else
           // 2. data == endptr include NULL == NULL.
           if (OB_UNLIKELY(data == endptr) || OB_UNLIKELY(EDOM == err)) {
             ret = OB_ERR_TRUNCATED_WRONG_VALUE_FOR_FIELD; //1366
+            LOG_WARN("wrong value", K(ret), K(err), K(length));
           } else {
             // 3. so here we are sure that both data and endptr are not NULL.
             endptr += ObCharset::scan_str(endptr, data + length, OB_SEQ_SPACES);
@@ -4763,6 +4957,7 @@ int ObIJsonBase::to_uint(uint64_t &value, bool fail_on_negative, bool check_rang
       ObArenaAllocator allocator;
       if (num_val.is_negative() && fail_on_negative) {
         ret = OB_OPERATE_OVERFLOW;
+        LOG_WARN("the number is negative, can't change to uint", K(ret), K(num_val));
       } else if (OB_FAIL(nmb.from(num_val, allocator))) {
       } else if (OB_FAIL(ObJsonBaseUtil::number_to_uint(nmb, val))) {
       }
@@ -4774,6 +4969,7 @@ int ObIJsonBase::to_uint(uint64_t &value, bool fail_on_negative, bool check_rang
       double d = get_double();
       if (d < 0 && fail_on_negative) {
         ret = OB_OPERATE_OVERFLOW;
+        LOG_WARN("double value is negative", K(ret), K(fail_on_negative), K(d));
       } else {
         ret = ObJsonBaseUtil::double_to_uint(d, val, check_range);
       }
@@ -4784,6 +4980,7 @@ int ObIJsonBase::to_uint(uint64_t &value, bool fail_on_negative, bool check_rang
       double d = get_float();
       if (d < 0 && fail_on_negative) {
         ret = OB_OPERATE_OVERFLOW;
+        LOG_WARN("double value is negative", K(ret), K(fail_on_negative), K(d));
       } else {
         ret = ObJsonBaseUtil::double_to_uint(d, val, check_range);
       }
@@ -4796,6 +4993,7 @@ int ObIJsonBase::to_uint(uint64_t &value, bool fail_on_negative, bool check_rang
     }
     default: {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to cast json type to int", K(ret), K(json_type()));
       break;
     }
   }
@@ -4825,6 +5023,8 @@ int ObIJsonBase::to_double(double &value) const
         val = ObCharset::strntod(buf, pos, &endptr, &err);
         if (EOVERFLOW == err && (-DBL_MAX == value || DBL_MAX == value)) {
           ret = OB_DATA_OUT_OF_RANGE;
+          LOG_WARN("faild to cast string to double, cause data is out of range",
+              K(ret), K(val), K(pos), K(num_val));
         }
       }
       break;
@@ -4835,23 +5035,29 @@ int ObIJsonBase::to_double(double &value) const
       const char *data = get_data();
       if (OB_ISNULL(data)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("data is null", K(ret));
       } else {
         char *endptr = NULL;
         int err = 0;
         val = ObCharset::strntodv2(data, length, &endptr, &err);
         if (EOVERFLOW == err && (-DBL_MAX == value || DBL_MAX == value)) {
           ret = OB_DATA_OUT_OF_RANGE;
+          LOG_WARN("faild to cast string to double, cause data is out of range", K(ret), K(length),
+                                                                                 KP(data), K(val));
         } else {
           ObString tmp_str(length, data);
           ObString trimed_str = tmp_str.trim();
           if (0 == trimed_str.length()) {
             ret = OB_ERR_DOUBLE_TRUNCATED;
+            LOG_WARN("convert string to double failed", K(ret), K(tmp_str));
           } else {
             // 1. only one of data and endptr is null, it is invalid input.
             if ((OB_ISNULL(data) || OB_ISNULL(endptr)) && data != endptr) {
               ret = OB_ERR_UNEXPECTED;
+              LOG_WARN("null pointer(s)", K(ret), KP(data), KP(endptr));
             } else if (OB_UNLIKELY(data == endptr) || OB_UNLIKELY(EDOM == err)) { // 2. data == endptr include NULL == NULL.
               ret = OB_ERR_TRUNCATED_WRONG_VALUE_FOR_FIELD; //1366
+              LOG_WARN("wrong value", K(ret), K(length), K(val));
             } else { // 3. so here we are sure that both data and endptr are not NULL.
               endptr += ObCharset::scan_str(endptr, data + length, OB_SEQ_SPACES);
               if (endptr < data + length) {
@@ -4900,6 +5106,7 @@ int ObIJsonBase::to_double(double &value) const
 
     default: {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to cast json type to double", K(ret), K(json_type()));
       break;
     }
   }
@@ -4918,6 +5125,7 @@ int ObIJsonBase::to_number(ObIAllocator *allocator, number::ObNumber &number) co
 
   if (OB_ISNULL(allocator)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("allocator is null", K(ret));
   } else {
     switch (json_type()) {
       case ObJsonNodeType::J_DECIMAL:
@@ -4931,6 +5139,7 @@ int ObIJsonBase::to_number(ObIAllocator *allocator, number::ObNumber &number) co
         const char *data = get_data();
         if (OB_ISNULL(data)) {
           ret = OB_ERR_NULL_VALUE;
+          LOG_WARN("data is null", K(ret));
         } else if (OB_FAIL(num.from(data, length, *allocator))) {
         }
         number = num;
@@ -5034,6 +5243,7 @@ int ObIJsonBase::to_number(ObIAllocator *allocator, number::ObNumber &number) co
       
       default: {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("fail to cast json type to double", K(ret), K(json_type()));
         break;
       }
     }
@@ -5060,6 +5270,7 @@ int ObIJsonBase::to_datetime(int64_t &value, ObTimeConvertCtx *cvrt_ctx_t) const
     case ObJsonNodeType::J_OINT: {
       if (get_int() < 0) {
         ret = OB_INVALID_DATE_FORMAT;
+        LOG_WARN("fail to get json obtime", K(ret), K(get_int()));
       } else {
         ObDateSqlMode date_sql_mode;
         date_sql_mode.allow_invalid_dates_ = false;
@@ -5119,6 +5330,7 @@ int ObIJsonBase::to_datetime(int64_t &value, ObTimeConvertCtx *cvrt_ctx_t) const
       if (OB_FAIL(print(str_data, false))) {
       } else if (OB_ISNULL(str_data.ptr())) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("data is null", K(ret));
       } else {
         ObString str = str_data.string();
         if (OB_FAIL(ObTimeConverter::str_to_datetime(str, cvrt_ctx, datetime))) {
@@ -5131,6 +5343,7 @@ int ObIJsonBase::to_datetime(int64_t &value, ObTimeConvertCtx *cvrt_ctx_t) const
       const char *data = get_data();
       if (OB_ISNULL(data)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("data is null", K(ret));
       } else {
         ObString str(static_cast<int32_t>(length), static_cast<int32_t>(length), data);
         if (OB_FAIL(ObTimeConverter::str_to_datetime(str, cvrt_ctx, datetime))) {
@@ -5145,6 +5358,7 @@ int ObIJsonBase::to_datetime(int64_t &value, ObTimeConvertCtx *cvrt_ctx_t) const
     }
     default: {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to cast json type to datetime", K(ret), K(json_type()));
       break;
     }
   }
@@ -5191,6 +5405,7 @@ int ObIJsonBase::to_mdatetime(ObMySQLDateTime &value, ObTimeConvertCtx *cvrt_ctx
       ObTime t;
       if (OB_FAIL(get_obtime(t))) {
       } else if (OB_FAIL(ObTimeConverter::validate_datetime(t, cvrt_ctx_t->date_sql_mode_))) {
+        LOG_WARN("value is invalid or out of range", K(ret), K(t), K(cvrt_ctx_t->date_sql_mode_));
         mdatetime = ObTimeConverter::MYSQL_ZERO_DATETIME;
         ret = OB_SUCCESS;
       } else if (OB_FAIL(ObTimeConverter::ob_time_to_mdatetime(t, mdatetime))) {
@@ -5205,6 +5420,7 @@ int ObIJsonBase::to_mdatetime(ObMySQLDateTime &value, ObTimeConvertCtx *cvrt_ctx
       if (OB_FAIL(print(str_data, false))) {
       } else if (OB_ISNULL(str_data.ptr())) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("data is null", K(ret));
       } else {
         ObString str = str_data.string();
         if (OB_FAIL(ObTimeConverter::str_to_mdatetime(str, cvrt_ctx, mdatetime, NULL,
@@ -5218,6 +5434,7 @@ int ObIJsonBase::to_mdatetime(ObMySQLDateTime &value, ObTimeConvertCtx *cvrt_ctx
       const char *data = get_data();
       if (OB_ISNULL(data)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("data is null", K(ret));
       } else {
         ObString str(static_cast<int32_t>(length), static_cast<int32_t>(length), data);
         if (OB_FAIL(ObTimeConverter::str_to_mdatetime(str, cvrt_ctx, mdatetime, NULL,
@@ -5233,6 +5450,7 @@ int ObIJsonBase::to_mdatetime(ObMySQLDateTime &value, ObTimeConvertCtx *cvrt_ctx
     }
     default: {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to cast json type to datetime", K(ret), K(json_type()));
       break;
     }
   }
@@ -5282,6 +5500,7 @@ int ObIJsonBase::to_date(int32_t &value) const
       const char *data = get_data();
       if (OB_ISNULL(data)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("data is null", K(ret));
       } else {
         ObString str(static_cast<int32_t>(length), static_cast<int32_t>(length), data);
         if (OB_FAIL(ObTimeConverter::str_to_date(str, date))) {
@@ -5306,6 +5525,7 @@ int ObIJsonBase::to_date(int32_t &value) const
 
     default: {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to cast json type to date", K(ret), K(json_type()));
       break;
     }
   }
@@ -5327,6 +5547,7 @@ int ObIJsonBase::to_mdate(ObMySQLDate &value, ObDateSqlMode date_sql_mode) const
       ObTime t;
       if (OB_FAIL(get_obtime(t))) {
       } else if (OB_FAIL(ObTimeConverter::validate_datetime(t, date_sql_mode))) {
+        LOG_WARN("datetime is invalid or out of range", K(ret), K(t), K(date_sql_mode));
         date = ObTimeConverter::MYSQL_ZERO_DATE;
         ret = OB_SUCCESS;
       } else {
@@ -5340,6 +5561,7 @@ int ObIJsonBase::to_mdate(ObMySQLDate &value, ObDateSqlMode date_sql_mode) const
       const char *data = get_data();
       if (OB_ISNULL(data)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("data is null", K(ret));
       } else {
         ObString str(static_cast<int32_t>(length), static_cast<int32_t>(length), data);
         if (OB_FAIL(ObTimeConverter::str_to_mdate(str, date, date_sql_mode))) {
@@ -5366,6 +5588,7 @@ int ObIJsonBase::to_mdate(ObMySQLDate &value, ObDateSqlMode date_sql_mode) const
 
     default: {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to cast json type to date", K(ret), K(json_type()));
       break;
     }
   }
@@ -5404,6 +5627,7 @@ int ObIJsonBase::to_time(int64_t &value) const
       const char *data = get_data();
       if (OB_ISNULL(data)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("data is null", K(ret));
       } else {
         ObString str(static_cast<int32_t>(length), static_cast<int32_t>(length), data);
         if (OB_FAIL(ObTimeConverter::str_to_time(str, time))) {
@@ -5420,6 +5644,7 @@ int ObIJsonBase::to_time(int64_t &value) const
     }
     default: {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to cast json type to time", K(ret), K(json_type()));
       break;
     }
   }
@@ -5554,6 +5779,7 @@ int ObIJsonBase::to_bit(uint64_t &value) const
       const char *data = get_data();
       if (OB_ISNULL(data)) {
         ret = OB_ERR_NULL_VALUE;
+        LOG_WARN("data is null", K(ret));
       } else {
         ObString str(static_cast<int32_t>(length), static_cast<int32_t>(length), data);
         if (OB_FAIL(ObJsonBaseUtil::string_to_bit(str, bit))) {
@@ -5569,6 +5795,7 @@ int ObIJsonBase::to_bit(uint64_t &value) const
   
     default: {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to cast json type to bit", K(ret), K(j_type));
       break;
     }
   }
@@ -5611,12 +5838,16 @@ int ObJsonBaseFactory::get_json_base(ObIAllocator *allocator, const char *ptr, u
   }
   if (OB_ISNULL(allocator) || OB_ISNULL(t_allocator)) { // check allocator
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("param allocator is NULL", K(ret), KP(allocator), KP(ptr));
   } else if (OB_ISNULL(ptr) || length == 0) {
     ret = OB_ERR_INVALID_JSON_TEXT_IN_PARAM;
+    LOG_WARN("param is NULL", K(ret), KP(ptr), K(length));
   } else if (in_type != ObJsonInType::JSON_TREE && in_type != ObJsonInType::JSON_BIN) { // check in_type
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("param in_type is invalid", K(ret), K(in_type));
   } else if (expect_type != ObJsonInType::JSON_TREE && expect_type != ObJsonInType::JSON_BIN) { // check expect_type
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("param expect_type is invalid", K(ret), K(expect_type));
   } else if (in_type == ObJsonInType::JSON_TREE) {
     ObJsonNode *j_tree = NULL;
     if (OB_FAIL(ObJsonParser::get_tree(t_allocator, ptr, length, j_tree, parse_flag, max_depth_config))) {
@@ -5626,28 +5857,31 @@ int ObJsonBaseFactory::get_json_base(ObIAllocator *allocator, const char *ptr, u
       if (OB_NOT_NULL(j_bin)) {
       } else if (OB_ISNULL(buf = allocator->alloc(sizeof(ObJsonBin)))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory", K(ret), K(in_type), K(expect_type), K(sizeof(ObJsonBin)));
       } else {
         j_bin = new (buf) ObJsonBin(allocator);
       }
       if (OB_FAIL(ret)) {
+      } else if (OB_ISNULL(j_bin) || !j_bin->is_bin()) {
+        ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("j_bin can not be null", K(ret));
+      } else if (OB_FAIL(j_bin->parse_tree(j_tree))) {
       } else {
-        OB_ASSERT(j_bin != nullptr && j_bin->is_bin());
-        if (OB_FAIL(j_bin->parse_tree(j_tree))) {
-        } else {
-          out = j_bin;
-        }
+        out = j_bin;
       }
     }
   } else if (in_type == ObJsonInType::JSON_BIN) {
     if (OB_NOT_NULL(buf)) {
     } else if (OB_ISNULL(buf = allocator->alloc(sizeof(ObJsonBin)))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("fail to alloc memory", K(ret), K(in_type), K(expect_type), K(sizeof(ObJsonBin)));
     }
     if (OB_SUCC(ret)) {
       j_bin = new (buf) ObJsonBin(ptr, length, allocator);
       if (OB_FAIL(j_bin->reset_iter())) {
       } else if (expect_type == ObJsonInType::JSON_BIN) {
         if (is_schema && OB_FAIL(ObJsonBaseUtil::check_json_schema_ref_def(*allocator, j_bin))) {
+          LOG_WARN("fail to check json sceham", K(ret), K(in_type), K(expect_type));
         } else {
           out = j_bin;
         }
@@ -5681,14 +5915,18 @@ int ObJsonBaseFactory::transform(ObIAllocator *allocator, ObIJsonBase *src,
 
   if (OB_ISNULL(allocator) || OB_ISNULL(src)) { // check allocator
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("param allocator is NULL", K(ret), KP(allocator), KP(src));
   } else if (src_type != ObJsonInType::JSON_TREE && src_type != ObJsonInType::JSON_BIN) { // check in_type
     ret = OB_NOT_SUPPORTED;
+    LOG_WARN("param src_type is invalid", K(ret), K(src_type));
   } else if (expect_type != ObJsonInType::JSON_TREE && expect_type != ObJsonInType::JSON_BIN) { // check expect_type
     ret = OB_NOT_SUPPORTED;
+    LOG_WARN("param expect_type is invali", K(ret), K(expect_type));
   } else if (src_type == ObJsonInType::JSON_TREE) { // input:tree
     if (expect_type == ObJsonInType::JSON_BIN) { // to bin
       if (OB_ISNULL(buf = allocator->alloc(sizeof(ObJsonBin)))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory", K(ret), K(src_type), K(expect_type), K(sizeof(ObJsonBin)));
       } else {
         ObJsonBin *j_bin = new (buf) ObJsonBin(allocator);
         ObJsonNode *j_tree = static_cast<ObJsonNode *>(src);
@@ -5726,6 +5964,7 @@ int ObJsonBaseFactory::alloc_node(ObIAllocator &allocator, const ObJsonNodeType 
     case ObJsonNodeType::J_NULL: {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonNull, &allocator))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for null json node", K(ret), "size", sizeof(ObJsonNull));
       }
       break;
     }
@@ -5734,6 +5973,7 @@ int ObJsonBaseFactory::alloc_node(ObIAllocator &allocator, const ObJsonNodeType 
     {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonDecimal, &allocator, number::ObNumber()))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for decimal json node", K(ret), "size", sizeof(ObJsonDecimal));
       }
       break;
     }
@@ -5742,6 +5982,7 @@ int ObJsonBaseFactory::alloc_node(ObIAllocator &allocator, const ObJsonNodeType 
     {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonInt, &allocator, 0))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for int json node", K(ret), "size", sizeof(ObJsonInt));
       }
       break;
     }
@@ -5750,6 +5991,7 @@ int ObJsonBaseFactory::alloc_node(ObIAllocator &allocator, const ObJsonNodeType 
     {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonUint, &allocator, 0))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for uint json node", K(ret), "size", sizeof(ObJsonUint));
       }
       break;
     }
@@ -5758,36 +6000,42 @@ int ObJsonBaseFactory::alloc_node(ObIAllocator &allocator, const ObJsonNodeType 
     {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonDouble, &allocator, 0))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for double json node", K(ret), "size", sizeof(ObJsonDouble));
       }
       break;
     }
     case ObJsonNodeType::J_OFLOAT: {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonOFloat, &allocator, 0))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for float json node", K(ret), "size", sizeof(ObJsonOFloat));
       }
       break;
     }
     case ObJsonNodeType::J_STRING: {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonString, &allocator, nullptr, 0))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for str json node", K(ret));
       }
       break;
     }
     case ObJsonNodeType::J_OBJECT: {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonObject, &allocator, &allocator))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for obj json node", K(ret), "size", sizeof(ObJsonObject));
       }
       break;
     }
     case ObJsonNodeType::J_ARRAY: {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonArray, &allocator, &allocator))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for array json node", K(ret), "size", sizeof(ObJsonArray));
       }
       break;
     }
     case ObJsonNodeType::J_BOOLEAN: {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonBoolean, &allocator, false))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for boolean json node", K(ret), "size", sizeof(ObJsonBoolean));
       }
       break;
     }
@@ -5804,12 +6052,14 @@ int ObJsonBaseFactory::alloc_node(ObIAllocator &allocator, const ObJsonNodeType 
     {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonDatetime, &allocator, type, ObTime()))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for date time json node", K(ret), "size", sizeof(ObJsonDatetime));
       }
       break;
     }
     case ObJsonNodeType::J_OPAQUE: {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonOpaque, &allocator, ObString(), ObNullType))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for opaque json node", K(ret), "size", sizeof(ObJsonOpaque));
       }
       break;
     }
@@ -5819,11 +6069,13 @@ int ObJsonBaseFactory::alloc_node(ObIAllocator &allocator, const ObJsonNodeType 
     case ObJsonNodeType::J_ORAWID: {
       if (OB_ISNULL(j_node = OB_NEWx(ObJsonORawString, &allocator, nullptr, 0, type))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for raw str json node", K(ret), "size", sizeof(ObJsonORawString));
       }
       break;
     }
     default: {
       ret = OB_NOT_SUPPORTED;
+      LOG_WARN("invalid node type.", K(ret), K(type));
       break;
     }
   }
@@ -6062,6 +6314,7 @@ int ObJsonBaseUtil::add_double_quote(ObJsonBuffer &j_buf, const char *cptr, uint
 
   if (OB_ISNULL(cptr)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("param is null or length is 0", K(ret), KP(cptr), K(length));
   } else if (OB_FAIL(j_buf.reserve(length + 2))) {
   } else if (OB_FAIL(j_buf.append("\""))) {
   } else {
@@ -6074,6 +6327,8 @@ int ObJsonBaseUtil::add_double_quote(ObJsonBuffer &j_buf, const char *cptr, uint
       // Most characters do not need to be escaped. 
       // Append the characters that do not need to be escaped
       if (OB_FAIL(j_buf.append(cptr, next_special - cptr, 0))) {
+        LOG_WARN("fail to append common segments to j_buf", K(ret), K(length),
+                                                           K(next_special - cptr));
         break;
       }
 
@@ -6084,12 +6339,14 @@ int ObJsonBaseUtil::add_double_quote(ObJsonBuffer &j_buf, const char *cptr, uint
 
       // Handle escape characters.
       if (OB_FAIL(escape_character(*cptr++, j_buf))) {
+        LOG_WARN("fail to escape character", K(ret), K(length), K(*cptr));
         break;
       }
     };
   }
 
   if (OB_SUCC(ret) && OB_FAIL(j_buf.append("\""))) {
+    LOG_WARN("fail to append end double quote to j_buf", K(ret), K(length));
   }
 
   return ret;
@@ -6209,6 +6466,7 @@ int ObJsonBaseUtil::compare_decimal_double(const number::ObNumber &a, double b, 
       if (ret == OB_NUMERIC_OVERFLOW) {
         res = a_is_negative ? 1 : -1; // They're both negative numbers. The larger the number, the smaller the number.
       } else { // Conversion error.
+        LOG_WARN("fail to cast double to number", K(ret), K(b));
       }
     } else {
       res = a.compare(b_num);
@@ -6299,6 +6557,7 @@ int ObJsonBaseUtil::number_to_uint(number::ObNumber &nmb, uint64_t &value)
   uint64_t val = 0;
   
   if (OB_UNLIKELY(!nmb.is_integer() && OB_FAIL(nmb.round(0)))) {
+    LOG_WARN("round failed", K(ret), K(nmb));
   } else if (nmb.is_valid_int64(i)) {
     val = static_cast<uint64_t>(i);
   } else if (nmb.is_valid_uint64(ui)) {
@@ -6423,6 +6682,7 @@ int ObJsonBaseUtil::sort_array_pointer(ObIJsonBase *orig, ObSortedVector<ObIJson
       int tmp_ret = vec.insert_unique(tmp, insert_pos, Array_less(), Array_equal());
       if (tmp_ret != OB_SUCCESS && tmp_ret != OB_CONFLICT_VALUE) {
         ret = COVER_SUCC(tmp_ret);
+        LOG_WARN("fail to push_back into result", K(ret));
       }
     }
   }
@@ -6498,6 +6758,7 @@ int ObJsonBaseUtil::check_json_schema_ref_def(ObIAllocator& allocator, ObIJsonBa
   INIT_SUCC(ret);
   if (OB_ISNULL(json_doc)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("should not be null", K(ret));
   } else {
     ObJsonSeekResult hit;
     common::ObString path_ref;
@@ -6509,10 +6770,12 @@ int ObJsonBaseUtil::check_json_schema_ref_def(ObIAllocator& allocator, ObIJsonBa
       for (int i = 0; OB_SUCC(ret) && i < hit.size(); ++i) {
         if (OB_ISNULL(hit[i])) {
           ret = OB_ERR_NULL_VALUE;
+          LOG_WARN("should not be null", K(ret));
         } else if (hit[i]->json_type() == ObJsonNodeType::J_STRING) {
           ObString str(hit[i]->get_data_length(), hit[i]->get_data());
           if (str.length() > 0 && str[0] != '#') {
             ret = OB_ERR_UNSUPPROTED_REF_IN_JSON_SCHEMA;
+            LOG_WARN("unsupported ref in json schema", K(ret));
           }
         }
       } // check value of "$ref", if is string must begin with "#"
@@ -6593,6 +6856,7 @@ int ObJsonSeekResult::push_node(ObIJsonBase *node)
   if (size_ == 0) {
     res_point_ = node;
   } else if (res_vector_.remain() == 0 && OB_FAIL(res_vector_.reserve(OB_PATH_RESULT_EXPAND_SIZE))) {
+    LOG_WARN("fail to expand vactor", K(ret));
   } else if (OB_FAIL(res_vector_.push_back(node))) {
   }
   size_ ++;

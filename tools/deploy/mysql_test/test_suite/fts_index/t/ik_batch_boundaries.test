@@ -1,0 +1,17 @@
+# A batch must emit only its own tokens, including unmatched CJK characters.
+--result_format 4
+--disable_query_log
+set names utf8mb4;
+--echo smart CJK batches
+select json_extract(tokenize(cast(repeat(concat(convert(0xe4b8ad using utf8mb4),' '),600) as char character set utf8mb4), 'ik', '[{"output":"all"}]'), '$.doc_len') = 600 as ok;
+--echo max_word CJK batches
+select json_extract(tokenize(cast(repeat(concat(convert(0xe4b8ad using utf8mb4),' '),600) as char character set utf8mb4), 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"max_word"}]}]'), '$.doc_len') = 600 as ok;
+--echo smart ASCII batches
+select json_extract(tokenize(cast(repeat('hello ',600) as char character set utf8mb4), 'ik', '[{"output":"all"}]'), '$.doc_len') = 600 as ok;
+--echo max_word ASCII batches
+select json_extract(tokenize(cast(repeat('hello ',600) as char character set utf8mb4), 'ik', '[{"output":"all"},{"additional_args":[{"ik_mode":"max_word"}]}]'), '$.doc_len') = 600 as ok;
+--echo connectors keep long tokens intact
+select json_contains(tokenize(cast(concat(repeat('abc-',300),'tail') as char character set utf8mb4), 'ik', '[{"output":"all"}]'), json_object(concat(repeat('abc-',300),'tail'),1), '$.tokens') as ok;
+--echo numeric connectors keep long tokens intact
+select json_contains(tokenize(cast(concat(repeat('123,',300),'456') as char character set utf8mb4), 'ik', '[{"output":"all"}]'), json_object(concat(repeat('123,',300),'456'),1), '$.tokens') as ok;
+--enable_query_log

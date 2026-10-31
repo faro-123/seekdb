@@ -16,7 +16,6 @@
 
 #define USING_LOG_PREFIX SQL_EXE
 
-#include "config_bridge.h"
 #include "ob_granule_util.h"
 #include "data_plane/access/ob_parallel_range_task_planner.h"
 #include "share/config/ob_server_config.h"
@@ -74,11 +73,11 @@ int ObGranuleUtil::split_block_ranges(ObExecContext &exec_ctx,
                                       ObIAllocator &allocator,
                                       const ObTableScanSpec *tsc,//may be is null, attention use
                                       const ObIArray<common::ObNewRange> &in_ranges,
-                                      const ObIArray<DASRuntimeTabletAccess*> &tablets,
+                                      const ObIArray<ObDASTabletLoc*> &tablets,
                                       int64_t parallelism,
                                       int64_t tablet_size,
                                       bool force_partition_granule,
-                                      common::ObIArray<DASRuntimeTabletAccess*> &granule_tablets,
+                                      common::ObIArray<ObDASTabletLoc*> &granule_tablets,
                                       common::ObIArray<common::ObNewRange> &granule_ranges,
                                       common::ObIArray<int64_t> &granule_idx,
                                       bool range_independent)
@@ -93,6 +92,7 @@ int ObGranuleUtil::split_block_ranges(ObExecContext &exec_ctx,
    */
   if (in_ranges.count() <= 0 || tablets.count() <= 0) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("ranges/tablets is empty", K(in_ranges), K(tablets), K(ret));
   } else if (OB_FAIL(remove_empty_range(in_ranges, ranges, only_empty_range))) {
   } else if (force_partition_granule
              || only_empty_range) {
@@ -153,10 +153,10 @@ int ObGranuleUtil::split_block_granule(ObExecContext &exec_ctx,
                                       ObIAllocator &allocator,
                                       const ObTableScanSpec *tsc,//may be is null, attention use!
                                       const ObIArray<ObNewRange> &input_ranges,
-                                      const ObIArray<DASRuntimeTabletAccess*> &tablets,
+                                      const ObIArray<ObDASTabletLoc*> &tablets,
                                       int64_t parallelism,
                                       int64_t tablet_size,
-                                      ObIArray<DASRuntimeTabletAccess*> &granule_tablets,
+                                      ObIArray<ObDASTabletLoc*> &granule_tablets,
                                       ObIArray<ObNewRange> &granule_ranges,
                                       ObIArray<int64_t> &granule_idx,
                                       bool range_independent)
@@ -172,6 +172,8 @@ int ObGranuleUtil::split_block_granule(ObExecContext &exec_ctx,
   // 1. check the validity of input parameters
   if (input_ranges.count() < 1 || tablets.count() < 1 || parallelism < 1 || tablet_size < 1) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("the invalid argument",
+      K(ret), K(input_ranges.count()), K(tablets.count()), K(parallelism), K(tablet_size));
   }
 
   // 2. get size for each partition, and calc the total size for all partitions
@@ -182,7 +184,7 @@ int ObGranuleUtil::split_block_granule(ObExecContext &exec_ctx,
   bool need_convert_new_range = true;//only rowid range need extra convert.
   if (OB_SUCC(ret)) {
     for (int i = 0; i < tablets.count() && OB_SUCC(ret); i++) {
-      const DASRuntimeTabletAccess &tablet = *tablets.at(i);
+      const ObDASTabletLoc &tablet = *tablets.at(i);
       int64_t partition_size = 0;
       // get partition size from storage
       if (need_convert_new_range &&
@@ -192,6 +194,7 @@ int ObGranuleUtil::split_block_granule(ObExecContext &exec_ctx,
                                                    input_ranges,
                                                    input_store_ranges,
                                                    need_convert_new_range))) {
+        LOG_WARN("failed to convert new range to store range", K(ret));
       } else if (OB_FAIL(ObDASSimpleUtils::get_multi_ranges_cost(exec_ctx, tablets.at(i),
                                                                  input_store_ranges,
                                                                  partition_size))) {
@@ -217,7 +220,7 @@ int ObGranuleUtil::split_block_granule(ObExecContext &exec_ctx,
   // 3. calc the total number of tasks for all partitions
   int64_t esti_task_cnt_by_data_size = 0;
   if (OB_SUCC(ret)) {
-    data_plane::ObParallelRangeTaskParams params(config::px_task_size() >> 10);
+    data_plane::ObParallelRangeTaskParams params(GCONF.px_task_size >> 10);
     params.parallelism_ = parallelism;
     params.expected_task_load_kb_ = tablet_size/1024;
     if (OB_FAIL(data_plane::ObParallelRangeTaskPlanner::compute_total_task_count(
@@ -245,7 +248,7 @@ int ObGranuleUtil::split_block_granule(ObExecContext &exec_ctx,
   if (OB_SUCC(ret)) {
     int64_t tablet_idx = 0;
     for (int i = 0; i < tablets.count() && OB_SUCC(ret); i++) {
-      DASRuntimeTabletAccess *tablet = tablets.at(i);
+      ObDASTabletLoc *tablet = tablets.at(i);
       int64_t expected_task_cnt = task_cnt_each_partitions.at(i);
       // split input ranges to n task by PG interface
       if (need_convert_new_range &&
@@ -255,6 +258,7 @@ int ObGranuleUtil::split_block_granule(ObExecContext &exec_ctx,
                                                    input_ranges,
                                                    input_store_ranges,
                                                    need_convert_new_range))) {
+        LOG_WARN("failed to convert new range to store range", K(ret));
       } else if (OB_FAIL(get_tasks_for_partition(exec_ctx,
                                                  allocator,
                                                  expected_task_cnt,
@@ -275,6 +279,8 @@ int ObGranuleUtil::split_block_granule(ObExecContext &exec_ctx,
           granule_tablets.count() != granule_ranges.count() ||
           granule_tablets.count() != granule_idx.count()) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("the ranges or offsets are empty", K(ret), K(granule_tablets.count()),  K(granule_ranges.count()), 
+                                      K(granule_idx.count()), K(granule_tablets), K(granule_ranges), K(granule_idx));
       }
     }
   }
@@ -314,11 +320,14 @@ int ObGranuleUtil::compute_task_count_each_partition(int64_t total_size,
   // check the size of task_cnt_each_partition array
   if (OB_SUCC(ret) && task_cnt_each_partition.count() != size_each_partition.count()) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("the size of task count each partition is not right",
+      K(ret), K(size_each_partition.count()), K(task_cnt_each_partition.count()));
   }
   // check the returned result
   for (int i = 0; i < task_cnt_each_partition.count() && OB_SUCC(ret); i++) {
     if (task_cnt_each_partition.at(i) < 1) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("the partition has error task number", K(ret), K(task_cnt_each_partition.at(i)));
     }
   }
 
@@ -328,9 +337,9 @@ int ObGranuleUtil::compute_task_count_each_partition(int64_t total_size,
 int ObGranuleUtil::get_tasks_for_partition(ObExecContext &exec_ctx,
                                            ObIAllocator &allocator,
                                            int64_t expected_task_cnt,
-                                           DASRuntimeTabletAccess &tablet,
+                                           ObDASTabletLoc &tablet,
                                            ObIArray<ObStoreRange> &input_storage_ranges,
-                                           common::ObIArray<DASRuntimeTabletAccess*> &granule_tablets,
+                                           common::ObIArray<ObDASTabletLoc*> &granule_tablets,
                                            common::ObIArray<common::ObNewRange> &granule_ranges,
                                            common::ObIArray<int64_t> &granule_idx,
                                            int64_t &tablet_idx,
@@ -340,6 +349,7 @@ int ObGranuleUtil::get_tasks_for_partition(ObExecContext &exec_ctx,
   ObArrayArray<ObStoreRange> multi_range_split_array;
   if (expected_task_cnt < 1) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arg", K(ret), K(expected_task_cnt));
   } else if (expected_task_cnt == 1) {
     // no need to split the input_ranges, if the expected count of task.
     for (int i = 0; i < input_storage_ranges.count() && OB_SUCC(ret); i++) {
@@ -372,6 +382,7 @@ int ObGranuleUtil::get_tasks_for_partition(ObExecContext &exec_ctx,
         storage_task_ranges.at(j).to_new_range(new_range);
         if (OB_INVALID_INDEX == new_range.table_id_) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("invalid table id", K(ret), K(new_range), K(multi_range_split_array.at(i)));
         } else if (OB_FAIL(granule_tablets.push_back(&tablet))) {
         } else  if (OB_FAIL(granule_ranges.push_back(new_range))) {
         } else if (OB_FAIL(granule_idx.push_back(tablet_idx))) {

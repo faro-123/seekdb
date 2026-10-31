@@ -26,6 +26,7 @@ int ObGeoToTreeVisitor::alloc_geo_tree_obj(T *&obj)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(allocator_)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("allocator is null", K(ret));
   } else {
     void *buf = allocator_->alloc(sizeof(T));
     if (OB_ISNULL(buf)) {
@@ -77,6 +78,7 @@ int ObGeoToTreeVisitor::create_geo_multi_point(T_TREE *&geo, T_IBIN *geo_ibin)
   const T_BIN *geo_bin = reinterpret_cast<const T_BIN *>(geo_ibin->val());
   if (OB_ISNULL(geo_bin)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("geo value is null", K(ret));
   } else {
     geo = new(geo)T_TREE(geo_ibin->get_srid(), *allocator_);
     if (OB_FAIL(geo->reserve(geo_bin->size()))) {
@@ -173,6 +175,7 @@ int ObGeoToTreeVisitor::polygon_visit(p_ibin_type *geo)
   const P_BIN_TYPE *polygon_bin = reinterpret_cast<const P_BIN_TYPE*>(geo->val());
   if (OB_ISNULL(polygon_bin)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("geo value is null", K(ret));
   } else if (OB_FAIL(alloc_geo_tree_obj(polygon))) {
   } else {
     polygon = new(polygon)P_TYPE(geo->get_srid(), *allocator_);
@@ -205,6 +208,7 @@ int ObGeoToTreeVisitor::polygon_visit(p_ibin_type *geo)
               }       
             }
             if (OB_SUCC(ret) && OB_FAIL(polygon->push_back(tree_linearring))) {
+              LOG_WARN("failed to push ring to polygon", K(ret));
             }
           }
         }

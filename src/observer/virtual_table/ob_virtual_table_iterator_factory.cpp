@@ -54,8 +54,8 @@
 #include "observer/virtual_table/ob_all_data_type_table.h"
 #include "observer/virtual_table/ob_all_virtual_memstore_usage.h"
 #include "observer/virtual_table/ob_all_virtual_tablet_info.h"
-// All local virtual tables are now in a unified header
-#include "observer/virtual_table/ob_all_virtual_local_tables.h"
+// All SQLite virtual tables are now in a unified header
+#include "observer/virtual_table/ob_all_virtual_sqlite_tables.h"
 #include "observer/virtual_table/ob_all_virtual_sys_parameter_stat.h"
 #include "observer/virtual_table/ob_all_virtual_memstore_info.h"
 #include "observer/virtual_table/ob_all_virtual_minor_freeze_info.h"
@@ -223,9 +223,10 @@ ObVirtualTableIteratorFactory::ObVirtualTableIteratorFactory(ObVTIterCreator &vt
 }
 
 ObVirtualTableIteratorFactory::ObVirtualTableIteratorFactory(ObLocalManagementService &local_management_service,
-                                                             common::ObAddr &addr) :
+                                                             common::ObAddr &addr,
+                                                             common::ObServerConfig *config) :
     ObIVirtualTableIteratorFactory(),
-    vt_iter_creator_(local_management_service, addr)
+    vt_iter_creator_(local_management_service, addr, config)
 {
 }
 
@@ -294,6 +295,7 @@ int ObVTIterCreator::check_is_index(const share::schema::ObTableSchema &table,
   int ret = OB_SUCCESS;
   if (NULL == index_name) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), KP(index_name));
   } else {
     is_index = false;
     int64_t index_name_len = strlen(index_name);
@@ -1334,7 +1336,7 @@ int ObVTIterCreator::create_vt_iter(ObVTableScanParam &params,
           case OB_ALL_VIRTUAL_SERVER_STAT_TID: {
             ObAllVirtualServer *server = NULL;
             if (OB_FAIL(NEW_VIRTUAL_TABLE(ObAllVirtualServer, server))) {
-            } else if (OB_FAIL(server->init(addr_))) {
+            } else if (OB_FAIL(server->init(addr_, config_))) {
             } else {
               vt_iter = static_cast<ObVirtualTableIterator *>(server);
             }
@@ -1722,9 +1724,9 @@ int ObVTIterCreator::create_vt_iter(ObVTableScanParam &params,
           }
         END_CREATE_VT_ITER_SWITCH_LAMBDA
 
-#define LOCAL_VIRTUAL_TABLE_CREATE_ITER
+#define SQLITE_VIRTUAL_TABLE_CREATE_ITER
 #include "share/inner_table/ob_inner_table_schema_misc.ipp"
-#undef LOCAL_VIRTUAL_TABLE_CREATE_ITER
+#undef SQLITE_VIRTUAL_TABLE_CREATE_ITER
 
         if (OB_SUCC(ret) && !processed) {
           ret = OB_ERR_UNEXPECTED;

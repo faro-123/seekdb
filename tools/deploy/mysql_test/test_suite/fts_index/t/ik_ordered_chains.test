@@ -1,0 +1,16 @@
+# Cover separated and overlapping chains in both IK modes.
+--result_format 4
+--disable_query_log
+set names utf8mb4;
+set @text=concat('alpha !!! ',convert(0xe58d97e4baace5b882e995bfe6b19fe5a4a7e6a1a5 using utf8mb4),' ??? ',convert(0xe9be98 using utf8mb4),' 123,456.78 beta ',convert(0xe781abe6989fe69687 using utf8mb4));
+--echo smart separated chains and unmatched characters
+select tokenize(@text,'ik','[{"output":"all"}]');
+--echo max_word overlapping chains
+select tokenize(@text,'ik','[{"output":"all"},{"additional_args":[{"ik_mode":"max_word"}]}]');
+--echo smart adjacent overlapping words
+select tokenize(convert(0xe7a094e7a9b6e7949fe591bde8b5b7e6ba90e4b8ade58d8ee4babae6b091e585b1e5928ce59bbd using utf8mb4),'ik','[{"output":"all"}]');
+--echo max_word adjacent overlapping words
+select tokenize(convert(0xe7a094e7a9b6e7949fe591bde8b5b7e6ba90e4b8ade58d8ee4babae6b091e585b1e5928ce59bbd using utf8mb4),'ik','[{"output":"all"},{"additional_args":[{"ik_mode":"max_word"}]}]');
+--echo punctuation-only batches
+select tokenize('!!! ???','ik','[{"output":"all"}]');
+--enable_query_log

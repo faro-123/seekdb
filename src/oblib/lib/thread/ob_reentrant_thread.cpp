@@ -44,8 +44,10 @@ int ObReentrantThread::create(const int64_t thread_cnt, const char* thread_name,
   int ret = OB_SUCCESS;
   if (created_) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("already created", K(ret));
   }  else if (thread_cnt <= 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(thread_cnt));
   } else if (OB_FAIL(cond_.init(wait_event_id))) {
   } else {
     thread_name_ = thread_name;
@@ -79,6 +81,7 @@ int ObReentrantThread::logical_start()
   int ret = OB_SUCCESS;
   if (!created_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else {
     if (stop_) {
       ObThreadCondGuard guard(cond_);
@@ -96,6 +99,7 @@ void ObReentrantThread::logical_stop()
   int ret = OB_SUCCESS;
   if (!created_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else {
     ObThreadCondGuard guard(cond_);
     stop_ = true;
@@ -109,10 +113,12 @@ void ObReentrantThread::logical_wait()
   int ret = OB_SUCCESS;
   if (!created_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else {
     ObThreadCondGuard guard(cond_);
     if (running_cnt_ < 0) {
       ret = OB_INNER_STAT_ERROR;
+      LOG_WARN("inner status error", K(ret), K_(running_cnt));
     } else {
       while (running_cnt_ > 0) {
         cond_.wait();

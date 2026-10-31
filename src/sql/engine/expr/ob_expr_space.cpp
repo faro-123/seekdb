@@ -47,8 +47,10 @@ inline int ObExprSpace::calc_result_type1(
     }
   } else if (OB_ISNULL(raw_expr = type_ctx.get_raw_expr())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("raw_expr is null", K(ret), K(type_ctx));
   } else if (OB_ISNULL(child_raw_expr = raw_expr->get_param_expr(0))) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("get child expr fail", K(ret), KPC(raw_expr), K(type_ctx));
   } else if (T_FUN_SYS_CAST == child_raw_expr->get_expr_type()
         && child_raw_expr->has_flag(IS_OP_OPERAND_IMPLICIT_CAST)
         && child_raw_expr->get_param_expr(0)->is_const_raw_expr()) {
@@ -128,6 +130,7 @@ int ObExprSpace::eval_space(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &expr_da
   ObSolidifiedVarsGetter helper(expr, ctx, ctx.exec_ctx_.get_my_session());
   if (OB_ISNULL(ctx.exec_ctx_.get_my_session())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected null session", K(ret));
   } else if (OB_FAIL(expr.args_[0]->eval(ctx, count))) {
   } else if (count->is_null()) {
     expr_datum.set_null();

@@ -45,6 +45,7 @@ int ObTruncateInfoArray::init_for_first_creation(ObIAllocator &allocator)
   int ret = OB_SUCCESS;
   if (IS_INIT) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret));
   } else {
     allocator_ = &allocator;
     src_ = TRUN_SRC_MDS;
@@ -60,8 +61,10 @@ int ObTruncateInfoArray::init_with_kv_cache_array(
   int ret = OB_SUCCESS;
   if (IS_INIT) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret));
   } else if (OB_UNLIKELY(input_array.empty())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument to init truncate info array", KR(ret), K(input_array));
   } else {
     allocator_ = &allocator;
     src_ = TRUN_SRC_KV_CACHE;
@@ -83,6 +86,7 @@ int ObTruncateInfoArray::append_with_deep_copy(const ObTruncateInfo &truncate_in
   ObTruncateInfo *info = nullptr;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not inited", K(ret), K_(is_inited));
   } else if (OB_FAIL(ObTabletObjLoadHelper::alloc_and_new(*allocator_, info))) {
   } else if (OB_FAIL(info->assign(*allocator_, truncate_info))) {
   } else {
@@ -101,6 +105,7 @@ int ObTruncateInfoArray::append_ptr(ObTruncateInfo &truncate_info)
   int ret = OB_SUCCESS;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not inited", K(ret), K_(is_inited));
   } else {
     ret = inner_append_and_sort(truncate_info);
   }

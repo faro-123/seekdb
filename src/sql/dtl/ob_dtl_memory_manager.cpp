@@ -16,7 +16,6 @@
 
 #define USING_LOG_PREFIX SQL_DTL
 
-#include "config_bridge.h"
 #include "ob_dtl_memory_manager.h"
 
 using namespace oceanbase::common;
@@ -32,25 +31,31 @@ int ObDtlMemoryManager::init()
 {
   int ret = OB_SUCCESS;
   char *buf = nullptr;
-  hash_cnt_ = next_pow2(::oceanbase::config::_px_chunklist_count_ratio()) * HASH_CNT;
+  hash_cnt_ = next_pow2(common::ObServerConfig::get_instance()._px_chunklist_count_ratio) * HASH_CNT;
   ObMemAttr attr("SqlDtlMgr");
   buf = reinterpret_cast<char*>(ob_malloc(hash_cnt_ * sizeof(ObDtlChannelMemManager), attr));
   if (nullptr == buf) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("failed to alloc channel memory manager", K(ret));
   } else if (OB_FAIL(mem_mgrs_.reserve(hash_cnt_))) {
+    LOG_WARN("failed to reserver memory manager", K(ret));
   } else if (OB_FAIL(times_.reserve(hash_cnt_))) {
+    LOG_WARN("failed to reserver times", K(ret));
   } else {
     for (int i = 0; i < hash_cnt_ && OB_SUCC(ret); ++i) {
       ObDtlChannelMemManager *ch_mem_mgr = new (buf + i * sizeof(ObDtlChannelMemManager)) ObDtlChannelMemManager (*this);
       if (OB_FAIL(ch_mem_mgr->init())) {
+        LOG_WARN("failed to init channel memory manager", K(ret));
       } else {
         ch_mem_mgr->set_seqno(i);
         if (OB_FAIL(mem_mgrs_.push_back(ch_mem_mgr))) {
+          LOG_WARN("failed to push back memory manager", K(ret));
         }
       }
     }
     for (int i = 0; i < hash_cnt_ && OB_SUCC(ret); ++i) {
       if (OB_FAIL(times_.push_back(0))) {
+        LOG_WARN("failed to push back memory manager", K(ret));
       }
     }
   }
@@ -70,7 +75,9 @@ int ObDtlMemoryManager::init()
       buf = nullptr;
     }
     times_.reset();
-    int64_t ratio = ::oceanbase::config::_px_chunklist_count_ratio();
+    int64_t ratio = common::ObServerConfig::get_instance()._px_chunklist_count_ratio;
+    LOG_WARN("failed to init DTL memory manager", K(ret),
+      "dtl buffer ratio", ratio);
   }
   return ret;
 }
@@ -81,10 +88,12 @@ int ObDtlMemoryManager::get_channel_mem_manager(int64_t idx, ObDtlChannelMemMana
   mgr = nullptr;
   if (0 > idx || idx > hash_cnt_) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected idx", K(ret), K(idx));
   } else {
     mgr = mem_mgrs_.at(idx);
     if (nullptr == mgr) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("mgr is null", K(ret), K(idx));
     }
   }
   return ret;
@@ -122,6 +131,7 @@ ObDtlLinkedBuffer *ObDtlMemoryManager::alloc(int64_t chid, int64_t size)
   int64_t hash_val = hash(chid);
   if (0 > hash_val || hash_val >= hash_cnt_) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("the has value must be less than hash_cnt_", K(ret), KP(chid), K(hash_val));
   } else {
     ObDtlChannelMemManager *mem_mgr = mem_mgrs_.at(hash_val);
     int64_t &n_times = times_.at(hash_val);
@@ -129,6 +139,7 @@ ObDtlLinkedBuffer *ObDtlMemoryManager::alloc(int64_t chid, int64_t size)
     buf = mem_mgr->alloc(chid, size);
     if (nullptr == buf) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("failed to allocate dtl buffer memory", K(ret));
     }
   }
   return buf;
@@ -189,7 +200,7 @@ int64_t ObDtlMemoryManager::variance_alloc_times()
 
 int64_t ObDtlMemoryManager::get_min_buffer_size()
 {
-  int64_t reserve_buffer_min_size = config::_parallel_min_message_pool();
+  int64_t reserve_buffer_min_size = GCONF._parallel_min_message_pool;
   return reserve_buffer_min_size;
 }
 

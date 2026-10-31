@@ -41,6 +41,7 @@ int ObLogTempTableAccess::generate_access_expr()
   int ret = OB_SUCCESS;
   if (OB_ISNULL(get_stmt())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("get unexpected null", K(ret));
   } else if (OB_FAIL(get_stmt()->get_column_exprs(table_id_, access_exprs_))) {
   } else { /*do nothing*/ }
   return ret;
@@ -64,11 +65,13 @@ int ObLogTempTableAccess::allocate_expr_post(ObAllocExprContext &ctx)
     ObRawExpr *expr = access_exprs_.at(i);
     if (OB_ISNULL(expr)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("null expr", K(ret));
     } else if (OB_FAIL(mark_expr_produced(expr,
                                           branch_id_,
                                           id_,
                                           ctx))) {
     } else if (!is_plan_root() && OB_FAIL(add_var_to_array_no_dup(output_exprs_, expr))) {
+      LOG_WARN("failed to add expr", K(ret));
     } else { /*do nothing*/ }
   }
   if (OB_SUCC(ret)) {
@@ -89,6 +92,7 @@ int ObLogTempTableAccess::do_re_est_cost(EstimateCostInfo &param, double &card, 
   get_plan()->get_selectivity_ctx().init_op_ctx(NULL, -1);
   if (OB_ISNULL(get_plan())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("get unexpected null", K(get_plan()),K(ret));
   } else if (OB_FAIL(ObOptSelectivity::calculate_selectivity(get_plan()->get_basic_table_metas(),
                                                             get_plan()->get_selectivity_ctx(),
                                                             get_filter_exprs(),
@@ -200,6 +204,7 @@ int ObLogTempTableAccess::get_card_without_filter(double &card)
   if (OB_FAIL(get_temp_table_plan(child_op))) {
   } else if (OB_ISNULL(child_op)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpect null operator", K(ret));
   } else {
     card = child_op->get_card();
   }

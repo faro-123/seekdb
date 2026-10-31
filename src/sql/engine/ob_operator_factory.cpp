@@ -146,6 +146,7 @@ template <int TYPE>
 int report_not_registered()
 {
   int ret = OB_ERR_UNEXPECTED;
+  LOG_WARN("not registered", K(ret));
   return ret;
 }
 
@@ -193,6 +194,7 @@ struct AllocSpecHelper
     typedef typename op_reg::ObOpTypeTraits<TYPE>::Spec SpecType;
     if (type != TYPE || child_cnt < 0) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("invalid argument", K(ret), K(type), LITERAL_K(TYPE), K(child_cnt));
     } else {
       const int64_t child_ptrs_bytes = child_cnt * sizeof(SpecType *);
       const int64_t aligned_child_ptrs_bytes = (child_ptrs_bytes + 15) & ~15;
@@ -200,11 +202,13 @@ struct AllocSpecHelper
       ObOpSpec **mem = static_cast<ObOpSpec **>(alloc.alloc(alloc_size));
       if (OB_ISNULL(mem)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("alloc memory failed", K(ret), K(alloc_size));
       } else {
         memset(mem, 0, sizeof(SpecType *) * child_cnt);
         void *spec_addr = reinterpret_cast<char *>(mem) + aligned_child_ptrs_bytes;
         spec = new (spec_addr) SpecType(alloc, type);
         if (OB_FAIL(spec->set_children_pointer(mem, child_cnt))) {
+          LOG_WARN("set children pointer failed", K(ret));
           spec->~ObOpSpec();
           spec = NULL;
           alloc.free(mem);
@@ -228,8 +232,11 @@ struct AllocOpHelper
     if ((Traints::has_input_ && NULL == input)
         || (!Traints::has_input_ && NULL != input)) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("input argument mismatch with registered status",
+               K(ret), KP(input), LITERAL_K(Traints::has_input_));
     } else if (child_cnt < 0) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("invalid argument", K(ret), LITERAL_K(TYPE), K(child_cnt));
     } else {
       const int64_t child_ptrs_bytes = child_cnt * sizeof(OpType *);
       const int64_t aligned_child_ptrs_bytes = (child_ptrs_bytes + 15) & ~15;
@@ -237,6 +244,7 @@ struct AllocOpHelper
       ObOperator **mem = static_cast<ObOperator **>(alloc.alloc(alloc_size));
       if (OB_ISNULL(mem)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("alloc memory failed", K(ret), K(alloc_size));
       } else {
         if (child_cnt > 0) {
           memset(mem, 0, sizeof(OpType *) * child_cnt);
@@ -245,6 +253,7 @@ struct AllocOpHelper
         op = new (op_addr) OpType(exec_ctx, spec, input);
         if (OB_FAIL(op->set_children_pointer(mem, child_cnt))
             || OB_FAIL(op->init())) {
+          LOG_WARN("set children pointer or init failed", K(ret));
           op->~ObOperator();
           op = NULL;
           alloc.free(mem);
@@ -266,6 +275,7 @@ struct AllocInputHelper
     input = static_cast<InputType *>(alloc.alloc(sizeof(InputType)));
     if (OB_ISNULL(input)) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("alloc memory failed", K(ret));
     } else {
       input = new (input) InputType(exec_ctx, spec);
     }
@@ -339,8 +349,10 @@ int ObOperatorFactory::alloc_op_spec(ObIAllocator &alloc, const ObPhyOperatorTyp
   int ret = OB_SUCCESS;
   if (!is_registered(type)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("static engine not implement", K(type), K(ret));
   } else if (child_cnt < 0) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid child cnt", K(ret), K(child_cnt), K(type));
   } else if (OB_FAIL(G_ALLOC_FUNCTION_ARRAY[type].spec_func_(
               alloc, type, child_cnt, spec))) {
   }
@@ -355,6 +367,9 @@ int ObOperatorFactory::alloc_operator(ObIAllocator &alloc, ObExecContext &exec_c
   int ret = OB_SUCCESS;
   if (child_cnt < 0 || !is_registered(type)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid child cnt or operator not registered, "
+             "please register in ob_operator_reg.h with REGISTER_OPERATOR",
+             K(ret), K(child_cnt), K(type));
   } else if (OB_FAIL(G_ALLOC_FUNCTION_ARRAY[type].op_func_(
               alloc, exec_ctx, spec, input, child_cnt, op))) {
   }
@@ -370,6 +385,9 @@ int ObOperatorFactory::alloc_op_input(ObIAllocator &alloc, ObExecContext &exec_c
   const ObPhyOperatorType type = spec.type_;
   if (!has_op_input(type)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("operator input not registered, "
+             "please register in ob_operator_reg.h with REGISTER_OPERATOR",
+             K(ret), K(type));
   } else if (OB_FAIL(G_ALLOC_FUNCTION_ARRAY[type].input_func_(
               alloc, exec_ctx, spec, input))) {
   }
@@ -384,6 +402,9 @@ int ObOperatorFactory::generate_spec(ObStaticEngineCG &cg,
   int ret = OB_SUCCESS;
   if (!is_registered(type)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid child cnt or operator not registered, "
+             "please register in ob_operator_reg.h with REGISTER_OPERATOR",
+             K(ret), K(type));
   } else if (OB_FAIL(G_ALLOC_FUNCTION_ARRAY[type].gen_spec_func_(
               cg, log_op, spec, in_root_job))) {
   }

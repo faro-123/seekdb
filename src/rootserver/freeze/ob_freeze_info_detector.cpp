@@ -16,7 +16,6 @@
 
 #define USING_LOG_PREFIX RS_COMPACTION
 
-#include "share/ob_server_struct.h"
 #include "rootserver/freeze/ob_freeze_info_detector.h"
 
 #include "rootserver/freeze/ob_major_merge_info_manager.h"
@@ -60,6 +59,7 @@ int ObMajorMergeInfoDetector::init(
   int ret = OB_SUCCESS;
   if (IS_INIT) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", KR(ret));
   } else {
     is_primary_service_ = is_primary_service;
     is_global_merge_info_adjusted_ = false;
@@ -81,6 +81,7 @@ int ObMajorMergeInfoDetector::start()
   int ret = OB_SUCCESS;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ObMajorMergeInfoDetector not init", K(ret));
   } else if (OB_FAIL(timer_.start())) {
   } else if (OB_FAIL(timer_.schedule(*this, 1 * 1000 * 1000L, true/*is_repeat*/))) {
   } else {
@@ -94,6 +95,7 @@ void ObMajorMergeInfoDetector::runTimerTask()
   int ret = OB_SUCCESS;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", KR(ret));
   } else if (is_paused()) {
     update_last_run_timestamp_();
   } else {
@@ -107,16 +109,18 @@ void ObMajorMergeInfoDetector::runTimerTask()
     SERVER_MODULE_SCOPE {
       LOG_INFO("start freeze_info_detector");
       update_last_run_timestamp_();
-      ObCurTraceId::init(GCTX.self_addr());
+      ObCurTraceId::init(GCONF.self_addr_);
 
       bool can_work = false;
       if (OB_FAIL(can_start_work(can_work))) {
       } else if (can_work) {
           if (OB_ISNULL(snapshot_gc_scn_renewer_)) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("snapshot gc scn renewer is null", KR(ret));
           } else if (!ATOMIC_LOAD(&is_replay_mode_)
                      && OB_FAIL(snapshot_gc_scn_renewer_->try_renew())) {
             if (REACH_TIME_INTERVAL(60 * 1000 * 1000L)) {
+              LOG_WARN("fail to renew gc snapshot", KR(ret), K_(is_primary_service));
             }
           }
 
@@ -153,6 +157,7 @@ int ObMajorMergeInfoDetector::check_need_broadcast(bool &need_broadcast)
   int ret = OB_SUCCESS;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", KR(ret));
   } else if (OB_FAIL(try_adjust_global_merge_info())) {
   } else if (OB_FAIL(major_merge_info_mgr_->check_need_broadcast(need_broadcast))) {
   }
@@ -164,6 +169,7 @@ int ObMajorMergeInfoDetector::try_broadcast_freeze_info()
   int ret = OB_SUCCESS;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", KR(ret));
   } else if (OB_FAIL(major_merge_info_mgr_->broadcast_freeze_info())) {
   } else {
     major_scheduler_idling_->wakeup();
@@ -197,6 +203,7 @@ int ObMajorMergeInfoDetector::try_reload_merge_info()
   int ret = OB_SUCCESS;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", KR(ret));
   } else if (OB_FAIL(major_merge_info_mgr_->try_reload_merge_info())) {
   }
   return ret;
@@ -208,6 +215,7 @@ int ObMajorMergeInfoDetector::can_start_work(bool &can_work)
   can_work = true;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", KR(ret));
   } else {
     // Bootstrap initializes the global snapshot GC SCN after the runtime becomes normal.
     // Wait for that initialization to avoid racing it.
@@ -217,6 +225,7 @@ int ObMajorMergeInfoDetector::can_start_work(bool &can_work)
       SCN snapshot_gc_scn;
       ObGlobalStatProxy global_stat_proxy(*sql_proxy_);
       if (OB_FAIL(global_stat_proxy.get_snapshot_gc_scn(snapshot_gc_scn))) {
+        LOG_WARN("can not get snapshot gc ts", KR(ret));
         ret = OB_SUCCESS;
         can_work = false;
       } else {
@@ -276,6 +285,8 @@ int ObMajorMergeInfoDetector::try_reload_freeze_info()
   if (!is_primary_service() || ATOMIC_LOAD(&is_replay_mode_)) {
     if (OB_ISNULL(major_merge_info_mgr_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to try reload freeze info, freeze info manager is null", KR(ret),
+               K_(is_primary_service));
     } else if (OB_FAIL(major_merge_info_mgr_->reload())) {
     }
   }
@@ -294,6 +305,8 @@ int ObMajorMergeInfoDetector::try_adjust_global_merge_info()
       is_global_merge_info_adjusted_ = true;
     } else if (OB_ISNULL(major_merge_info_mgr_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("fail to try adjust global merge info, freeze info manager is null", KR(ret),
+               K_(is_primary_service));
     } else if (OB_FAIL(major_merge_info_mgr_->adjust_global_merge_info())) {
     } else {
       is_global_merge_info_adjusted_ = true;

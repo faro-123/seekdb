@@ -48,6 +48,7 @@ int dispatch_freeze(const ObMemstoreFreezeArg &arg)
     }
   } else {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("unknown freeze type", K(arg), K(ret));
   }
   return ret;
 }
@@ -66,6 +67,7 @@ static int do_tx_data_table_freeze_(const ObMemstoreFreezeArg &arg)
 
   if (OB_ISNULL(ls_srv)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("[MemstoreFreezer] ls service is null", K(ret));
   } else if (OB_FAIL(freeze_guard.init(freezer))) {
   } else if (!freeze_guard.can_freeze()) {
     // skip tx data self freeze due to another freeze task is running
@@ -90,6 +92,7 @@ static int do_major_freeze_(const ObMemstoreFreezeArg &arg)
 
   if (OB_ISNULL(major_freeze_coordinator)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("major freeze coordinator is not configured", KR(ret));
   } else if (OB_FAIL(major_freeze_coordinator->get_frozen_scn(frozen_scn))) {
   } else {
     int64_t frozen_scn_val = frozen_scn.get_val_for_tx();
@@ -135,6 +138,7 @@ static int do_mds_table_freeze_(const ObMemstoreFreezeArg &arg)
 
   if (OB_ISNULL(ls_srv)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("[MemstoreFreezer] ls service is null", K(ret));
   } else if (OB_FAIL(ls_srv->get_ls(ls))) {
   } else if (OB_ISNULL(ls) || OB_ISNULL(ls->get_tablet_svr())) {
     ret = OB_ERR_UNEXPECTED;

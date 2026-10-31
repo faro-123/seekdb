@@ -19,71 +19,96 @@
 
 #include "ob_config_manager.h"
 #include "share/ob_sql_client_decorator.h"
+#include "share/config/ob_system_config.h"
 #include "share/config/ob_config_rpc_types.h"
-#include "config_bridge.h"
-#include "share/storage/local_store.h"
 
 namespace oceanbase
 {
 namespace obcall
 {
 
-OB_SERIALIZE_MEMBER(ObAdminSetConfigItem, name_, value_, comment_, is_reset_);
+OB_SERIALIZE_MEMBER(ObAdminSetConfigItem, name_, value_, comment_);
 
 } // namespace obcall
 
 namespace common
 {
-namespace
-{
-int report_error(const char *operation, config::Status &error)
-{
-  int ret = OB_INVALID_CONFIG;
-  LOG_ERROR("config operation failed", K(operation), "detail", error.message.c_str(),
-            "commit_uncertain", error.commit_uncertain);
-  if (error.commit_uncertain != 0) {
-    LOG_USER_ERROR(OB_INVALID_CONFIG,
-                   "configuration commit outcome is uncertain; restart to recover storage");
-  } else {
-    LOG_USER_ERROR(OB_INVALID_CONFIG, error.message.c_str());
-  }
-  return ret;
-}
-
-}
-
 ObConfigManager::~ObConfigManager()
 {
 }
 
-int ObConfigManager::init(share::LocalStore &store)
+int ObConfigManager::init(share::ObSQLiteConnectionPool *pool)
 {
   int ret = OB_SUCCESS;
-  if (!store.is_inited()) {
-    ret = OB_NOT_INIT;
+  if (OB_ISNULL(pool)) {
+    ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid storage", K(ret));
+  } else if (OB_FAIL(storage_.init(pool))) {
   } else {
-    store_ = &store;
+    inited_ = true;
   }
   return ret;
 }
 
+void ObConfigManager::stop()
+{
+}
+
+void ObConfigManager::wait()
+{
+}
+
+void ObConfigManager::destroy()
+{
+}
+
 int ObConfigManager::reload_config()
 {
-  return reload_config_func_();
+  int ret = OB_SUCCESS;
+  if (OB_FAIL(server_config_.check_all())) {
+  } else if (OB_FAIL(reload_config_func_())) {
+  }
+  return ret;
+}
+
+int ObConfigManager::check_header_change(const char* path, const char* buf) const
+{
+  UNUSED(path);
+  UNUSED(buf);
+  return OB_SUCCESS;
+}
+
+int ObConfigManager::dump2file_unsafe(const char* path) const
+{
+  UNUSED(path);
+  return OB_SUCCESS;
+}
+
+int ObConfigManager::dump2file(const char* path) const
+{
+  DRWLock::RDLockGuard guard(server_config_.rwlock_);
+  return dump2file_unsafe(path);
 }
 
 int ObConfigManager::update_local()
 {
   int ret = OB_SUCCESS;
-  if (!store_ || !store_->is_inited()) {
-    ret = OB_NOT_INIT;
+  ObSystemConfig system_config;
+
+  if (OB_FAIL(system_config.init())) {
+  } else if (OB_FAIL(storage_.load_all_configs(system_config))) {
   } else {
-    auto error = config::load_active(store_->handle(), !enable_static_effect_);
-    if (!error.ok) {
-      ret = report_error("load active", error);
+    DRWLock::WRLockGuard guard(server_config_.rwlock_);
+    if (OB_FAIL(server_config_.read_config(system_config, enable_static_effect_))) {
     } else {
       LOG_INFO("read config success");
     }
+  }
+
+  if (OB_SUCC(ret)) {
+    server_config_.print();
+  } else {
+    LOG_WARN("Read system config error", K(ret));
   }
   return ret;
 }
@@ -91,8 +116,9 @@ int ObConfigManager::update_local()
 int ObConfigManager::got_version()
 {
   int ret = OB_SUCCESS;
-  if (!store_ || !store_->is_inited()) {
+  if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("config manager not inited", K(ret));
   } else {
     if (OB_FAIL(update_local())) {
     } else {
@@ -102,52 +128,50 @@ int ObConfigManager::got_version()
   return ret;
 }
 
-int ObConfigManager::save_internal_state(const char *name, const char *value)
+int ObConfigManager::save_config(
+    const char *config_name,
+    const char *value)
 {
   int ret = OB_SUCCESS;
-  if (OB_ISNULL(name) || OB_ISNULL(value)) {
+  if (OB_ISNULL(config_name) || OB_ISNULL(value)) {
     ret = OB_INVALID_ARGUMENT;
-  } else if (!store_ || !store_->is_inited()) {
-    ret = OB_NOT_INIT;
+    LOG_WARN("invalid argument", K(ret), KP(config_name), KP(value));
   } else {
-    auto error = config::update_internal_state(store_->handle(), name, value);
-    if (!error.ok) {
-      ret = report_error("save internal state", error);
+    // Get config item from server_config_ container
+    ObConfigItem *const *ci_ptr = server_config_.get_container().get(
+                                     ObConfigStringKey(config_name));
+    if (OB_ISNULL(ci_ptr)) {
+      ret = OB_ERR_SYS_CONFIG_UNKNOWN;
+      LOG_WARN("can't found config item", K(ret), K(config_name));
+    } else if (OB_ISNULL(*ci_ptr)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("config item is null", K(ret), K(config_name));
+    } else {
+      const ObConfigItem *config_item = *ci_ptr;
+      if (OB_FAIL(storage_.upsert_config(
+          config_name,
+          config_item->data_type(), value, config_item->info(), config_item->section(), config_item->scope(),
+          config_item->source(), config_item->edit_level()))) {
+      }
     }
   }
   return ret;
 }
 
-int ObConfigManager::update_checked(const char *name, const char *value, bool reset,
-                                    const config::CheckCallback &callback)
+int ObConfigManager::save_configs(int64_t base_version)
 {
   int ret = OB_SUCCESS;
-  if (nullptr == name) {
-    ret = OB_INVALID_ARGUMENT;
-  } else if (!config::parameter_exists(rust::Str(name))) {
-    ret = OB_ERR_SYS_CONFIG_UNKNOWN;
-  } else if (!store_ || !store_->is_inited()) {
-    ret = OB_NOT_INIT;
-  } else if (!reset && nullptr == value) {
-    ret = OB_INVALID_ARGUMENT;
-  } else {
-    auto error = config::update_checked(store_->handle(), name, reset ? "" : value, reset, callback);
-    if (!error.ok) {
-      ret = report_error(reset ? "checked reset" : "checked save", error);
+  ObConfigContainer::const_iterator it = server_config_.get_container().begin();
+  for (; OB_SUCC(ret) && it != server_config_.get_container().end(); ++it) {
+    if (OB_ISNULL(it->second)) {
+      // ignore ret
+      LOG_WARN("config item is null", "name", it->first.str());
+      continue;
     }
-  }
-  return ret;
-}
-
-int ObConfigManager::save_configs()
-{
-  int ret = OB_SUCCESS;
-  if (!store_ || !store_->is_inited()) { return OB_NOT_INIT; }
-  auto error = config::save_bootstrap(store_->handle());
-  if (!error.ok) {
-    ret = OB_INVALID_CONFIG;
-    LOG_ERROR("failed to save startup parameters", K(ret), "detail", error.message.c_str(),
-              "commit_uncertain", error.commit_uncertain);
+      if (it->second->version() > base_version) {
+      if (OB_FAIL(save_config(it->first.str(), it->second->str()))) {
+      }
+    }
   }
   return ret;
 }

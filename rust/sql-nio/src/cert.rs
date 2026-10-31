@@ -31,7 +31,7 @@ pub(crate) struct PeerCertificateInfo {
 impl PeerCertificateInfo {
     pub(crate) fn parse(der: &[u8]) -> Self {
         match parse_x509_certificate(der) {
-            Ok(([], cert)) => {
+            Ok((remaining, cert)) if remaining.is_empty() => {
                 let issuer = format_name(cert.issuer());
                 let subject = format_name(cert.subject());
                 let common_name = cert
@@ -100,5 +100,24 @@ fn format_display_name(display: &str) -> Vec<u8> {
         Vec::new()
     } else {
         formatted
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_display_name, PeerCertificateInfo};
+
+    #[test]
+    fn rejects_truncated_certificate() {
+        assert!(!PeerCertificateInfo::parse(&[0x30, 0x00]).valid);
+    }
+
+    #[test]
+    fn formats_display_name_for_sql_account() {
+        assert_eq!(format_display_name("CN=allowed2"), b"/CN=allowed2");
+        assert_eq!(
+            format_display_name("CN=allowed2, O=seekdb"),
+            b"/CN=allowed2/O=seekdb"
+        );
     }
 }

@@ -90,6 +90,7 @@ int ObRawExprInfoExtractor::visit(ObQueryRefRawExpr &expr)
   } else if (OB_FAIL(pull_info(expr))) {
   } else if (OB_FAIL(expr.add_flag(IS_SUB_QUERY))) {
   } else if (ob_is_enumset_tc(expr.get_data_type()) && OB_FAIL(expr.add_flag(IS_ENUM_OR_SET))) {
+    LOG_WARN("failed to add flag IS_ENUM_OR_SET", K(expr), K(ret));
   }
   return ret;
 }
@@ -99,9 +100,11 @@ int ObRawExprInfoExtractor::visit(ObExecParamRawExpr &expr)
   int ret = OB_SUCCESS;
   if (!expr.is_eval_by_storage() && OB_ISNULL(expr.get_ref_expr())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("failed", K(ret), K(expr.is_eval_by_storage()));
   } else if (OB_FAIL(expr.add_flag(IS_CONST))) {
   } else if (OB_FAIL(expr.add_flag(IS_DYNAMIC_PARAM))) {
   } else if (expr.is_onetime() && OB_FAIL(expr.add_flag(IS_ONETIME))) {
+    LOG_WARN("failed to add is onetime", K(ret));
   } else if (!expr.is_eval_by_storage() && expr.get_ref_expr()->has_enum_set_column()) {
     OZ(expr.add_flag(CNT_ENUM_OR_SET));
   }
@@ -113,6 +116,7 @@ int ObRawExprInfoExtractor::visit(ObColumnRefRawExpr &expr)
   int ret = OB_SUCCESS;
   if (OB_FAIL(expr.add_flag(IS_COLUMN))) {
   } else if (ob_is_enumset_tc(expr.get_data_type()) && OB_FAIL(expr.add_flag(IS_ENUM_OR_SET))) {
+    LOG_WARN("failed to add flag IS_ENUM_OR_SET", K(expr), K(ret));
   } else {/*do nothing*/}
   return ret;
 }
@@ -150,6 +154,7 @@ int ObRawExprInfoExtractor::pull_info(ObRawExpr &expr)
     ObRawExpr *param_expr = expr.get_param_expr(i);
     if (OB_ISNULL(param_expr)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("param expr is null", K(i));
     } else if (OB_FAIL(expr.add_child_flags(param_expr->get_expr_info()))) {
     } else if (!param_expr->is_deterministic()) {
       lost_deterministic = true;
@@ -199,6 +204,7 @@ int ObRawExprInfoExtractor::visit(ObOpRawExpr &expr)
   const bool is_inner_added = expr.has_flag(IS_INNER_ADDED_EXPR);
   if (OB_FAIL(clear_info(expr))) {
   } else if (is_inner_added && OB_FAIL(expr.add_flag(IS_INNER_ADDED_EXPR))) {
+    LOG_WARN("add flag failed", K(ret));
   } else if (OB_FAIL(add_const(expr))) {
   } else if (1 == expr.get_param_count()) {
     // unary operator
@@ -221,6 +227,7 @@ int ObRawExprInfoExtractor::visit(ObOpRawExpr &expr)
     ObRawExpr *param_expr2 = expr.get_param_expr(1);
     if (OB_ISNULL(param_expr1) || OB_ISNULL(param_expr2)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("param expr is null", K(param_expr1), K(param_expr2));
     } else if ((expr.get_expr_type() == T_OP_EQ) || (expr.get_expr_type() == T_OP_NSEQ)) {
       if (param_expr1->has_flag(CNT_COLUMN) && param_expr2->has_flag(CNT_COLUMN) &&
           !param_expr1->get_relation_ids().overlap(param_expr2->get_relation_ids())) {
@@ -258,6 +265,7 @@ int ObRawExprInfoExtractor::visit(ObOpRawExpr &expr)
     ObRawExpr *param_expr3 = expr.get_param_expr(2);
     if (OB_ISNULL(param_expr1) || OB_ISNULL(param_expr2) || OB_ISNULL(param_expr3)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("param expr is null", K(param_expr1), K(param_expr2), K(param_expr3));
     } else if (T_OP_BTW == expr.get_expr_type()) {
       if (param_expr1->has_flag(IS_COLUMN)
           && param_expr2->is_const_expr()
@@ -274,6 +282,7 @@ int ObRawExprInfoExtractor::visit(ObOpRawExpr &expr)
   if (OB_SUCC(ret) && expr.get_expr_type() == T_OBJ_ACCESS_REF) {
     if (OB_FAIL(expr.add_flag(CNT_OBJ_ACCESS_EXPR))) {
     } else if (ob_is_enumset_tc(expr.get_data_type()) && OB_FAIL(expr.add_flag(IS_ENUM_OR_SET))) {
+      LOG_WARN("failed to add flag IS_ENUM_OR_SET", K(ret));
     }
   }
   if (OB_SUCC(ret)) {
@@ -300,6 +309,7 @@ int ObRawExprInfoExtractor::visit_subquery_node(ObOpRawExpr &expr)
       } else if (OB_ISNULL(left_expr = expr.get_param_expr(0))
           || OB_ISNULL(right_expr = expr.get_param_expr(1))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("param expr is null", K(left_expr), K(right_expr));
       } else if (right_expr->get_expr_type() == T_ALL || right_expr->get_expr_type() == T_ANY) {
         ObSubQueryKey key_flag = (right_expr->get_expr_type() == T_ALL) ? T_WITH_ALL : T_WITH_ANY;
         expr.set_subquery_key(key_flag);
@@ -397,6 +407,7 @@ int ObRawExprInfoExtractor::visit(ObAggFunRawExpr &expr)
   } else if (OB_FAIL(pull_info(expr))) {
   } else if (OB_FAIL(expr.add_flag(IS_AGG))) {
   } else if (is_inner_added && OB_FAIL(expr.add_flag(IS_INNER_ADDED_EXPR))) {
+    LOG_WARN("failed to add inner added expr flag", K(ret));
   } else { }
   return ret;
 }
@@ -410,7 +421,9 @@ int ObRawExprInfoExtractor::visit(ObSysFunRawExpr &expr)
   } else if (OB_FAIL(add_const(expr))) {
   } else if (OB_FAIL(expr.add_flag(IS_FUNC))) {
   } else if (is_inner_added && OB_FAIL(expr.add_flag(IS_INNER_ADDED_EXPR))) {
+    LOG_WARN("add flag failed", K(ret));
   } else if (ob_is_enumset_tc(expr.get_data_type()) && OB_FAIL(expr.add_flag(IS_ENUM_OR_SET))) {
+    LOG_WARN("add enum or set flag failed", K(ret));
   } else {
     // these functions should not be calculated first
     if (T_FUN_SYS_AUTOINC_NEXTVAL == expr.get_expr_type()
@@ -480,6 +493,7 @@ int ObRawExprInfoExtractor::visit(ObSysFunRawExpr &expr)
     }
   }
   if (OB_SUCC(ret) && OB_FAIL(pull_info(expr))) {
+    LOG_WARN("fail to add pull info", K(ret));
   }
   return ret;
 }
@@ -500,6 +514,7 @@ int ObRawExprInfoExtractor::visit(ObAliasRefRawExpr &expr)
   } else if (OB_FAIL(expr.add_flag(IS_ALIAS))) {
   } else if (OB_ISNULL(expr.get_ref_expr())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("ref expr is null");
   } else if (expr.is_ref_query_output()) {
     if (OB_FAIL(expr.add_flag(CNT_SUB_QUERY))) {
     }

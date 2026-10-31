@@ -58,6 +58,7 @@ int ObIKCJKProcessor::do_process(TokenizeContext &ctx,
         hits_.erase(hit);
       } else {
         ret = OB_UNEXPECT_INTERNAL_ERROR;
+        LOG_WARN("Match dict reach impossible path.", K(ret));
       }
     }
     if (OB_SUCC(ret)) {

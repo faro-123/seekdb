@@ -65,8 +65,8 @@ public:
 class ObColumnChecksumErrorOperator
 {
 public:
-  // Initialize local storage (called once at startup)
-  static int init(LocalStore &store);
+  // Initialize SQLite storage (called once at startup)
+  static int init(ObSQLiteConnectionPool &meta_db_pool);
   static int insert_column_checksum_err_info(
       common::ObISQLClient &sql_client,
       const ObColumnChecksumErrorInfo &info);
@@ -83,7 +83,7 @@ public:
 
 private:
   static ObColumnChecksumErrorInfoTableStorage storage_;
-  static LocalStore *local_store_;
+  static ObSQLiteConnectionPool *meta_db_pool_;
 };
 
 } // end namespace share

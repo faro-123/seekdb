@@ -66,12 +66,16 @@ int ObNetUtil::get_local_addr_ipv6(const char *dev_name, char *ipv6, int len,
   int ret = OB_ERROR;
   if (nullptr == dev_name) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("devname can not be NULL", K(ret));
   } else if (len < INET6_ADDRSTRLEN) {
     ret = OB_BUF_NOT_ENOUGH;
+    LOG_WARN("the buffer size cannot be less than INET6_ADDRSTRLEN",
+             "INET6_ADDRSTRLEN", INET6_ADDRSTRLEN, K(len), K(ret));
   } else {
     PIP_ADAPTER_ADDRESSES addrs = ob_win32_get_adapters(AF_INET6);
     if (nullptr == addrs) {
       ret = OB_ERR_SYS;
+      LOG_WARN("GetAdaptersAddresses failed", K(ret));
     } else {
       int level = -1;
       for (PIP_ADAPTER_ADDRESSES cur = addrs; cur != nullptr; cur = cur->Next) {
@@ -127,10 +131,12 @@ int ObNetUtil::get_local_addr_ipv4(const char *dev_name, uint32_t &addr)
   int ret = OB_SUCCESS;
   if (nullptr == dev_name) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("devname can not be NULL", K(ret));
   } else {
     PIP_ADAPTER_ADDRESSES addrs = ob_win32_get_adapters(AF_INET);
     if (nullptr == addrs) {
       ret = OB_ERR_SYS;
+      LOG_WARN("GetAdaptersAddresses failed", K(ret));
     } else {
       bool has_found = false;
       for (PIP_ADAPTER_ADDRESSES cur = addrs; cur != nullptr && !has_found; cur = cur->Next) {
@@ -166,8 +172,11 @@ int ObNetUtil::get_local_addr_ipv6(const char *dev_name, char *ipv6, int len,
 
   if (nullptr == dev_name) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("devname can not be NULL", K(ret));
   } else if (len < INET6_ADDRSTRLEN) {
     ret = OB_BUF_NOT_ENOUGH;
+    LOG_WARN("the buffer size cannot be less than INET6_ADDRSTRLEN",
+             "INET6_ADDRSTRLEN", INET6_ADDRSTRLEN, K(len), K(ret));
   } else if (-1 == getifaddrs(&ifa)) {
     ret = OB_ERR_SYS;
     LOG_WARN("call getifaddrs fail", K(errno), K(ret));
@@ -230,6 +239,7 @@ int ObNetUtil::get_local_addr_ipv4(const char *dev_name, uint32_t &addr)
 
   if (nullptr == dev_name) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("devname can not be NULL", K(ret));
   } else if (-1 == getifaddrs(&ifa)) {
     ret = OB_ERR_SYS;
     LOG_WARN("call getifaddrs fail", K(errno), K(ret));
@@ -468,6 +478,7 @@ int ObNetUtil::get_int_value(const ObString &str, int64_t &value)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(str.empty())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("str is empty", K(str), K(ret));
   } else {
     static const int32_t MAX_INT64_STORE_LEN = 31;
     char int_buf[MAX_INT64_STORE_LEN + 1];
@@ -480,6 +491,7 @@ int ObNetUtil::get_int_value(const ObString &str, int64_t &value)
       // succ, do nothing
     } else {
       ret = OB_INVALID_DATA;
+      LOG_WARN("invalid int value", K(value), K(str), K(ret));
     }
   }
   return ret;

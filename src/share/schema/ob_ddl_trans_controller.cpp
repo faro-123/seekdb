@@ -39,6 +39,7 @@ int ObDDLTransController::init(
     if (OB_FAIL(ret)) {
     } else if (OB_ISNULL(schema_service)) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("schema_service is null", KR(ret));
     } else if (OB_FAIL(lib::ThreadPool::start())) {
     } else {
       schema_service_ = schema_service;
@@ -85,10 +86,13 @@ int ObDDLTransController::reserve_schema_version(const uint64_t schema_version_c
   int64_t end_schema_version = OB_INVALID_VERSION;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ObDDLTransController", KR(ret));
   } else if (OB_ISNULL(schema_service_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("ObDDLTransController", KR(ret));
   } else if (schema_version_count == 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("register_task_and_assign_schema_version", KR(ret), K(schema_version_count));
   } else if (OB_FAIL(schema_service_->gen_batch_new_schema_versions(schema_version_count, end_schema_version))) {
   }
   return ret;
@@ -101,10 +105,13 @@ int ObDDLTransController::create_task_and_assign_schema_version(const uint64_t s
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ObDDLTransController", KR(ret));
   } else if (OB_ISNULL(schema_service_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("ObDDLTransController", KR(ret));
   } else if (schema_version_count == 0 || schema_version_res.count() != 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("register_task_and_assign_schema_version", KR(ret), K(schema_version_count), K(schema_version_res));
   } else {
     int64_t end_schema_version = OB_INVALID_VERSION;
     SpinWLockGuard guard(lock_);
@@ -128,6 +135,7 @@ int ObDDLTransController::create_task_and_assign_schema_version(const uint64_t s
         {
           if (first_schema_version <= tasks_.at(i).task_id_) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("assign schema_version", KR(ret), K(tasks_), K(schema_version_res));
           }
           break;
         }
@@ -163,8 +171,10 @@ int ObDDLTransController::check_task_ready_(const int64_t task_id,
   if (OB_FAIL(ret)) {
   } else if (OB_INVALID_INDEX == idx) {
     ret = OB_ENTRY_NOT_EXIST;
+    LOG_WARN("task_id not found", KR(ret), K(task_id), K(tasks_));
   } else if (pre_task_count == 0) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("pre_task is null", KR(ret), K(task_id), K(tasks_));
   } else if (pre_task_count == 1) {
     ready = true;
   } else {
@@ -208,6 +218,7 @@ int ObDDLTransController::wait_task_ready(
     } else {
       ret = OB_TIMEOUT;
     }
+    LOG_WARN("wait_task_ready", KR(ret), K(task_id), K(tasks_), K(ready));
   }
   return ret;
 }
@@ -233,6 +244,7 @@ int ObDDLTransController::remove_task(const int64_t task_id)
   if (OB_FAIL(ret)) {
   } else if (OB_INVALID_INDEX == idx) {
     ret = OB_ENTRY_NOT_EXIST;
+    LOG_WARN("task_id not found", KR(ret), K(task_id), K(tasks_));
   } else {
     // wake up next
     for (int next = idx; next < tasks_.count(); next++) {
@@ -262,6 +274,7 @@ void ObDDLTransController::run1()
       int ret = OB_SUCCESS;
       if (OB_ISNULL(schema_service_)) {
         ret = OB_NOT_INIT;
+        LOG_WARN("schema service is null", KR(ret), K(refresh_version));
       } else if (OB_FAIL(schema_service_->async_refresh_schema(refresh_version))) {
         LOG_WARN("fail to refresh schema after parallel DDL commit",
                  KR(ret), K(refresh_version));

@@ -176,6 +176,7 @@ int ObMemoryDump::init()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret));
   } else if (OB_FAIL(cond_.init(ObWaitEventIds::DEFAULT_COND_WAIT))) {
   } else {
     MemoryContext context;// = nullptr;
@@ -184,6 +185,7 @@ int ObMemoryDump::init()
     if (OB_FAIL(ret)) {
     } else if (OB_ISNULL(pre_mem = (PreAllocMemory*)context->allocp(sizeof(PreAllocMemory)))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("alloc mem failed", K(ret));
     } else {
       LOG_INFO("pre memory size", K(sizeof(PreAllocMemory)));
       print_buf_ = pre_mem->print_buf_;
@@ -536,6 +538,7 @@ int label_stat(AChunk *chunk, ABlock *block, AObject *object,
     } else {
       if (item_used >= item_cap) {
         ret = OB_SIZE_OVERFLOW;
+        LOG_WARN("label cnt too large", K(ret), K(item_cap), K(item_used));
       } else {
         litem = &items[item_used++];
         STRNCPY(litem->str_, object->label_, sizeof(litem->str_));
@@ -587,6 +590,7 @@ void ObMemoryDump::handle(void *task)
 
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not inited", K(ret));
   } else if (STAT_LABEL == m_task->type_) {
     w_stat_->tcr_cnt_ = 0;
     w_stat_->malloc_sample_map_.clear();
@@ -736,7 +740,7 @@ void ObMemoryDump::handle(void *task)
       ret = databuff_printf(print_buf_, PRINT_BUF_LEN, print_pos,
           "\n###################%04d-%02d-%02d %02d:%02d:%02d.%06ld###################\n",
           tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
-          tm.tm_sec, static_cast<int64_t>(tv.tv_usec));
+          tm.tm_sec, tv.tv_usec);
       print_pos += m_task->to_string(print_buf_ + print_pos, PRINT_BUF_LEN - print_pos);
       ret = databuff_printf(print_buf_, PRINT_BUF_LEN, print_pos, "\n");
       // chunk

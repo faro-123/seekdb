@@ -17,7 +17,6 @@
 #ifndef OB_DTL_LINKED_BUFFER_H
 #define OB_DTL_LINKED_BUFFER_H
 
-#include "config_bridge.h"
 #include "lib/queue/ob_link.h"
 #include "sql/dtl/ob_dtl_msg_type.h"
 #include "lib/container/ob_array_serialization.h"
@@ -528,7 +527,7 @@ The memory layout is as below:
           |+++++++++++++++++++|
           |+++++++++++++++++++|
           |+++++++++++++++++++|
-          |+++++++++++++++++++|     Payload (default min 64K, by config::dtl_buffer_size())
+          |+++++++++++++++++++|     Payload (default min 64K, by GCONF.dtl_buffer_size)
           |+++++++++++++++++++|
           |+++++++++++++++++++|
           |+++++++++++++++++++|         |

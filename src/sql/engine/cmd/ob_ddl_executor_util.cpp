@@ -41,11 +41,14 @@ int ObDDLExecutorUtil::handle_session_exception(ObSQLSessionInfo &session)
   bool write_enabled = true;
   if (OB_UNLIKELY(session.is_query_killed())) {
     ret = OB_ERR_QUERY_INTERRUPTED;
+    LOG_WARN("query is killed", K(ret));
   } else if (OB_UNLIKELY(session.is_zombie())) {
     ret = OB_SESSION_KILLED;
+    LOG_WARN("session is killed", K(ret));
   } else if (OB_FAIL(ObShareUtil::is_server_write_enabled(write_enabled))) {
   } else if (!write_enabled) {
     ret = OB_SESSION_KILLED;
+    LOG_WARN("session is killed", KR(ret));
   }
   return ret;
 }
@@ -66,6 +69,7 @@ int ObDDLExecutorUtil::wait_ddl_finish(const int64_t task_id,
   ObDDLErrorMessageTableOperator::ObBuildDDLErrorMessage error_message;
   if (OB_UNLIKELY(task_id <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(task_id));
   } else {
     SERVER_EVENT_ADD("ddl", "start wait ddl finish",
       "ret", ret,
@@ -81,6 +85,7 @@ int ObDDLExecutorUtil::wait_ddl_finish(const int64_t task_id,
         if (OB_SUCCESS != ret) {
           if (ddl_need_retry_at_executor) {
             ret = share::ObIDDLTask::in_ddl_retry_white_list(ret) ? OB_EAGAIN : ret;
+            LOG_WARN("is ddl need retry at user", K(ret));
           } else {
             FORWARD_USER_ERROR(ret, error_message.user_message_);
           }
@@ -103,6 +108,7 @@ int ObDDLExecutorUtil::wait_ddl_finish(const int64_t task_id,
 
         if (OB_FAIL(ret)) {
         } else if (nullptr != session && OB_FAIL(handle_session_exception(*session))) {
+          LOG_WARN("session exeception happened", K(ret), K(is_support_cancel));
           if (is_support_cancel && OB_TMP_FAIL(cancel_ddl_task(local_command_service))) {
             LOG_WARN("cancel ddl task failed", K(tmp_ret));
             ret = OB_SUCCESS;
@@ -115,6 +121,7 @@ int ObDDLExecutorUtil::wait_ddl_finish(const int64_t task_id,
         } else if (is_server_stopped(runtime_environment)) {
           ret = OB_TIMEOUT;
           FORWARD_USER_ERROR(ret, "DDL execution status is undecided, please check later if it finishes successfully or not.");
+          LOG_WARN("server is stopping, check whether the ddl task finish successfully or not", K(ret), K(task_id));
         } else {
           ob_usleep(retry_interval);
         }
@@ -148,6 +155,7 @@ int ObDDLExecutorUtil::wait_build_index_finish(const int64_t task_id, bool &is_f
 
   if (OB_UNLIKELY(task_id <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arguments", K(ret), K(task_id));
   } else if (OB_SUCCESS == share::ObDDLErrorMessageTableOperator::get_ddl_error_message(task_id, -1 /* target_object_id */, unused_addr, false /* is_ddl_retry_task */, *GCTX.sql_proxy_, error_message, unused_user_msg_len)) {
     ret = error_message.ret_code_;
     if (OB_SUCCESS != ret) {
@@ -180,6 +188,7 @@ int ObDDLExecutorUtil::wait_ddl_retry_task_finish(const int64_t task_id,
   ObDDLErrorMessageTableOperator::ObBuildDDLErrorMessage error_message;
   if (OB_UNLIKELY(task_id <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(task_id));
   } else {
     SERVER_EVENT_ADD("ddl", "start wait ddl retry task finish",
       "ret", ret,
@@ -210,9 +219,9 @@ int ObDDLExecutorUtil::wait_ddl_retry_task_finish(const int64_t task_id,
           } else {
             for (int i = 0; OB_SUCCESS == tmp_ret && i < result_code.warnings_.count(); ++i) {
               const common::ObWarningBuffer::WarningItem warning_item = result_code.warnings_.at(i);
-              if (USER_WARN == warning_item.log_level_) {
+              if (ObLogger::USER_WARN == warning_item.log_level_) {
                 FORWARD_USER_WARN(warning_item.code_, warning_item.msg_);
-              } else if (USER_NOTE == warning_item.log_level_) {
+              } else if (ObLogger::USER_NOTE == warning_item.log_level_) {
                 FORWARD_USER_NOTE(warning_item.code_, warning_item.msg_);
               } else {
                 tmp_ret = OB_ERR_UNEXPECTED;
@@ -228,10 +237,12 @@ int ObDDLExecutorUtil::wait_ddl_retry_task_finish(const int64_t task_id,
          } else if (!write_enabled) {
           ret = OB_STANDBY_DATABASE_READ_ONLY;
           FORWARD_USER_ERROR(ret, "DDL execution status is undecided, please check later if it finishes successfully or not.");
+          LOG_WARN("server is read-only now, stop wait", K(ret));
           break;
         }
         if (OB_FAIL(ret)) {
         } else if (OB_FAIL(handle_session_exception(session))) {
+          LOG_WARN("session exception happened", K(ret));
           if (OB_TMP_FAIL(cancel_ddl_task(local_command_service))) {
             LOG_WARN("cancel ddl task failed", K(tmp_ret));
             ret = OB_SUCCESS;
@@ -244,6 +255,7 @@ int ObDDLExecutorUtil::wait_ddl_retry_task_finish(const int64_t task_id,
         } else if (is_server_stopped(runtime_environment)) {
           ret = OB_TIMEOUT;
           FORWARD_USER_ERROR(ret, "DDL execution status is undecided, please check later if it finishes successfully or not.");
+          LOG_WARN("server is stopping, check whether the ddl task finish successfully or not", K(ret), K(task_id));
         } else {
           ob_usleep(retry_interval);
         }
@@ -273,6 +285,7 @@ int ObDDLExecutorUtil::cancel_ddl_task(
     if (OB_ENTRY_NOT_EXIST == ret) {
       ret = OB_SUCCESS;
     } else {
+      LOG_WARN("failed to cancel sys task", K(ret), K(rpc_arg));
     }
   }
   SERVER_EVENT_ADD("ddl", "finish cancel ddl task",
@@ -297,6 +310,7 @@ int ObDDLExecutorUtil::execute_pcreate_table(ObSQLSessionInfo *my_session,
     int64_t refresh_time = ObTimeUtility::current_time();
     if (!res.do_nothing_ && OB_FAIL(ObDDLExecutorUtil::wait_local_schema_visible(
         ctx, my_session, res.schema_version_))) {
+      LOG_WARN("fail to wait for local schema visibility", KR(ret), K(res));
     }
     int64_t end_time = ObTimeUtility::current_time();
     LOG_INFO(parallel_ddl_type, KR(ret),
@@ -330,8 +344,10 @@ int ObDDLExecutorUtil::wait_local_schema_visible(
   bool schema_visible = false;
   if (OB_ISNULL(session) || OB_UNLIKELY(schema_version <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arg", KR(ret), KP(session), K(schema_version));
   } else if (OB_ISNULL(schema_service = GCTX.schema_service_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("schema_service is null", KR(ret));
   }
   while (OB_SUCC(ret) && ctx.get_timeout() > 0 && !schema_visible) {
     int64_t refreshed_schema_version = OB_INVALID_VERSION;
@@ -348,6 +364,7 @@ int ObDDLExecutorUtil::wait_local_schema_visible(
   }
   if (OB_SUCC(ret) && !schema_visible) {
     ret = OB_TIMEOUT;
+    LOG_WARN("wait local schema visible timeout", KR(ret), K(schema_version));
   }
   return ret;
 }

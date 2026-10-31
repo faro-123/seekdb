@@ -26,6 +26,7 @@ namespace common
 {
 class ObVTableScanParam;
 class ObNewRowIterator;
+class ObServerConfig;
 }
 namespace rootserver
 {
@@ -38,8 +39,9 @@ class ObVirtualDataAccessService : public common::ObIVirtualTableScan
 public:
   ObVirtualDataAccessService(
       rootserver::ObLocalManagementService &local_management_service,
-      common::ObAddr &addr)
-      : vt_iter_factory_(local_management_service, addr)
+      common::ObAddr &addr,
+      common::ObServerConfig *config)
+      : vt_iter_factory_(local_management_service, addr, config)
   {
   }
   virtual ~ObVirtualDataAccessService() {}

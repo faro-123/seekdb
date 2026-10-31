@@ -252,6 +252,7 @@ int ObMultipleMultiScanMerge::get_current_range(ObDatumRange& current_range) con
   INIT_SUCC(ret);
   if (OB_ISNULL(ranges_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("ranges_ is null!");
   } else if (OB_FAIL(ranges_->at(curr_scan_index_, current_range))) {
   }
   return ret;

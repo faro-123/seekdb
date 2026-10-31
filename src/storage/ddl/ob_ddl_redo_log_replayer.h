@@ -35,7 +35,9 @@ public:
   ~ObDDLRedoLogReplayer();
   int init(ObLS *ls);
   void reset() { destroy(); }
+  int replay_start(const ObDDLStartLog &log, const share::SCN &scn);
   int replay_redo(const ObDDLRedoLog &log, const share::SCN &scn);
+  int replay_commit(const ObDDLCommitLog &log, const share::SCN &scn);
   int replay_table_fork_freeze(const ObTableForkFreezeLog &log, const share::SCN &scn);
   int replay_table_fork_start(const ObTableForkStartLog &log, const share::SCN &scn);
   int replay_table_fork_finish(const ObTableForkFinishLog &log, const share::SCN &scn);

@@ -81,6 +81,7 @@ int ObChunk::get_dag_tablet_context(ObDDLTabletContext *&tablet_context) const
   tablet_context = nullptr;
   if (ObChunk::DAG_TABLET_CONTEXT != type_ || !is_valid()) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arguments", K(ret), KPC(this));
   } else {
     tablet_context = reinterpret_cast<ObDDLTabletContext *>(data_ptr_);
   }
@@ -96,6 +97,7 @@ int ObPipelineOperator::execute_op(
   output_chunk.reset();
   if (OB_UNLIKELY(!input_chunk.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("there are invalid argument", K(ret), K(input_chunk));
   } else if (OB_FAIL(execute(input_chunk, result_state, output_chunk))) {
   } else if (OB_FAIL(try_execute_finish(input_chunk, result_state, output_chunk))) {
   }
@@ -109,9 +111,11 @@ int ObPipelineOperator::try_execute_finish(const ObChunk &input_chunk,
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!input_chunk.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("input chunk is not valid", K(ret), K(input_chunk));
   } else if (OB_UNLIKELY(input_chunk.is_end_chunk() &&
                          ObPipelineOperator::HAVE_MORE_OUTPUT == result_state)) {
     ret = OB_STATE_NOT_MATCH;
+    LOG_WARN("the operator state is not matching", K(ret));
   } else if (!input_chunk.is_end_chunk()) {
     // by pass
   } else if (output_chunk.is_valid()) { // has output data
@@ -127,6 +131,7 @@ int ObPipeline::add_op(ObPipelineOperator *op)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(nullptr == op || !op->is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), KPC(op));
   } else if (OB_FAIL(ops_.push_back(op))) {
   }
   return ret;
@@ -137,6 +142,7 @@ int ObPipeline::push(const ObChunk &chunk_data)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!chunk_data.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(chunk_data));
   } else if (OB_FAIL(execute_ops(0, chunk_data))) {
   }
   return ret;
@@ -147,10 +153,12 @@ int ObPipeline::execute_ops(const int64_t start_pos, const ObChunk &chunk_data)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(ops_.empty())) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret), K(ops_.count()));
   } else if (start_pos == ops_.count()) {
     /* reach boudnary, quit */
   } else if (OB_UNLIKELY(start_pos < 0 || start_pos >= ops_.count() || !chunk_data.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid  argument", K(ret), K(start_pos), K(ops_.count()), K(chunk_data), K(chunk_data.is_valid()));
   } else {
     ObChunk input_chunk = chunk_data;
     ObChunk output_chunk;
@@ -159,6 +167,7 @@ int ObPipeline::execute_ops(const int64_t start_pos, const ObChunk &chunk_data)
       ObPipelineOperator *curr_op = ops_.at(op_idx);
       if (OB_ISNULL(curr_op)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("current op is null", K(ret), KP(curr_op), K(op_idx));
       } else if (input_chunk.is_valid()) {
         ObPipelineOperator::ResultState result_state = ObPipelineOperator::ResultState::INVALID_VALUE;
         if (OB_FAIL(curr_op->execute_op(input_chunk, result_state, output_chunk))) {
@@ -175,6 +184,7 @@ int ObPipeline::execute_ops(const int64_t start_pos, const ObChunk &chunk_data)
         } else if (ObPipelineOperator::HAVE_MORE_OUTPUT == result_state) {
           if (!output_chunk.is_valid()) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("output chunk is null", K(ret));
           } else {
             int64_t next_op_idx = op_idx + 1;
             const ObChunk &tmp_input_chunk = output_chunk;
@@ -183,6 +193,7 @@ int ObPipeline::execute_ops(const int64_t start_pos, const ObChunk &chunk_data)
           }
         } else {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("invalid result state", K(ret), K(result_state));
         }
       }
     }

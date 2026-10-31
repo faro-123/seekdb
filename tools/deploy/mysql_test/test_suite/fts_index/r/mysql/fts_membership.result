@@ -1,0 +1,117 @@
+natural language membership and deduplication
++----+
+| ok |
++----+
+|  1 |
++----+
+membership with another predicate
++----+
+| ok |
++----+
+|  1 |
++----+
+membership with limit and offset
++----+
+| ok |
++----+
+|  1 |
++----+
+score projection remains unchanged
++----+
+| ok |
++----+
+|  1 |
++----+
+ranking uses real relevance
++----+
+| ok |
++----+
+|  1 |
++----+
+boolean mode still scores and excludes
++----+
+| ok |
++----+
+|  1 |
++----+
+boolean score projection still has a MATCH value
++----+
+| ok |
++----+
+|  1 |
++----+
+score threshold remains a scored filter
++----+
+| ok |
++----+
+|  1 |
++----+
+negative score threshold includes nonmatches
++----+
+| ok |
++----+
+|  1 |
++----+
+empty query
++----+
+| ok |
++----+
+|  1 |
++----+
+stopword query
++----+
+| ok |
++----+
+|  1 |
++----+
+absent token
++----+
+| ok |
++----+
+|  1 |
++----+
+taat membership deduplicates overlapping tokens
++----+
+| ok |
++----+
+|  1 |
++----+
+parameterized threshold retains its score across executions
++----+
+| ok |
++----+
+|  1 |
++----+
++----+
+| ok |
++----+
+|  1 |
++----+
++----+
+| ok |
++----+
+|  1 |
++----+
++----+
+| ok |
++----+
+|  1 |
++----+
+membership reflects update within transaction
++----+
+| ok |
++----+
+|  1 |
++----+
+membership reflects rollback
++----+
+| ok |
++----+
+|  1 |
++----+
+document ID mapping with string primary keys
++----+
+| ok |
++----+
+|  1 |
++----+

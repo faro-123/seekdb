@@ -110,6 +110,7 @@ int ObTabletForkMdsArg::set_autoinc_seq_arg(const obcall::ObBatchSetTabletAutoin
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!arg.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid autoinc seq arg", K(ret), K(arg));
   } else {
     autoinc_seq_arg_ = arg;
   }
@@ -121,6 +122,7 @@ int ObTabletForkMdsArg::set_truncate_arg(const ObTruncateTabletArg &arg)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!arg.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid truncate arg", K(ret), K(arg));
   } else {
     ObArenaAllocator tmp_allocator("ForkMdsSetArg");
     const int64_t buf_len = arg.get_serialize_size();
@@ -129,6 +131,7 @@ int ObTabletForkMdsArg::set_truncate_arg(const ObTruncateTabletArg &arg)
     
     if (OB_ISNULL(buf = static_cast<char *>(tmp_allocator.alloc(buf_len)))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("fail alloc memory", K(ret), K(buf_len));
     } else if (OB_FAIL(arg.serialize(buf, buf_len, pos))) {
     } else {
       truncate_arg_.destroy();
@@ -150,8 +153,10 @@ int ObTabletForkMdsHelper::register_mds(
   sqlclient::ObISQLConnection *isql_conn = nullptr;
   if (OB_UNLIKELY(!arg.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid tablet fork mds arg", KR(ret), K(arg));
   } else if (OB_ISNULL(isql_conn = trans.get_connection())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid connection when register tablet fork mds", KR(ret));
   } else {
     const int64_t size = arg.get_serialize_size();
     ObArenaAllocator allocator;
@@ -162,6 +167,7 @@ int ObTabletForkMdsHelper::register_mds(
     flag.mds_base_scn_.reset();
     if (OB_ISNULL(buf = static_cast<char *>(allocator.alloc(size)))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("failed to allocate buffer for tablet fork mds", KR(ret), K(size));
     } else if (OB_FAIL(arg.serialize(buf, size, pos))) {
     } else if (OB_FAIL(query::ObInnerSQLConnectionAccess::register_multi_data_source(
                    isql_conn, ObTxDataSourceType::TABLET_FORK, buf, pos, flag))) {
@@ -203,6 +209,7 @@ int ObTabletForkMdsHelper::modify(
 
   if (OB_UNLIKELY(!arg.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arg", K(ret), K(arg));
   } else if (OB_FAIL(::oceanbase::share::server_service<::oceanbase::storage::ObLSService>()->get_ls(tenant_ls))) {
   }
 

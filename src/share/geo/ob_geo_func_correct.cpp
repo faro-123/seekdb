@@ -60,6 +60,7 @@ private:
     const ObSrsItem *srs = context.get_srs();
     if (OB_ISNULL(srs)) {
       ret = OB_ERR_NULL_VALUE;
+      LOG_WARN("srs is null", K(ret), K(g->get_srid()), K(g));
     } else {
       boost::geometry::srs::spheroid<double> geog_sphere(srs->semi_major_axis(), srs->semi_minor_axis());
       boost::geometry::strategy::area::geographic<> area_strategy(geog_sphere);
@@ -82,6 +83,7 @@ private:
     typename GeoTypeCollection::iterator iter;
     if (OB_ISNULL(allocator)) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("Null allocator", K(ret));
     } else if (g->type() == ObGeoType::GEOMETRYCOLLECTION) {
       const GeoTypeCollection *geo = reinterpret_cast<const GeoTypeCollection *>(g->val());
       iter = geo->begin();

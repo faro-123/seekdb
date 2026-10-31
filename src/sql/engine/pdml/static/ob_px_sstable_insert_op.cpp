@@ -44,6 +44,7 @@ int ObPxMultiPartSSTableInsertSpec::get_snapshot_version(ObEvalCtx &eval_ctx, in
   if (OB_FAIL(snapshot_query_expr_->eval(eval_ctx, datum))) {
   } else if (datum->is_null()) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("NULL value", K(ret));
   } else {
     snapshot_version = datum->get_int();
   }
@@ -64,14 +65,16 @@ int ObPxMultiPartSSTableInsertOp::get_tablet_info_from_row(
   // 1. get tablet_id
   const int64_t part_id_idx = get_spec().row_desc_.get_part_id_index();
   if (NO_PARTITION_ID_FLAG == part_id_idx) {
-    DASRuntimeTableAccess *table_access = ins_rtdef_.das_rtdef_.table_access_;
-    if (OB_ISNULL(table_access) || table_access->get_tablet_accesses().size() != 1) {
+    ObDASTableLoc *table_loc = ins_rtdef_.das_rtdef_.table_loc_;
+    if (OB_ISNULL(table_loc) || table_loc->get_tablet_locs().size() != 1) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("insert table location is invalid", K(ret), KPC(table_loc));
     } else {
-      tablet_id = table_access->get_first_tablet_access()->tablet_id_;
+      tablet_id = table_loc->get_first_tablet_loc()->tablet_id_;
     }
   } else if (part_id_idx < 0) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("error unexpected, part_id_idx is not valid", K(ret), K(part_id_idx));
   } else if (row.count() > part_id_idx) {
     ObExpr *expr = row.at(part_id_idx);
     ObDatum &expr_datum = expr->locate_expr_datum(get_eval_ctx());
@@ -93,6 +96,7 @@ int ObPxMultiPartSSTableInsertOp::get_tablet_info_from_row(
     }
     if (OB_SUCC(ret) && tablet_slice_param->slice_idx_ >= ObTabletSliceParam::MAX_TABLET_SLICE_COUNT) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("invalid ddl_slice_id", K(ret), KPC(tablet_slice_param));
     }
   }
 
@@ -110,6 +114,7 @@ int ObPxMultiPartSSTableInsertOp::inner_open()
   if (OB_FAIL(ObPxMultiPartInsertOp::inner_open())) {
   } else if (OB_ISNULL(ctx_.get_sqc_handler())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("sqc handler is null", K(ret));
   } else {
     op_monitor_info_.otherstat_2_id_ = ObSqlMonitorStatIds::SSTABLE_INSERT_ROW_COUNT;
     op_monitor_info_.otherstat_2_value_ = 0;
@@ -121,9 +126,12 @@ int ObPxMultiPartSSTableInsertOp::inner_open()
           .get_direct_insert_session();
       if (OB_ISNULL(direct_insert_session_)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("direct insert session is null", K(ret),
+            KP(direct_insert_session_));
       } else if (OB_FAIL(check_need_idempotence())) {
       } else if (OB_FAIL(locate_exprs())) {
       } else if (is_heap_plan() && OB_FAIL(heap_tablet_writer_map_.create(MAP_HASH_BUCKET_NUM, ObMemAttr("tblt_writer_map")))) {
+        LOG_WARN("init tablet writer map failed", K(ret));
       }
     }
   }
@@ -150,6 +158,7 @@ int ObPxMultiPartSSTableInsertOp::inner_get_next_row()
   int ret = OB_SUCCESS;
   if (OB_ISNULL(direct_insert_session_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("direct insert session is null", K(ret));
   } else if (direct_insert_session_->is_final() || is_all_partition_finished_) {
     ret = OB_ITER_END;
   } else if (is_heap_plan()) {
@@ -175,6 +184,7 @@ int ObPxMultiPartSSTableInsertOp::complete_direct_insert_worker()
   int ret = OB_SUCCESS;
   if (OB_ISNULL(direct_insert_session_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("direct insert session is null", K(ret));
   } else if (OB_FAIL(direct_insert_session_->complete_px_worker())) {
   }
   return ret;
@@ -206,8 +216,10 @@ int ObPxMultiPartSSTableInsertOp::init_table_autoinc_param(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(direct_insert_session_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("direct insert session is null", K(ret));
   } else if (OB_UNLIKELY(!tablet_id.is_valid() || slice_idx < 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(tablet_id), K(slice_idx));
   } else if (OB_FAIL(direct_insert_session_->build_autoinc_param(
                  data_plane::DIRECT_INSERT_TABLE_AUTOINC,
                  tablet_id, slice_idx, autoinc_param))) {
@@ -223,8 +235,10 @@ int ObPxMultiPartSSTableInsertOp::init_tablet_autoinc_param(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(direct_insert_session_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("direct insert session is null", K(ret));
   } else if (OB_UNLIKELY(!tablet_id.is_valid() || slice_idx < 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(tablet_id), K(slice_idx));
   } else if (OB_FAIL(direct_insert_session_->build_autoinc_param(
                  data_plane::DIRECT_INSERT_TABLET_AUTOINC,
                  tablet_id, slice_idx, autoinc_param))) {
@@ -238,6 +252,7 @@ int ObPxMultiPartSSTableInsertOp::eval_current_row(const int64_t rowkey_column_c
   const ObExprPtrIArray &exprs = get_spec().ins_ctdef_.new_row_;
   if (OB_UNLIKELY(rowkey_column_count <= 0 || !current_row.is_valid() || exprs.count() > current_row.get_capacity())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(rowkey_column_count), K(current_row.get_capacity()), K(exprs.count()));
   } else {
     clear_evaluated_flag();
     ObEvalCtx &eval_ctx = get_eval_ctx();
@@ -247,6 +262,7 @@ int ObPxMultiPartSSTableInsertOp::eval_current_row(const int64_t rowkey_column_c
       const ObExpr *e = exprs.at(i);
       if (OB_ISNULL(e)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("expr is NULL", K(ret), K(i));
       } else if (OB_FAIL(e->eval(eval_ctx, datum))) {
       } else {
         const int64_t store_position = i < rowkey_column_count ? i : i + extra_rowkey_column_count;
@@ -269,6 +285,7 @@ int ObPxMultiPartSSTableInsertOp::eval_current_row(ObIArray<ObDatum *> &datums)
     const ObExpr *e = exprs.at(i);
     if (OB_ISNULL(e)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("expr is NULL", K(ret), K(i));
     } else if (OB_FAIL(e->eval(eval_ctx, datum))) {
     } else if (OB_FAIL(datums.push_back(datum))) {
     }
@@ -283,14 +300,16 @@ int ObPxMultiPartSSTableInsertOp::locate_exprs()
   const ObExprPtrIArray &child_output_exprs = child_->get_spec().output_;
   const int64_t part_id_idx = get_spec().row_desc_.get_part_id_index();
   if (NO_PARTITION_ID_FLAG == part_id_idx) {
-    DASRuntimeTableAccess *table_access = ins_rtdef_.das_rtdef_.table_access_;
-    if (OB_ISNULL(table_access) || table_access->get_tablet_accesses().size() != 1) {
+    ObDASTableLoc *table_loc = ins_rtdef_.das_rtdef_.table_loc_;
+    if (OB_ISNULL(table_loc) || table_loc->get_tablet_locs().size() != 1) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("insert table location is invalid", K(ret), KPC(table_loc));
     } else {
-      non_partitioned_tablet_id_ = table_access->get_first_tablet_access()->tablet_id_;
+      non_partitioned_tablet_id_ = table_loc->get_first_tablet_loc()->tablet_id_;
     }
   } else if (part_id_idx < 0 || part_id_idx >= child_output_exprs.count()) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("error unexpected, part_id_idx is not valid", K(ret), K(part_id_idx), K(child_output_exprs.count()));
   } else {
     tablet_id_expr_ = child_output_exprs.at(part_id_idx);
   }
@@ -319,6 +338,7 @@ int ObPxMultiPartSSTableInsertOp::locate_exprs()
       if (OB_SUCC(ret)) {
         if (OB_ISNULL(tablet_autoinc_expr_) || !is_found) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("tablet autoinc expr not found", K(ret), KP(tablet_autoinc_expr_), K(tablet_autoinc_column_idx_), K(is_found));
         }
       }
     } else {
@@ -339,6 +359,8 @@ int ObPxMultiPartSSTableInsertOp::check_need_idempotence()
   int ret = OB_SUCCESS;
   if (OB_ISNULL(direct_insert_session_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("direct insert session is null", K(ret),
+        KP(direct_insert_session_));
   } else {
     ObSqlCtx *sql_ctx = nullptr;
     const ObTableSchema *ddl_table_schema = nullptr;
@@ -347,9 +369,11 @@ int ObPxMultiPartSSTableInsertOp::check_need_idempotence()
     data_plane::ObDirectInsertWritePolicy policy;
     if (OB_ISNULL(sql_ctx = ctx_.get_sql_ctx()) || OB_ISNULL(sql_ctx->schema_guard_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("error unexpected, schema guard not be nullptr", K(ret));
     } else if (OB_FAIL(sql_ctx->schema_guard_->get_table_schema( MY_SPEC.plan_->get_ddl_table_id(), ddl_table_schema))) {
     } else if (OB_ISNULL(ddl_table_schema)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("table schema is null", K(ret), K(MY_SPEC.plan_->get_ddl_table_id()));
     } else {
       facts.regenerate_heap_table_pk_ = MY_SPEC.regenerate_heap_table_pk_;
       facts.vector_rowkey_vid_ = ddl_table_schema->is_vec_rowkey_vid_type();
@@ -361,12 +385,14 @@ int ObPxMultiPartSSTableInsertOp::check_need_idempotence()
         if (OB_FAIL(sql_ctx->schema_guard_->get_table_schema( ddl_table_schema->get_data_table_id(), data_table_schema))) {
         } else if (OB_ISNULL(data_table_schema)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("table schema is null", K(ret), K(ddl_table_schema->get_data_table_id()));
         } else {
           facts.data_table_without_pk_ = data_table_schema->is_table_without_pk();
         }
       }
       if (OB_SUCC(ret) && policy.idempotent_doc_id_
           && OB_FAIL(direct_insert_session_->resolve_write_policy(facts, policy))) {
+        LOG_WARN("refine direct insert write policy failed", K(ret));
       } else if (OB_SUCC(ret)) {
         is_vec_gen_vid_ = policy.vector_generated_id_;
         need_idempotent_tablet_autoinc_ = policy.idempotent_tablet_autoinc_;
@@ -385,6 +411,7 @@ int ObPxMultiPartSSTableInsertOp::write_heap_slice_by_row()
   int ret = OB_SUCCESS;
   if (OB_ISNULL(direct_insert_session_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("direct insert session is null", K(ret));
   }
   ObArray<ObDatum *> datums;
   while (OB_SUCC(ret) && !is_all_partition_finished_) {
@@ -392,6 +419,7 @@ int ObPxMultiPartSSTableInsertOp::write_heap_slice_by_row()
     data_plane::ObIDirectInsertWriter *slice_writer = nullptr;
     if (OB_FAIL(get_next_row_from_child(&op_monitor_info_.otherstat_2_value_))) {
       if (OB_ITER_END != ret) {
+        LOG_WARN("get next row failed", K(ret));
       } else {
         is_all_partition_finished_ = true;
         ret = OB_SUCCESS;
@@ -412,6 +440,7 @@ int ObPxMultiPartSSTableInsertOp::write_heap_slice_by_row()
       data_plane::ObIDirectInsertWriter *slice_writer = iter->second;
       if (OB_ISNULL(slice_writer)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("slice writer is null", K(ret));
       } else if (OB_FAIL(slice_writer->close())) {
       }
     }
@@ -427,6 +456,7 @@ int ObPxMultiPartSSTableInsertOp::get_or_create_heap_writer(
   slice_writer = nullptr;
   if (OB_FAIL(heap_tablet_writer_map_.get_refactored(tablet_id, slice_writer))) {
     if (OB_HASH_NOT_EXIST != ret) {
+      LOG_WARN("get tablet writer failed", K(ret));
     } else {
       ret = OB_SUCCESS;
       const int64_t slice_idx = ctx_.get_px_task_id();
@@ -463,6 +493,7 @@ int ObPxMultiPartSSTableInsertOp::write_ordered_slice_by_row()
   int ret = OB_SUCCESS;
   if (OB_ISNULL(direct_insert_session_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("direct insert session is null", K(ret));
   }
   ObArray<ObDatum *> datums;
   ObTabletID tablet_id;
@@ -474,12 +505,14 @@ int ObPxMultiPartSSTableInsertOp::write_ordered_slice_by_row()
   while (OB_SUCC(ret) && !is_all_partition_finished_) {
     if (OB_FAIL(get_next_row_from_child(&op_monitor_info_.otherstat_2_value_))) {
       if (OB_ITER_END != ret) {
+        LOG_WARN("get next row failed", K(ret));
       } else {
         is_all_partition_finished_ = true;
         ret = OB_SUCCESS;
       }
     } else if (OB_UNLIKELY(need_update_tablet_range_count)
                && OB_FAIL(direct_insert_session_->prepare_ordered_input())) {
+      LOG_WARN("update tablet range count failed", K(ret));
     } else if (FALSE_IT(need_update_tablet_range_count = false)) {
     } else if (OB_FAIL(get_tablet_info_from_row(child_->get_spec().output_, tablet_id, &slice_param))) {
     } else if (OB_FAIL(switch_slice_if_need(
@@ -498,6 +531,7 @@ int ObPxMultiPartSSTableInsertOp::write_ordered_slice_by_row()
   }
   if (OB_SUCC(ret) && is_all_partition_finished_ && nullptr != slice_writer) {
     if (need_idempotent_doc_id_ && OB_FAIL(sync_tablet_doc_id(slice_writer))) {
+      LOG_WARN("sync tablet doc id failed", K(ret), KP(slice_writer));
     } else if (OB_FAIL(slice_writer->close())) {
     }
   }
@@ -517,8 +551,11 @@ int ObPxMultiPartSSTableInsertOp::switch_slice_if_need(
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(nullptr == direct_insert_session_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("direct insert session is null", K(ret),
+        KP(direct_insert_session_));
   } else if (OB_UNLIKELY(!tablet_id.is_valid() || slice_idx < 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(tablet_id), K(slice_idx));
   } else if (OB_LIKELY(OB_NOT_NULL(slice_writer)
              && slice_writer->get_tablet_id() == tablet_id
              && slice_writer->get_slice_index() == slice_idx)) {
@@ -529,6 +566,7 @@ int ObPxMultiPartSSTableInsertOp::switch_slice_if_need(
     }
     if (OB_NOT_NULL(slice_writer)) {
       if (need_idempotent_doc_id_ && OB_FAIL(sync_tablet_doc_id(slice_writer))) {
+        LOG_WARN("sync tablet doc id failed", K(ret), KP(slice_writer));
       } else if (OB_FAIL(slice_writer->close())) {
       } else {
         data_plane::ObIDirectInsertWriterFactory::destroy(slice_writer);
@@ -571,12 +609,15 @@ int ObPxMultiPartSSTableInsertOp::get_data_tablet_id(const ObTabletID &tablet_id
   data_tablet_id.reset();
   if (OB_ISNULL(sql_ctx = ctx_.get_sql_ctx()) || OB_ISNULL(sql_ctx->schema_guard_) || OB_ISNULL(MY_SPEC.plan_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("schema guard, sql_ctx or plan is null", K(ret));
   } else if (OB_FAIL(sql_ctx->schema_guard_->get_table_schema( MY_SPEC.plan_->get_ddl_table_id(), ddl_table_schema))) {
   } else if (OB_ISNULL(ddl_table_schema)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("ddl table schema is null", K(ret), K(MY_SPEC.plan_->get_ddl_table_id()));
   } else if (OB_FAIL(sql_ctx->schema_guard_->get_table_schema( ddl_table_schema->get_data_table_id(), data_table_schema))) {
   } else if (OB_ISNULL(data_table_schema)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("data table schema is null", K(ret), K(ddl_table_schema->get_data_table_id()));
   } else if (!data_table_schema->is_partitioned_table()) {
     data_tablet_id = data_table_schema->get_tablet_id();
   } else {
@@ -601,8 +642,11 @@ int ObPxMultiPartSSTableInsertOp::sync_tablet_doc_id(
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(nullptr == direct_insert_session_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("direct insert session is null", K(ret),
+        KP(direct_insert_session_));
   } else if (OB_UNLIKELY(nullptr == slice_writer)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), KP(slice_writer));
   } else {
     const ObTabletID tablet_id = slice_writer->get_tablet_id();
     const int64_t slice_idx = slice_writer->get_slice_index();
@@ -621,12 +665,14 @@ int ObPxMultiPartSSTableInsertOp::sync_table_level_autoinc_value()
   int ret = OB_SUCCESS;
   if (OB_ISNULL(direct_insert_session_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("direct insert session is null", K(ret));
   } else {
     ObAutoincrementService &auto_service = ObAutoincrementService::get_instance();
     ObEvalCtx &eval_ctx = get_eval_ctx();
     ObPhysicalPlanCtx *plan_ctx = eval_ctx.exec_ctx_.get_physical_plan_ctx();
     if (OB_ISNULL(plan_ctx)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("physical plan context is null", K(ret), K(plan_ctx));
     } else {
       ObIArray<AutoincParam> &autoinc_params = plan_ctx->get_autoinc_params();
       if (OB_FAIL(plan_ctx->sync_last_value_local())) {

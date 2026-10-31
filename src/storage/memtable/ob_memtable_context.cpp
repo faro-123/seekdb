@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-#include "config_bridge.h"
 #include "ob_memtable_context.h"
 #include "storage/tx/ob_tx_ctx.h"
 #include "storage/tablelock/ob_lock_memtable.h"
@@ -40,6 +39,10 @@ ObMemtableCtx::ObMemtableCtx()
       query_allocator_(),
       ctx_cb_allocator_(),
       ctx_(NULL),
+      truncate_cnt_(0),
+      lock_for_read_retry_count_(0),
+      lock_for_read_elapse_(0),
+      trans_mem_total_size_(0),
       unsubmitted_cnt_(0),
       callback_mem_used_(0),
       callback_alloc_count_(0),
@@ -130,6 +133,10 @@ void ObMemtableCtx::reset()
     callback_alloc_count_ = 0;
     callback_mem_used_ = 0;
     has_row_updated_ = false;
+    trans_mem_total_size_ = 0;
+    lock_for_read_retry_count_ = 0;
+    lock_for_read_elapse_ = 0;
+    truncate_cnt_ = 0;
     unsubmitted_cnt_ = 0;
     mem_ctx_obj_pool_.reset();
     lock_mem_ctx_.reset();
@@ -674,6 +681,20 @@ int ObMemtableCtx::get_callback_list_stat(ObIArray<ObTxCallbackListStat> &stats)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+void ObMemtableCtx::inc_lock_for_read_retry_count()
+{
+  lock_for_read_retry_count_++;
+}
+
+void ObMemtableCtx::add_trans_mem_total_size(const int64_t size)
+{
+  if (size < 0) {
+    TRANS_LOG_RET(ERROR, OB_ERR_UNEXPECTED, "unexpected size", K(size), K(*this));
+  } else {
+    ATOMIC_FAA(&trans_mem_total_size_, size);
+  }
+}
+
 int ObMemtableCtx::get_memtable_key_arr(transaction::ObMemtableKeyArray &memtable_key_arr)
 {
   int ret = OB_SUCCESS;
@@ -819,12 +840,12 @@ bool ObMemtableCtx::pending_log_size_too_large(const ObTxSEQ &write_seq_no)
 {
   bool ret = true;
 
-  if (0 == config::_private_buffer_size()) {
+  if (0 == GCONF._private_buffer_size) {
     ret = false;
   } else if (TX_FORCE_WRITE_CLOG) {
     ret = true;
   } else {
-    ret = trans_mgr_.pending_log_size_too_large(write_seq_no, config::_private_buffer_size());
+    ret = trans_mgr_.pending_log_size_too_large(write_seq_no, GCONF._private_buffer_size);
   }
 
   return ret;

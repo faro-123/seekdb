@@ -79,7 +79,7 @@ static_assert(NIO_MYSQL_COMMAND_LAYOUT_EMPTY ==
 static_assert(NIO_MYSQL_COMMAND_LAYOUT_U8 ==
                   static_cast<uint32_t>(ObMySQLCommandLayout::U8),
               "mysql command u8 layout mismatch");
-static_assert(sizeof(NioMysqlCommandField) == sizeof(ObMySQLCommandField),
+static_assert(sizeof(nio_mysql_command_field) == sizeof(ObMySQLCommandField),
               "mysql command field ABI mismatch");
 
 inline bool is_valid_mysql_command_layout(uint32_t layout) {
@@ -95,7 +95,7 @@ inline bool is_valid_mysql_command_layout(uint32_t layout) {
          NIO_MYSQL_COMMAND_LAYOUT_U8 == layout;
 }
 
-inline bool is_valid_mysql_command_field(const NioMysqlCommandField &field,
+inline bool is_valid_mysql_command_field(const nio_mysql_command_field &field,
                                          int64_t body_len) {
   return field.off >= 0 && field.len >= 0 &&
          static_cast<int64_t>(field.off) <= body_len &&
@@ -108,9 +108,10 @@ inline bool is_valid_mysql_command_field(const NioMysqlCommandField &field,
 // shape, pinned by its unit tests; re-deriving those tables here made the
 // wire shape triple-maintained and re-parsed every packet in reverse on the
 // hot path. What C++ still checks is exactly what memory safety needs: the
-// command range, a known layout enum value, and that all four field ranges
-// lie inside the delivered body.
-inline bool is_valid_mysql_command_view(const NioMysqlCommandView &view,
+// command range, a known layout enum value (a cheap ABI-drift tripwire backed
+// by the static_asserts in ob_nio_abi_check.cpp), and that all four field
+// ranges lie inside the delivered body.
+inline bool is_valid_mysql_command_view(const nio_mysql_command_view &view,
                                         int64_t body_len) {
   const bool is_internal_command =
       view.command >= INTERNAL_MYSQL_CMD_START &&
@@ -127,7 +128,7 @@ inline bool is_valid_mysql_command_view(const NioMysqlCommandView &view,
 }
 
 inline ObMySQLCommandView
-copy_mysql_command_view(const NioMysqlCommandView &view) {
+copy_mysql_command_view(const nio_mysql_command_view &view) {
   ObMySQLCommandView copied = {};
   copied.layout_ = static_cast<ObMySQLCommandLayout>(view.layout);
   copied.scalar0_ = view.scalar0;
@@ -143,7 +144,7 @@ copy_mysql_command_view(const NioMysqlCommandView &view) {
 inline void init_mysql_raw_packet(ObMySQLRawPacket &packet, char *payload,
                                   uint32_t body_len, uint64_t wire_bytes,
                                   ObMySQLRawPacketMode mode,
-                                  const NioMysqlCommandView *command_view) {
+                                  const nio_mysql_command_view *command_view) {
   packet.set_wire_bytes(wire_bytes);
   switch (mode) {
     case ObMySQLRawPacketMode::LOGIN:
@@ -179,7 +180,7 @@ inline void init_mysql_raw_packet(ObMySQLRawPacket &packet, char *payload,
 inline int
 build_mysql_raw_packet_view(ObICSMemPool &pool, char *body, int64_t body_len,
                             uint64_t wire_bytes, ObMySQLRawPacketMode mode,
-                            const NioMysqlCommandView *command_view,
+                            const nio_mysql_command_view *command_view,
                             ObMySQLRawPacket *&packet) {
   int ret = common::OB_SUCCESS;
   packet = NULL;

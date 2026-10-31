@@ -29,7 +29,7 @@
 #include "share/config/ob_config_manager.h"
 
 #include "share/tablet/ob_tablet_table_operator.h"
-#include "share/storage/local_store.h"
+#include "share/storage/ob_sqlite_connection_pool.h"
 #include "sql/ob_sql.h"
 #include "sql/das/ob_data_access_service.h"
 #include "sql/engine/px/ob_ddl_slice_store.h"
@@ -67,7 +67,7 @@
 #include "observer/ob_srv_network_frame.h"
 #include "observer/ob_service.h"
 #include "observer/ob_server_reload_config.h"
-#include "storage/meta_store/ob_startup_accel_task_handler.h"
+#include "storage/slog_ckpt/ob_startup_accel_task_handler.h"
 #include "storage/ddl/ob_ddl_heart_beat_task.h"
 
 #include "storage/ob_disk_usage_reporter.h"
@@ -166,6 +166,7 @@ class ObSSTableMergeInfoMgr;
 class ObLobManager;
 class ObMemstoreFreezer;
 class ObCompactionMemPool;
+class ObDirectLoadMgr;
 class ObFreezeInfoMgr;
 class ObAccessService;
 class ObEmptyReadBucket;
@@ -250,7 +251,7 @@ public:
   static ObServer &get_instance();
 
 public:
-  int init(const ObServerOptions &opts);
+  int init(const ObServerOptions &opts, const ObPLogWriterCfg &log_cfg);
   void destroy();
 
   // Start OceanBase server, this function is blocked after invoking
@@ -347,10 +348,10 @@ private:
   ~ObServer();
 
   int init_config(const ObServerOptions &opts);
-  int init_opts_config(const ObServerOptions &opts); // init configs from command line
+  int init_opts_config(const ObServerOptions &opts, const char *optstr); // init configs from command line
   int init_data_dir_and_redo_dir(const ObServerOptions &opts);
   int init_self_addr();
-  int init_config_module();
+  int init_config_module(const char *optstr);
   int init_tz_info_mgr();
   int init_pre_setting();
   int init_network();
@@ -395,6 +396,7 @@ private:
   void deinit_fts();
 
 public:
+  static int get_network_speed_from_config_file(int64_t &network_speed);
 public:
   volatile bool need_ctas_cleanup_; //true: ObCTASCleanUpTask should traverse all table schemas to find the one need be dropped
 private:
@@ -415,7 +417,6 @@ private:
   bool need_bootstrap_;
   volatile bool has_stopped_;
   bool has_destroy_;
-  bool in_process_ = false;
   int clients_fd_ = -1;
 #ifdef _WIN32
   HANDLE clients_h_ = INVALID_HANDLE_VALUE;
@@ -428,6 +429,7 @@ private:
   common::ObMySQLProxy ddl_sql_proxy_;
 
   // The OceanBase configuration relating to.
+  common::ObServerConfig &config_;
   ObServerReloadConfig reload_config_;
   common::ObConfigManager config_mgr_;
   omt::ObTimezoneMgr &timezone_mgr_;
@@ -445,8 +447,8 @@ private:
   // The PL Engine
   pl::ObPL pl_engine_;
 
-  // Shared process-local persistent store
-  share::LocalStore local_store_;
+  // Shared SQLite connection pool for meta database (config and tablet_meta tables)
+  share::ObSQLiteConnectionPool meta_db_pool_;
 
   // The Oceanbase partition table relating to
   share::ObTabletTableOperator tablet_operator_;
@@ -507,6 +509,7 @@ public:
   share::ObISharedTimer * shared_timer() { return mods_shared_timer_; }
   blocksstable::ObSharedMacroBlockMgr * shared_macro_block_mgr() { return mods_shared_macro_block_mgr_; }
   storage::ObStorageMetaMemMgr * storage_meta_mem_mgr() { return mods_storage_meta_mem_mgr_; }
+  ObTableScanIteratorObjPool * table_scan_iterator_obj_pool() { return mods_table_scan_iterator_obj_pool_; }
   common::ObIOService * io_service() { return mods_io_service_; }
   storage::mds::ObMdsService * mds_service() { return mods_mds_service_; }
   share::ObSharedMemAllocMgr * shared_mem_alloc_mgr() { return mods_shared_mem_alloc_mgr_; }
@@ -572,6 +575,7 @@ public:
   compaction::ObTabletScheduler * tablet_scheduler() { return mods_tablet_scheduler_; }
   compaction::ObMediumChecker * medium_checker() { return mods_medium_checker_; }
   storage::ObCompactionMemPool * compaction_mem_pool() { return mods_compaction_mem_pool_; }
+  storage::ObDirectLoadMgr * direct_load_mgr() { return mods_direct_load_mgr_; }
   share::ObDagScheduler * dag_scheduler() { return mods_dag_scheduler_; }
   storage::ObFreezeInfoMgr * freeze_info_mgr() { return mods_freeze_info_mgr_; }
   transaction::ObTxLoopWorker * tx_loop_worker() { return mods_tx_loop_worker_; }
@@ -691,6 +695,7 @@ private:
   omt::ObSharedTimer * mods_shared_timer_ = nullptr;
   blocksstable::ObSharedMacroBlockMgr * mods_shared_macro_block_mgr_ = nullptr;
   storage::ObStorageMetaMemMgr * mods_storage_meta_mem_mgr_ = nullptr;
+  ObTableScanIteratorObjPool * mods_table_scan_iterator_obj_pool_ = nullptr;
   common::ObIOService * mods_io_service_ = nullptr;
   storage::mds::ObMdsService * mods_mds_service_ = nullptr;
   share::ObSharedMemAllocMgr * mods_shared_mem_alloc_mgr_ = nullptr;
@@ -734,6 +739,7 @@ private:
   compaction::ObTabletScheduler * mods_tablet_scheduler_ = nullptr;
   compaction::ObMediumChecker * mods_medium_checker_ = nullptr;
   storage::ObCompactionMemPool * mods_compaction_mem_pool_ = nullptr;
+  storage::ObDirectLoadMgr * mods_direct_load_mgr_ = nullptr;
   share::ObDagScheduler * mods_dag_scheduler_ = nullptr;
   storage::ObFreezeInfoMgr * mods_freeze_info_mgr_ = nullptr;
   transaction::ObTxLoopWorker * mods_tx_loop_worker_ = nullptr;

@@ -30,10 +30,13 @@ int ObServerThreadHelper::create(
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(is_created_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("has inited", KR(ret));
   } else if (OB_ISNULL(thread_name)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("thread name is null", KR(ret));
   } else if (thread_cnt <= 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid thread count", KR(ret), K(thread_cnt));
   } else if (OB_FAIL(thread_cond_.init(ObWaitEventIds::REENTRANT_THREAD_COND_WAIT))) {
   } else {
     thread_name_ = thread_name;
@@ -49,6 +52,7 @@ int ObServerThreadHelper::start()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_created_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", KR(ret));
   } else if (is_first_time_to_start_) {
     if (OB_FAIL(share::ObReentrantThread::create(thread_cnt_, thread_name_))) {
     } else if (OB_FAIL(share::ObReentrantThread::logical_start())) {
@@ -152,6 +156,7 @@ void ObServerThreadHelper::run2() {
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_created_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else {
     lib::set_thread_name(thread_name_);
     LOG_INFO("thread run", K(thread_name_));
@@ -169,6 +174,7 @@ void ObServerThreadHelper::wakeup()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_created_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", KR(ret));
   } else {
     ObThreadCondGuard guard(thread_cond_);
     thread_cond_.broadcast();

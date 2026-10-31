@@ -35,6 +35,7 @@ int ObSystemPackageLoadService::server_module_init(ObSystemPackageLoadService *&
   int ret = OB_SUCCESS;
   if (OB_ISNULL(service)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("service is null", KR(ret), KP(service));
   } else if (OB_FAIL(service->init())) {
   }
   return ret;
@@ -45,6 +46,7 @@ int ObSystemPackageLoadService::init()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", KR(ret));
   } else if (OB_FAIL(task_.init())) {
   } else {
     inited_ = true;
@@ -57,8 +59,10 @@ int ObSystemPackageLoadService::start()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("service not inited", KR(ret), K_(inited));
   } else if (!timer_.inited()
       && OB_FAIL(timer_.init("SystemPkgLoad", common::ObMemAttr("SystemPkgLoad")))) {
+    LOG_WARN("fail to init timer", KR(ret));
   } else if (OB_FAIL(timer_.start())) {
   } else if (OB_FAIL(task_.start(timer_))) {
   }
@@ -106,6 +110,7 @@ int ObSystemPackageLoadService::activate()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("service not inited", KR(ret), K_(inited));
   } else if (OB_FAIL(start())) {
   }
   return ret;

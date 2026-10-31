@@ -115,6 +115,7 @@ int ObPsStmtItem::deep_copy(const ObPsStmtItem &other)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(allocator_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("allocator is invalid", K(ret));
   } else {
     stmt_id_ = other.stmt_id_;
     if (OB_FAIL(ps_key_.deep_copy(other.get_sql_key(), *allocator_))) {
@@ -162,6 +163,7 @@ void ObPsStmtItem::dec_ref_count()
     ObIAllocator *allocator = NULL;
     if (OB_ISNULL(allocator = get_external_allocator())) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("invalid argument", K(allocator), K(ret));
     } else {
       ps_item->release_memory_account();
       ps_item->~ObPsStmtItem();
@@ -328,6 +330,7 @@ int ObPsStmtInfo::assign_no_param_sql(const common::ObString &no_param_sql)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(allocator_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("allocator is invalid", K(ret));
   } else if (OB_FAIL(ObPsSqlUtils::deep_copy_str(*allocator_, no_param_sql, no_param_sql_))) {
   }
   return ret;
@@ -338,6 +341,7 @@ int ObPsStmtInfo::assign_raw_sql(const common::ObString &raw_sql)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(allocator_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("allocator is invalid", K(ret));
   } else if (OB_FAIL(ObPsSqlUtils::deep_copy_str(*allocator_, raw_sql, raw_sql_))) {
   }
   return ret;
@@ -351,6 +355,7 @@ int ObPsStmtInfo::add_fixed_raw_param(const ObPCParam &node)
   int64_t alloc_size = sizeof(ObPCParam) + sizeof(ParseNode);
   if (OB_ISNULL(buf = static_cast<char *>(allocator_->alloc(alloc_size)))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("fail to alloc memory", K(ret));
   } else {
     MEMSET(buf, 0, alloc_size);
     param = reinterpret_cast<ObPCParam *>(buf);
@@ -385,6 +390,7 @@ int ObPsStmtInfo::assign_fixed_raw_params(const common::ObIArray<int64_t> &param
   int ret = OB_SUCCESS;
   if (OB_ISNULL(allocator_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("allocator is invalid", K(ret));
   } else if (OB_FAIL(raw_params_.reserve(param_idxs.count()))) {
   } else {
     for (int64_t i = 0; OB_SUCC(ret) && i < param_idxs.count(); ++i) {
@@ -392,8 +398,10 @@ int ObPsStmtInfo::assign_fixed_raw_params(const common::ObIArray<int64_t> &param
       const int64_t idx = param_idxs.at(i);
       if (idx >= raw_params.count()) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("invalid idx", K(ret), K(idx), K(raw_params.count()));
       } else if (OB_ISNULL(tmp_param = raw_params.at(idx)) || OB_ISNULL(tmp_param->node_)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("node is null", K(idx), K(tmp_param));
       } else if (OB_FAIL(add_fixed_raw_param(*tmp_param))) {
       }
     }
@@ -411,6 +419,7 @@ int ObPsStmtInfo::deep_copy_fixed_raw_params(const common::ObIArray<int64_t> &pa
   int ret = OB_SUCCESS;
   if (OB_ISNULL(allocator_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("allocator is invalid", K(ret));
   } else if (OB_FAIL(raw_params_.reserve(raw_params.count()))) {
   } else {
     for (int64_t i = 0; OB_SUCC(ret) && i < raw_params.count(); ++i) {
@@ -430,6 +439,7 @@ int ObPsStmtInfo::deep_copy(const ObPsStmtInfo &other)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(allocator_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("allocator is invalid", K(ret));
   } else {
     stmt_type_ = other.stmt_type_;
     ps_stmt_checksum_ = other.ps_stmt_checksum_;
@@ -447,6 +457,7 @@ int ObPsStmtInfo::deep_copy(const ObPsStmtInfo &other)
       if (NULL == (dep_objs_ = reinterpret_cast<ObSchemaObjVersion *>
           (allocator_->alloc(dep_objs_cnt_ * sizeof(ObSchemaObjVersion))))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory", K(ret), K(dep_objs_cnt_));
       } else {
         MEMCPY(dep_objs_, other.get_dep_objs(), dep_objs_cnt_*sizeof(ObSchemaObjVersion));
       }
@@ -497,6 +508,7 @@ int ObPsStmtInfo::get_convert_size(int64_t &cv_size) const
     const ObPCParam *param = raw_params_.at(i);
     if (OB_ISNULL(param)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("is null", K(ret));
     } else if (OB_FAIL(get_deep_copy_size(param->node_, &raw_params_size))) {
     } else {
       raw_params_size += sizeof(ObPCParam);
@@ -626,8 +638,10 @@ ObPsStmtInfoGuard::~ObPsStmtInfoGuard()
       if (OB_FAIL(ps_cache_->deref_stmt_info(stmt_id_))) {
       }
     } else {
+      LOG_WARN("stmt info is null", K(stmt_id_));
     }
   } else {
+    LOG_WARN("ps_cache is null", K(stmt_id_), K(stmt_info_));
   }
 }
 

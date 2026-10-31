@@ -37,6 +37,7 @@
 #include "share/ob_ddl_common.h"
 #include "rootserver/fork_table/ob_fork_table_util.h"
 #include "lib/utility/ob_common_utility.h"
+#include "share/config/ob_config.h" // ObConfigPairs
 #include "pl_ddl/ob_pl_ddl_service.h"
 
 namespace oceanbase
@@ -1012,8 +1013,7 @@ int check_will_be_having_domain_index_operation(
               common::ObIAllocator &allocator,
               ObDDLTaskRecord &task_record,
               common::hash::ObHashMap<uint64_t, uint64_t> *table_id_map = nullptr,
-              common::ObSArray<share::schema::ObTableSchema> *out_table_schemas = nullptr,
-              const bool preserve_constraint_names = false);
+              common::ObSArray<share::schema::ObTableSchema> *out_table_schemas = nullptr);
   int rebuild_fk_in_trans_(const common::ObIArray<const share::schema::ObTableSchema *> &user_table_schemas,
               const common::ObIArray<share::schema::ObForeignKeyInfo> &intra_db_fk_infos,
               common::hash::ObHashMap<uint64_t, uint64_t> &table_id_map,
@@ -1799,8 +1799,7 @@ private:
                                        common::ObIArray<share::schema::ObTableSchema> &new_scheams,
                                        common::ObArenaAllocator &allocator,
                                        const uint64_t define_user_id,
-                                       const bool delete_unused_columns,
-                                       const bool preserve_constraint_names = false);
+                                       const bool delete_unused_columns);
   int check_enable_sys_table_ddl(const share::schema::ObTableSchema &table_schema,
                                  const share::schema::ObSchemaOperationType operation_type);
   int log_drop_warn_or_err_msg(const obcall::ObTableItem table_item,
@@ -2127,6 +2126,7 @@ int ObDDLService::fill_part_name(const SCHEMA &orig_schema,
     ret = OB_ERR_UNEXPECTED;
     RS_LOG(WARN, "part_array is null", K(ret), K(part_array));
   } else if (OB_FAIL(orig_schema.get_max_part_idx(max_part_id))) {
+    RS_LOG(WARN, "fail to get max part id", KR(ret), K(max_part_id));
   }
   // Supplement the default partition name p+OB_MAX_PARTITION_NUM_MYSQL, accumulate after judging duplicates.
   //FIXME: partition_name may still conflict in one table since we can specify partition_name.
@@ -2146,6 +2146,7 @@ int ObDDLService::fill_part_name(const SCHEMA &orig_schema,
         part_name_str.assign(part_name, static_cast<int32_t>(pos));
         bool is_valid = false;
         if (OB_FAIL(check_partition_name_valid(orig_schema, alter_schema, part_name_str, is_valid))) {
+          RS_LOG(WARN, "failed to check partition name valid", K(ret), K(part_name_str));
         } else if (is_valid) {
           // If the partition name is reasonable, can add it to the partition, prepare to process
           // the next empty partition name

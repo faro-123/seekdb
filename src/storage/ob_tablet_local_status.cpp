@@ -40,6 +40,7 @@ int ObTabletRestoreStatus::check_can_change_status(
 
   if (!ObTabletRestoreStatus::is_valid(cur_status) || !ObTabletRestoreStatus::is_valid(change_status)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("check can change status get invalid argument", K(ret), K(cur_status), K(change_status));
   } else {
     switch (cur_status) {
     case ObTabletRestoreStatus::PENDING: {
@@ -118,6 +119,7 @@ int ObTabletDataStatus::check_can_change_status(
 
   if (!ObTabletDataStatus::is_valid(cur_status) || !ObTabletDataStatus::is_valid(change_status)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("check can change status get invalid argument", K(ret), K(cur_status), K(change_status));
   } else {
     switch (cur_status) {
     case ObTabletDataStatus::INCOMPLETE: {
@@ -162,6 +164,7 @@ int ObTabletExpectedStatus::check_can_change_status(
 
   if (!ObTabletExpectedStatus::is_valid(cur_status) || !ObTabletExpectedStatus::is_valid(change_status)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("check can change status get invalid argument", K(ret), K(cur_status), K(change_status));
   } else if (ObTabletExpectedStatus::NORMAL == cur_status && ObTabletExpectedStatus::DELETED == change_status) {
     can_change = true;
   } else {
@@ -192,6 +195,7 @@ int ObTabletLocalStatus::serialize(char *buf, const int64_t len, int64_t &pos) c
       || OB_UNLIKELY(len <= 0)
       || OB_UNLIKELY(pos < 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid args", K(ret), K(buf), K(len), K(pos));
   } else if (OB_FAIL(serialization::encode_i64(buf, len, new_pos, local_status_))) {
   } else {
     pos = new_pos;
@@ -208,6 +212,7 @@ int ObTabletLocalStatus::deserialize(const char *buf, const int64_t len, int64_t
       || OB_UNLIKELY(len <= 0)
       || OB_UNLIKELY(pos < 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid args", K(ret), K(buf), K(len), K(pos));
   } else if (OB_FAIL(serialization::decode_i64(buf, len, new_pos, &local_status_))) {
   } else {
     pos = new_pos;
@@ -238,6 +243,7 @@ int ObTabletLocalStatus::get_restore_status(ObTabletRestoreStatus::STATUS &resto
   int ret = OB_SUCCESS;
   if (!is_valid()) {
     ret = OB_NOT_INIT;
+    LOG_WARN("tablet local status is not initialized", K(ret), KPC(this));
   } else {
     restore_status = restore_status_;
   }
@@ -250,6 +256,7 @@ int ObTabletLocalStatus::set_data_status(const ObTabletDataStatus::STATUS &data_
 
   if (!ObTabletDataStatus::is_valid(data_status)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("set data status get invalid argument", K(ret), K(data_status));
   } else {
     data_status_ = data_status;
   }
@@ -261,6 +268,7 @@ int ObTabletLocalStatus::get_data_status(ObTabletDataStatus::STATUS &data_status
   int ret = OB_SUCCESS;
   if (!is_valid()) {
     ret = OB_NOT_INIT;
+    LOG_WARN("tablet local status is not initialized", K(ret), KPC(this));
   } else {
     data_status = data_status_;
   }
@@ -272,6 +280,7 @@ int ObTabletLocalStatus::set_expected_status(const ObTabletExpectedStatus::STATU
   int ret = OB_SUCCESS;
   if (!ObTabletExpectedStatus::is_valid(expected_status)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("set self status get invalid argument", K(ret), K(expected_status));
   } else {
     expected_status_ = expected_status;
   }
@@ -284,6 +293,7 @@ int ObTabletLocalStatus::get_expected_status(ObTabletExpectedStatus::STATUS &exp
   expected_status = ObTabletExpectedStatus::EXPECTED_STATUS_MAX;
   if (!is_valid()) {
     ret = OB_NOT_INIT;
+    LOG_WARN("tablet local status is not initialized", K(ret), KPC(this));
   } else {
     expected_status = expected_status_;
   }

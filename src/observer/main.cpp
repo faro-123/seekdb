@@ -664,7 +664,7 @@ int inner_main(int argc, char *argv[])
   ObStackHeaderGuard stack_header_guard;
   int64_t memory_used = get_virtual_memory_used();
 
-  ObCurTraceId::SeqGenerator::seed(ObTimeUtility::current_time());
+  ObCurTraceId::SeqGenerator::seq_generator_  = ObTimeUtility::current_time();
   static const int  LOG_FILE_SIZE             = DEFAULT_LOG_FILE_SIZE_MB * 1024 * 1024;
   const char *const LOG_FILE_NAME             = "log/seekdb.log";
   const char *const PID_FILE_NAME             = "run/seekdb.pid";
@@ -747,7 +747,7 @@ int inner_main(int argc, char *argv[])
 
   if (OB_FAIL(ret)) {
   } else {
-    ObCurTraceId::set("Y0-0000000000000001-0-0");
+    ObCurTraceId::get_trace_id()->set("Y0-0000000000000001-0-0");
     CURLcode curl_code = curl_global_init(CURL_GLOBAL_ALL);
     OB_ASSERT(CURLE_OK == curl_code);
 
@@ -756,6 +756,7 @@ int inner_main(int argc, char *argv[])
     OB_LOGGER.set_max_file_size(LOG_FILE_SIZE);
     OB_LOGGER.set_new_file_info(syslog_file_info);
     OB_LOGGER.set_file_name(LOG_FILE_NAME, false/*no_redirect_flag*/);
+    ObPLogWriterCfg log_cfg;
     LOG_INFO("succ to init logger",
              "default file", LOG_FILE_NAME,
              "max_log_file_size", LOG_FILE_SIZE,
@@ -793,8 +794,9 @@ int inner_main(int argc, char *argv[])
       lib::Worker worker;
       lib::Worker::set_worker_to_thread_local(&worker);
       ObServer &observer = ObServer::get_instance();
-      LOG_INFO("seekdb starts", "seekdb_version", PACKAGE_NAME " " PACKAGE_VERSION, "embedded", opts->embedded_);
-      if (OB_FAIL(observer.init(*opts))) {
+      LOG_INFO("seekdb starts", "seekdb_version", PACKAGE_STRING, "embedded", opts->embedded_);
+      if (OB_FAIL(observer.init(*opts, log_cfg))) {
+        LOG_ERROR("seekdb init fail", K(ret));
       } else if (OB_MALLOC_BACKEND_UNKNOWN == malloc_backend) {
         LOG_WARN("invalid malloc backend",
                  "env", ob_malloc_backend_env_name(),
@@ -806,6 +808,7 @@ int inner_main(int argc, char *argv[])
       OB_DELETE(ObServerOptions, mem_attr, opts);
       if (OB_FAIL(ret)) {
       } else if (OB_FAIL(observer.start())) {
+        LOG_ERROR("seekdb start fail", K(ret));
       } else {
         safe_sd_notify(0, "READY=1\n"
                        "STATUS=seekdb is ready and running\n");
@@ -816,6 +819,7 @@ int inner_main(int argc, char *argv[])
       }
       if (OB_FAIL(ret)) {
       } else if (OB_FAIL(observer.wait())) {
+        LOG_ERROR("seekdb wait fail", K(ret));
       }
 
       if (OB_FAIL(ret)) {
@@ -827,7 +831,7 @@ int inner_main(int argc, char *argv[])
     unlink(PID_FILE_NAME);
   }
 
-  LOG_INFO("seekdb exits", "seekdb_version", PACKAGE_NAME " " PACKAGE_VERSION);
+  LOG_INFO("seekdb exits", "seekdb_version", PACKAGE_STRING);
   return ret;
 }
 

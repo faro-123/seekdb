@@ -37,6 +37,7 @@ int ObExprTypeToStr::assign(const ObExprOperator &other) {
 
   if ((OB_ISNULL(tmp_other))) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("cast failed, type of argument is wrong", K(ret), K(other));
   } else if (OB_UNLIKELY(tmp_other == this)) {
   } else {
     if (OB_FAIL(ObExprOperator::assign(other))) {
@@ -62,6 +63,7 @@ int ObExprTypeToStr::calc_result_type2(ObExprResType &type,
     ObObjType dst_type = static_cast<ObObjType>(get_raw_expr()->get_dst_type());
     if (!ob_is_large_text(dst_type) && dst_type != ObCharType) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("invalid dst type", K(ret), K(dst_type));
     } else {
       type.set_type(dst_type);
     }
@@ -80,6 +82,7 @@ int ObExprTypeToStr::shallow_copy_str_values(const common::ObIArray<common::ObSt
   str_values_.reset();
   if (OB_UNLIKELY(str_values.count() < 1)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid str_values", K(str_values), K(ret));
   } else if (OB_FAIL(str_values_.assign(str_values))) {
   } else {/*do nothing*/}
   return ret;
@@ -91,6 +94,7 @@ int ObExprTypeToStr::deep_copy_str_values(const ObIArray<ObString> &str_values)
   str_values_.reset();
   if (OB_UNLIKELY(str_values.count() < 1)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid str_values", K(str_values), K(ret));
   } else if (OB_FAIL(str_values_.reserve(str_values.count()))) {
   } else {/*do nothing*/}
 
@@ -102,6 +106,7 @@ int ObExprTypeToStr::deep_copy_str_values(const ObIArray<ObString> &str_values)
       //just keep str_tmp empty
     } else if (OB_UNLIKELY(NULL == (buf = static_cast<char *>(alloc_.alloc(str.length()))))) {
       ret = common::OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("failed to allocate memory", K(i), K(str), K(ret));
     } else {
       MEMCPY(buf, str.ptr(), str.length());
       str_tmp.assign_ptr(buf, str.length());
@@ -127,8 +132,10 @@ int ObEnumSetInfo::init_enum_set_info(common::ObIAllocator *allocator, ObExpr &r
   void *buf = NULL;
   if (OB_ISNULL(allocator)) {
     ret = OB_TABLE_NOT_EXIST;
+    LOG_WARN("allocator is null", K(ret));
   } else if (OB_ISNULL(buf = allocator->alloc(sizeof(ObEnumSetInfo)))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("fail to alloc memory", K(ret));
   } else {
     enumset_info = new(buf) ObEnumSetInfo(*allocator, type);
     enumset_info->cast_mode_ = cast_mode;
@@ -143,6 +150,7 @@ int ObEnumSetInfo::init_enum_set_info(common::ObIAllocator *allocator, ObExpr &r
         //just keep str_tmp empty
       } else if (OB_ISNULL(buf = static_cast<char *>(allocator->alloc(str.length())))) {
         ret = common::OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("failed to allocate memory", K(i), K(str), K(ret));
       } else {
         MEMCPY(buf, str.ptr(), str.length());
         str_tmp.assign_ptr(buf, str.length());
@@ -170,6 +178,7 @@ int ObEnumSetInfo::deep_copy(common::ObIAllocator &allocator,
   if (OB_FAIL(ObExprExtraInfoFactory::alloc(allocator, type, copied_info))) {
   } else if (OB_ISNULL(copied_enum_set_info = dynamic_cast<ObEnumSetInfo *>(copied_info))) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected error", K(ret));
   } else if (OB_FAIL(copied_enum_set_info->str_values_.prepare_allocate(str_values_.count()))) {
   } else {
     copied_enum_set_info->cast_mode_ = cast_mode_;
@@ -216,6 +225,7 @@ int ObExprSetToStr::calc_to_str_expr(const ObExpr &expr, ObEvalCtx &ctx, ObDatum
       || OB_ISNULL(expr.args_[1])
       || OB_ISNULL(expr.extra_info_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("expr.arg_cnt_ is unexpected", K(ret), K(expr.arg_cnt_), KP(expr.args_));
   } else if (OB_FAIL(expr.args_[1]->eval(ctx, set_datum))) {
   } else if (set_datum->is_null()) {
     res_datum.set_null();
@@ -273,6 +283,7 @@ int ObExprEnumToStr::calc_to_str_expr(const ObExpr &expr, ObEvalCtx &ctx, ObDatu
       || OB_ISNULL(expr.args_[1])
       || OB_ISNULL(expr.extra_info_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("expr.arg_cnt_ is unexpected", K(ret), K(expr.arg_cnt_), KP(expr.args_));
   } else if (OB_FAIL(expr.args_[1]->eval(ctx, enum_datum))) {
   } else if (enum_datum->is_null()) {
     res_datum.set_null();
@@ -349,6 +360,7 @@ int ObExprSetToInnerType::calc_to_inner_expr(const ObExpr &expr, ObEvalCtx &ctx,
       || OB_ISNULL(expr.args_[1])
       || OB_ISNULL(expr.extra_info_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("expr.arg_cnt_ is unexpected", K(ret), K(expr.arg_cnt_), KP(expr.args_));
   } else if (OB_FAIL(expr.args_[1]->eval(ctx, set_datum))) {
   } else if (set_datum->is_null()) {
     res_datum.set_null();
@@ -358,6 +370,7 @@ int ObExprSetToInnerType::calc_to_inner_expr(const ObExpr &expr, ObEvalCtx &ctx,
     const uint64_t element_val = set_datum->get_set();
     if (OB_UNLIKELY(element_num < 1)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("invalid element_num", K(str_values), K(element_num), K(ret));
     } else if (OB_UNLIKELY(element_num < EFFECTIVE_COUNT)
                 && OB_UNLIKELY(element_val >= (1ULL << element_num))) {
       ret = OB_ERR_UNEXPECTED;
@@ -373,6 +386,7 @@ int ObExprSetToInnerType::calc_to_inner_expr(const ObExpr &expr, ObEvalCtx &ctx,
         const ObString &tmp_val = str_values.at(i);
         if (OB_FAIL(sql_string.append(tmp_val))) {
         } else if ((element_val >= (index << 1)) && (OB_FAIL(sql_string.append(sep)))) {
+          LOG_WARN("fail to deep copy comma", K(element_val), K(tmp_val), K(i), K(ret));
         }
       }
     }
@@ -385,6 +399,7 @@ int ObExprSetToInnerType::calc_to_inner_expr(const ObExpr &expr, ObEvalCtx &ctx,
       int64_t pos = 0;
       if (OB_ISNULL(buf = expr.get_str_res_mem(ctx, BUF_LEN))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("alloc memory failed", K(ret), K(buf), K(BUF_LEN));
       } else if (OB_FAIL(inner_value.serialize(buf, BUF_LEN, pos))) {
       } else {
         res_datum.set_enumset_inner(buf, static_cast<ObString::obstr_size_t>(pos));
@@ -447,6 +462,7 @@ int ObExprEnumToInnerType::calc_to_inner_expr(const ObExpr &expr, ObEvalCtx &ctx
       || OB_ISNULL(expr.args_[1])
       || OB_ISNULL(expr.extra_info_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("expr.arg_cnt_ is unexpected", K(ret), K(expr.arg_cnt_), KP(expr.args_));
   } else if (OB_FAIL(expr.args_[1]->eval(ctx, enum_datum))) {
   } else if (enum_datum->is_null()) {
     res_datum.set_null();
@@ -459,10 +475,12 @@ int ObExprEnumToInnerType::calc_to_inner_expr(const ObExpr &expr, ObEvalCtx &ctx
     ObString element_str;
     if (OB_UNLIKELY(element_num < 1)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("str_values_ should not be empty", K(str_values), K(ret));
     } else if (OB_UNLIKELY(0 == element_val)) {
       //do nothing just keep element_string empty
     } else if (OB_UNLIKELY(element_idx > element_num - 1)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("invalid enum value", K(element_idx), K(element_num), K(element_val), K(ret));
     } else {
       element_str = str_values.at(element_idx);
     }
@@ -474,6 +492,7 @@ int ObExprEnumToInnerType::calc_to_inner_expr(const ObExpr &expr, ObEvalCtx &ctx
       char *buf = NULL;
       if (OB_ISNULL(buf = expr.get_str_res_mem(ctx, BUF_LEN))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("alloc memory failed", K(ret), K(buf), K(BUF_LEN));
       } else if (OB_FAIL(inner_value.serialize(buf, BUF_LEN, pos))) {
       } else {
         res_datum.set_enumset_inner(buf, static_cast<ObString::obstr_size_t>(pos));

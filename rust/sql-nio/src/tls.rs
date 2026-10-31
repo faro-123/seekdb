@@ -77,6 +77,23 @@ pub(crate) fn tls_cipher_name(suite: rustls::CipherSuite) -> Option<&'static [u8
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::tls_cipher_name;
+
+    #[test]
+    fn exposes_sql_cipher_names() {
+        assert_eq!(
+            tls_cipher_name(rustls::CipherSuite::TLS13_AES_256_GCM_SHA384),
+            Some(&b"TLS_AES_256_GCM_SHA384"[..])
+        );
+        assert_eq!(
+            tls_cipher_name(rustls::CipherSuite::TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256),
+            Some(&b"ECDHE-RSA-AES128-GCM-SHA256"[..])
+        );
+    }
+}
+
 pub(crate) fn flush_tls_locked(conn: &Arc<Conn>, g: &mut ConnInner) -> bool {
     let mut fatal = false;
     {
@@ -201,7 +218,7 @@ pub(crate) fn promote_to_tls(conn: &Arc<Conn>, packet: &DecodedPacket) -> bool {
     true
 }
 
-#[cfg(all(unix, feature = "native-network"))]
+#[cfg(unix)]
 pub(crate) fn read_socket_raw(g: &mut ConnInner, buf: &mut [u8]) -> std::io::Result<usize> {
     let fd = raw_fd(&g.sock);
     let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut c_void, buf.len()) };
@@ -212,7 +229,7 @@ pub(crate) fn read_socket_raw(g: &mut ConnInner, buf: &mut [u8]) -> std::io::Res
     }
 }
 
-#[cfg(any(not(unix), feature = "memory-transport"))]
+#[cfg(not(unix))]
 pub(crate) fn read_socket_raw(g: &mut ConnInner, buf: &mut [u8]) -> std::io::Result<usize> {
     g.sock.read(buf)
 }

@@ -16,7 +16,6 @@
 
 #include "ob_trans_ctx_lock.h"
 #include "ob_trans_service.h"
-#include "lib/utility/ob_platform_utils.h"
 #ifdef __APPLE__
 #include <pthread.h>
 #endif
@@ -67,8 +66,6 @@ static inline void init_lock_thread_id()
     uint64_t thread_id = 0;
     pthread_threadid_np(NULL, &thread_id);
     lock_thread_id_ = (pid_t)thread_id;
-#elif defined(__EMSCRIPTEN__)
-    lock_thread_id_ = static_cast<pid_t>(lib::ob_get_thread_id());
 #elif defined(_WIN32)
     lock_thread_id_ = (pid_t)GetCurrentThreadId();
 #else
@@ -222,17 +219,14 @@ void CtxLockGuard::set(CtxLock &lock, uint8_t mode)
 void CtxLockGuard::reset()
 {
   if (NULL != lock_) {
-    // Like CtxLock::unlock(), release the outer latches before unlock_ctx()
-    // invokes commit callbacks. A callback can take the transaction descriptor
-    // lock while a commit retry holds that lock and waits for these latches.
-    if (mode_ & MODE::ACCESS) {
-      lock_->unlock_access();
+    if (mode_ & MODE::CTX) {
+      lock_->unlock_ctx();
     }
     if ((mode_ & MODE::REDO_FLUSH_X) || (mode_ & MODE::REDO_FLUSH_R)) {
       lock_->unlock_flush_redo();
     }
-    if (mode_ & MODE::CTX) {
-      lock_->unlock_ctx();
+    if (mode_ & MODE::ACCESS) {
+      lock_->unlock_access();
     }
 
     lock_ = NULL;

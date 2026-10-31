@@ -48,6 +48,7 @@ int ObStrings::get_string(int64_t idx, ObString &str) const
   int ret = OB_SUCCESS;
   if (idx < 0 || idx >= strs_.count()) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(idx), "string count", strs_.count());
   } else if (OB_FAIL(strs_.at(idx, str))) {
   }
   return ret;

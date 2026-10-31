@@ -117,6 +117,7 @@ int ObGeoTreeUtil::create_geometry(ObGeoCRS crs, uint32_t srid,
     void *buf = allocator.alloc(sizeof(CartesianT));
     if (OB_ISNULL(buf)) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("fail to alloc memory for ObGeometry", K(ret), K(sizeof(CartesianT)));
     } else {
       CartesianT *node= new (buf) CartesianT(srid, allocator);
       output = node;
@@ -125,6 +126,7 @@ int ObGeoTreeUtil::create_geometry(ObGeoCRS crs, uint32_t srid,
     void *buf = allocator.alloc(sizeof(GeographT));
     if (OB_ISNULL(buf)) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("fail to alloc memory for ObGeometry", K(ret), K(sizeof(GeographT)));
     } else {
       GeographT *node= new (buf) GeographT(srid, allocator);
       output = node;
@@ -141,6 +143,7 @@ int ObGeoTreeUtil::create_geometry(uint32_t srid,
   void *buf = allocator.alloc(sizeof(GeometryT));
   if (OB_ISNULL(buf)) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("fail to alloc memory for ObGeometry", K(ret), K(sizeof(GeometryT)));
   } else {
     GeometryT *node= new (buf) GeometryT(srid, allocator);
     output = node;
@@ -378,6 +381,7 @@ int ObCartesianGeometrycollection::set(uint32_t index, ObGeometry *geo)
   int ret = OB_SUCCESS;
   if (index >= geoms_.size()) {
     ret = OB_ERR_ARGUMENT_OUT_OF_RANGE;
+    LOG_WARN("index is out of range", K(ret), K(index), K(geoms_.size()));
   } else {
     geoms_[index] = geo;
   }
@@ -389,6 +393,7 @@ int ObGeographGeometrycollection::set(uint32_t index, ObGeometry *geo)
   int ret = OB_SUCCESS;
   if (index >= geoms_.size()) {
     ret = OB_ERR_ARGUMENT_OUT_OF_RANGE;
+    LOG_WARN("index is out of range", K(ret), K(index), K(geoms_.size()));
   } else {
     geoms_[index] = geo;
   }

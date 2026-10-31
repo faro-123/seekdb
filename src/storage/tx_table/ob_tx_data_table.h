@@ -19,6 +19,7 @@
 
 #include "lib/utility/ob_tracepoint.h" // ERRSIM_POINT_DEF
 #include "share/scn.h"
+#include "share/ob_occam_timer.h"
 #include "storage/allocator/ob_tx_data_allocator.h"
 #include "storage/meta_mem/ob_tablet_handle.h"
 #include "storage/tx_table/ob_tx_data_memtable_mgr.h"
@@ -26,6 +27,11 @@
 
 namespace oceanbase
 {
+
+namespace common
+{
+class ObOccamTimer;
+}
 
 namespace storage
 {

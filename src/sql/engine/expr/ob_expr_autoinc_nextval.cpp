@@ -89,6 +89,8 @@ int ObExprAutoincNextval::calc_result_typeN(ObExprResType &type,
       if (!(ObNullTC == tc || ObIntTC == tc || ObUIntTC == tc
            || ObFloatTC == tc || ObDoubleTC == tc)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("only int/uint/float/double type class supported for auto_increment column",
+                 K(ret));
       } else {
         static_cast<ObObjMeta &>(type) = types_array[0];
       }
@@ -181,6 +183,8 @@ int ObExprAutoincNextval::get_uint_value(const ObExpr &input_expr,
       }
       default:
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("only int/float/double types support auto increment",
+                 K(ret), K(input_expr.datum_meta_));
     }
   }
   return ret;
@@ -201,6 +205,7 @@ int ObExprAutoincNextval::get_input_value(const ObExpr &expr,
     if (expr.arg_cnt_ == 1) {
       if (OB_ISNULL(expr.args_)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("expr.args_ is null", K(ret));
       } else if (OB_FAIL(get_uint_value(*expr.args_[0], input_value, is_zero, casted_value))) {
       }
     }
@@ -235,6 +240,7 @@ int ObExprAutoincNextval::generate_autoinc_value(const ObSQLSessionInfo &my_sess
   int ret = OB_SUCCESS;
   if (OB_ISNULL(autoinc_param) || OB_ISNULL(plan_ctx)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Invalid argument(s)", K(ret), K(autoinc_param), K(plan_ctx));
   } else {
     if (ctx.exec_ctx_.is_ddl_idempotent_autoinc()) {
       const int64_t table_all_slice_count = ctx.exec_ctx_.get_slice_count();
@@ -257,6 +263,7 @@ int ObExprAutoincNextval::generate_autoinc_value(const ObSQLSessionInfo &my_sess
           if (OB_FAIL(auto_service.get_handle(*autoinc_param, cache_handle))) {
           } else if (OB_ISNULL(cache_handle)) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("Error unexpceted", K(ret), K(cache_handle));
           }
         }
 
@@ -309,6 +316,7 @@ int ObExprAutoincNextval::eval_nextval(
   ObSQLSessionInfo *my_session = ctx.exec_ctx_.get_my_session();
   if (OB_ISNULL(plan_ctx) || OB_ISNULL(my_session)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("no phy plan context", K(ret));
   } else if (OB_FAIL(expr.eval_param_value(ctx, input_value))) {
   } else {
     uint64_t autoinc_table_id =
@@ -329,6 +337,7 @@ int ObExprAutoincNextval::eval_nextval(
     // this column with column_index is auto-increment column
     if (OB_ISNULL(autoinc_param)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("should find auto-increment param", K(ret), K(autoinc_table_id), K(autoinc_col_id), K(autoinc_params));
     }
 
     // sync last user specified value first(compatible with MySQL)
@@ -345,6 +354,7 @@ int ObExprAutoincNextval::eval_nextval(
       } else if (is_to_generate &&
                  OB_FAIL(generate_autoinc_value(*my_session, new_val, auto_service, ctx,
                                                 autoinc_param, plan_ctx))) {
+        LOG_WARN("generate autoinc value failed", K(ret));
       }
     }
 
@@ -369,6 +379,8 @@ int ObExprAutoincNextval::eval_nextval(
           }
           default: {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("only int/float/double types support auto increment",
+                     K(ret), K(expr.datum_meta_));
           }
         }
       }
@@ -402,8 +414,10 @@ int ObAutoincNextvalExtra::init_autoinc_nextval_extra(common::ObIAllocator *allo
   void *buf = NULL;
   if (OB_ISNULL(allocator)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("allocator is null", K(ret));
   } else if (OB_ISNULL(buf = allocator->alloc(sizeof(ObAutoincNextvalExtra)))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("fail to alloc memory", K(ret));
   } else {
     autoinc_nextval_extra = new(buf) ObAutoincNextvalExtra();
     autoinc_nextval_extra->autoinc_table_id_ = autoinc_table_id;
@@ -430,11 +444,14 @@ int ObAutoincNextvalInfo::init_autoinc_nextval_info(common::ObIAllocator *alloca
   void *buf = NULL;
   if (OB_ISNULL(allocator)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("allocator is null", K(ret));
   } else if (OB_ISNULL(buf = allocator->alloc(sizeof(ObAutoincNextvalInfo)))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("fail to alloc memory", K(ret));
   } else if (OB_ISNULL(autoinc_nextval_extra =
           reinterpret_cast<ObAutoincNextvalExtra *>(raw_expr.get_autoinc_nextval_extra()))) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("raw_expr.extra_ is null", K(ret));
   } else {
     autoinc_nextval_info = new(buf) ObAutoincNextvalInfo(*allocator, type);
     autoinc_nextval_info->autoinc_table_id_ = autoinc_nextval_extra->autoinc_table_id_;
@@ -454,9 +471,11 @@ int ObAutoincNextvalInfo::deep_copy(common::ObIAllocator &allocator,
   ObAutoincNextvalInfo *copied_autoinc_nextval_info = NULL;
   if (OB_FAIL(ObExprExtraInfoFactory::alloc(allocator, type, copied_info))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("failed to alloc expr extra info", K(ret));
   } else if (OB_ISNULL(copied_autoinc_nextval_info =
           dynamic_cast<ObAutoincNextvalInfo *>(copied_autoinc_nextval_info))) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected error", K(ret));
   } else {
     copied_autoinc_nextval_info->autoinc_table_id_ = autoinc_table_id_;
     copied_autoinc_nextval_info->autoinc_col_id_ = autoinc_col_id_;

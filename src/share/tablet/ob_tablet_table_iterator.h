@@ -23,7 +23,7 @@ namespace oceanbase
 {
 namespace share
 {
-class LocalStore;
+class ObSQLiteConnectionPool;
 
 class ObTabletMetaIterator
 {
@@ -50,7 +50,7 @@ public:
     const int64_t compaction_scn);
   ~ObCompactionTabletMetaIterator() override { reset(); }
   int init(
-    LocalStore &store,
+    ObSQLiteConnectionPool &meta_db_pool,
     const int64_t batch_size);
   virtual void reset() override;
   virtual int next(ObTabletRuntimeInfo &tablet_info) override;
@@ -63,7 +63,7 @@ private:
   int64_t compaction_scn_;
   int64_t batch_size_;
   ObTabletID end_tablet_id_;
-  LocalStore *local_store_;
+  ObSQLiteConnectionPool *meta_db_pool_;
 };
 
 } // end namespace

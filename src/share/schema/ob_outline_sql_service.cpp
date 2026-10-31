@@ -63,6 +63,7 @@ int ObOutlineSqlService::replace_outline(const ObOutlineInfo &outline_info,
   int ret = OB_SUCCESS;
   if (!outline_info.is_valid_for_replace()) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("outline info is invalid", K(outline_info), K(ret));
   } else {
     ObSqlString sql;
 
@@ -94,13 +95,16 @@ int ObOutlineSqlService::replace_outline(const ObOutlineInfo &outline_info,
                         : outline_info.get_outline_target_str())))
             || (OB_FAIL(dml.add_column("format_outline", outline_info.is_format())))
             || OB_FAIL(dml.add_gmt_modified())) {
+          LOG_WARN("add column failed", K(ret));
         }
 
         // udpate __all_outline table
         int64_t affected_rows = 0;
         if (FAILEDx(exec.exec_update(OB_ALL_OUTLINE_TNAME, dml, affected_rows))) {
+          LOG_WARN("execute update sql fail", K(ret));
         } else if (!is_single_row(affected_rows)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("update should affect only 1 row", K(affected_rows), K(ret));
         } else {/*do nothing*/}
       }
     }
@@ -136,6 +140,7 @@ int ObOutlineSqlService::alter_outline(const ObOutlineInfo &outline_info,
   int ret = OB_SUCCESS;
   if (!outline_info.is_valid_for_replace()) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("outline info is invalid", K(outline_info), K(ret));
   } else {
     ObSqlString sql;
     
@@ -159,13 +164,16 @@ int ObOutlineSqlService::alter_outline(const ObOutlineInfo &outline_info,
                  : ObHexEscapeSqlStr(outline_info.get_format_sql_text_str()))))
             || OB_FAIL(dml.add_column("schema_version", outline_info.get_schema_version()))
             || OB_FAIL(dml.add_gmt_modified())) {
+          LOG_WARN("add column failed", K(ret));
         }
 
         // udpate __all_outline table
         int64_t affected_rows = 0;
         if (FAILEDx(exec.exec_update(OB_ALL_OUTLINE_TNAME, dml, affected_rows))) {
+          LOG_WARN("execute update sql fail", K(ret));
         } else if (!is_single_row(affected_rows)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("update should affect only 1 row", K(affected_rows), K(ret));
         } else {/*do nothing*/}
       }
     }
@@ -209,6 +217,8 @@ int ObOutlineSqlService::delete_outline(const uint64_t database_id,
   if (OB_UNLIKELY(OB_INVALID_ID == database_id
                         || OB_INVALID_ID == outline_id)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid outline info in drop outline", K(database_id),
+             K(outline_id), K(ret));
   } else {
     // insert into __all_table_history
     if (FAILEDx(sql.assign_fmt(
@@ -217,18 +227,23 @@ int ObOutlineSqlService::delete_outline(const uint64_t database_id,
                    OB_ALL_OUTLINE_HISTORY_TNAME,
                    ObSchemaUtils::get_extract_schema_id(outline_id),
                    new_schema_version, IS_DELETED))) {
+      LOG_WARN("assign insert into all outline history fail",
+               K(outline_id), K(ret));
     } else if (OB_FAIL(sql_client.write(sql.ptr(), affected_rows))) {
     } else if (1 != affected_rows) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("no row has inserted", K(ret));
     } else {/*do nothing*/}
 
     // delete from __all_outline
     if (FAILEDx(sql.assign_fmt("DELETE FROM %s WHERE outline_id=%lu",
                                OB_ALL_OUTLINE_TNAME,
                                ObSchemaUtils::get_extract_schema_id(outline_id)))) {
+      LOG_WARN("append_fmt failed", K(ret));
     } else if (OB_FAIL(sql_client.write(sql.ptr(), affected_rows))) {
     } else if (1 != affected_rows) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("no row deleted", K(sql), K(affected_rows), K(ret));
     } else {/*do nothing*/}
 
     // log operation
@@ -304,6 +319,7 @@ int ObOutlineSqlService::add_outline(common::ObISQLClient &sql_client,
         } else {
           if (!is_single_row(affected_rows)) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("unexpected value", K(affected_rows), K(sql), K(ret));
           }
         }
       }

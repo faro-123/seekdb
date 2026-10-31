@@ -44,6 +44,7 @@ int ObDictEncoder::init(const ObColumnEncodingCtx &ctx,
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret));
   } else if (OB_FAIL(ObIColumnEncoder::init(ctx, column_index, rows))) {
   } else {
     column_header_.type_ = type_;
@@ -58,6 +59,8 @@ int ObDictEncoder::init(const ObColumnEncodingCtx &ctx,
 
     if (type_store_size_ > 0 && type_store_size_ > sizeof(int64_t)) {
       ret = OB_INNER_STAT_ERROR;
+      LOG_WARN("fix length type's store size should less than or equal to 8",
+          K(ret), K_(type_store_size), "column type", column_type_.get_type());
     } else {
       is_inited_ = true;
     }
@@ -85,6 +88,7 @@ int ObDictEncoder::traverse(bool &suitable)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else {
     suitable = true;
     count_ = ht_->size();
@@ -136,6 +140,7 @@ int ObDictEncoder::build_dict()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else {
     if (need_sort_) {
       ObPrecision precision = PRECISION_UNKNOWN_YET;
@@ -184,6 +189,7 @@ int ObDictEncoder::store_meta(ObBufferWriter &buf_writer)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else if (OB_FAIL(build_dict())) {
   } else {
     int64_t len = 0;
@@ -214,6 +220,7 @@ int ObDictEncoder::store_meta(ObBufferWriter &buf_writer)
         FOREACH_X(l, *ht_, OB_SUCC(ret)) {
           if (OB_UNLIKELY(l->size_ <= 0)) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("row id array is empty", K(ret), "size", l->size_);
           } else if (OB_FAIL(store_dict(*l->header_->datum_, buf + offset, len))) {
           } else {
             if (i > 0) {
@@ -238,6 +245,7 @@ int ObDictEncoder::store_meta(ObBufferWriter &buf_writer)
         FOREACH_X(l, *ht_, OB_SUCC(ret)) {
           if (OB_UNLIKELY(l->size_ <= 0)) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("row id array is empty", K(ret), "size", l->size_);
           } else if (OB_FAIL(store_dict(*l->header_->datum_, buf + offset, len))) {
           } else {
             OB_ASSERT(len == dict_fix_data_size_);
@@ -266,6 +274,7 @@ int ObDictEncoder::store_dict(const ObDatum &datum, char *buf, int64_t &len)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else {
     switch (store_class_) {
       case ObIntSC:
@@ -286,6 +295,8 @@ int ObDictEncoder::store_dict(const ObDatum &datum, char *buf, int64_t &len)
         break;
       default:
         ret = OB_INNER_STAT_ERROR;
+        LOG_WARN("not supported store class",
+            K(ret), K_(store_class), K_(column_type), K(datum));
     }
   }
   return ret;
@@ -296,6 +307,7 @@ int ObDictEncoder::get_row_checksum(int64_t &checksum) const
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else {
     checksum = 0;
     FOREACH(l, *ht_) {
@@ -363,8 +375,10 @@ int ObDictEncoder::store_fix_data(ObBufferWriter &buf_writer)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else if (OB_UNLIKELY(!is_valid_fix_encoder())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K_(desc));
   } else {
     dict_meta_header_->row_ref_size_ = static_cast<uint8_t>(desc_.bit_packing_length_ > 0
         ? desc_.bit_packing_length_

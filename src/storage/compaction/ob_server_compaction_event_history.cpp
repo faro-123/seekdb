@@ -102,6 +102,7 @@ int ObServerCompactionEventHistory::add_event(const ObServerCompactionEvent &eve
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!event.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(event));
   } else if (OB_FAIL(ObInfoRingArray::add(event))) {
   }
   return ret;
@@ -128,6 +129,7 @@ int ObServerCompactionEventIterator::open()
   int ret = OB_SUCCESS;
   if (is_opened_) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("The ObServerCompactionEventIterator has been opened", K(ret));
   }
   if (OB_SUCC(ret)) {
     {
@@ -163,6 +165,7 @@ int ObServerCompactionEventIterator::get_next_info(ObServerCompactionEvent &info
   int ret = OB_SUCCESS;
   if (!is_opened_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else if (cur_idx_ >= event_array_.count()) {
     ret = OB_ITER_END;
   } else {

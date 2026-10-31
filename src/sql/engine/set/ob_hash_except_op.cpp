@@ -44,6 +44,7 @@ int ObHashExceptOp::inner_open()
       OB_ISNULL(store_rows_ = static_cast<const ObChunkDatumStore::StoredRow **> (ctx_.get_allocator().
       alloc(MY_SPEC.max_batch_size_ * sizeof(ObChunkDatumStore::StoredRow *))))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("failed to alloc store rows", K(ret));
   } 
   return ret;
 }
@@ -73,7 +74,9 @@ int ObHashExceptOp::build_hash_table_by_part(const int64_t batch_size)
       // Left side has no part, then there is no data to return
       ret = OB_ITER_END;
     } else if (0 == batch_size && OB_FAIL(build_hash_table_from_left(false))) { // build hash table from left
+      LOG_WARN("failed to build hash table", K(ret));
     } else if (batch_size > 0 && OB_FAIL(build_hash_table_from_left_batch(false, batch_size))) {
+      LOG_WARN("failed to build hash table batch", K(ret));
     } else if (!hp_infras_.has_cur_part(InputSide::RIGHT)) {//right is null, directly get data from the hash table on the left}
       get_row_from_hash_table_ = true;
       found = true;
@@ -112,6 +115,7 @@ int ObHashExceptOp::inner_get_next_row()
   if (OB_FAIL(ret)) {
   } else if (OB_FAIL(get_next_row_from_hashtable(store_row))) {
     if (OB_ITER_END != ret) {
+      LOG_WARN("failed to get next row from hash table", K(ret));
     }
   }
   return ret;
@@ -126,6 +130,7 @@ int ObHashExceptOp::batch_process_right() {
     if (!has_got_part_) {
       if (OB_FAIL(get_right_row())) {
         if (OB_ITER_END != ret) {
+          LOG_WARN("failed to get right row", K(ret));
         } else {
           //right is end
         }
@@ -149,6 +154,7 @@ int ObHashExceptOp::batch_process_right() {
       if (hp_infras_.has_left_dumped()) {
         if (!hp_infras_.has_right_dumped()
             && OB_FAIL(hp_infras_.create_dumped_partitions(InputSide::RIGHT))) {
+          LOG_WARN("failed to create dump partitions", K(ret));
         } else if (OB_FAIL(hp_infras_.insert_row_on_partitions(*cur_exprs))) {
         }
       } else {
@@ -214,6 +220,7 @@ get_next_row_from_hashtable(const ObChunkDatumStore::StoredRow *&store_row)
       } else if (OB_FAIL(hp_infras_.start_round())) {
       } else if (OB_FAIL(build_hash_table_by_part(batch_size))) {
         if (OB_ITER_END != ret) {
+          LOG_WARN("failed to build hash table by part", K(ret));
         }
       }
       if (OB_FAIL(ret)) {
@@ -224,10 +231,12 @@ get_next_row_from_hashtable(const ObChunkDatumStore::StoredRow *&store_row)
         get_row_from_hash_table_ = true;
       }
       if (OB_SUCC(ret) && OB_FAIL(hp_infras_.open_hash_table_part())) {
+        LOG_WARN("failed to open hashtable part", K(ret));
       }
     } else {
       if (OB_FAIL(hp_infras_.get_next_hash_table_row(store_row, &MY_SPEC.set_exprs_))) {
         if (OB_ITER_END != ret) {
+          LOG_WARN("failed to get next row from hash table", K(ret));
         } else {
           get_row_from_hash_table_ = false;
           ret = OB_SUCCESS;
@@ -257,6 +266,7 @@ int ObHashExceptOp::get_next_batch_from_hashtable(const int64_t batch_size)
       } else if (OB_FAIL(hp_infras_.start_round())) {
       } else if (OB_FAIL(build_hash_table_by_part(batch_size))) {
         if (OB_ITER_END != ret) {
+          LOG_WARN("failed to build hash table by part", K(ret));
         }
       }
       if (OB_FAIL(ret)) {
@@ -267,12 +277,14 @@ int ObHashExceptOp::get_next_batch_from_hashtable(const int64_t batch_size)
         get_row_from_hash_table_ = true;
       }
       if (OB_SUCC(ret) && OB_FAIL(hp_infras_.open_hash_table_part())) {
+        LOG_WARN("failed to open hashtable part", K(ret));
       }
     } else if (OB_FAIL(hp_infras_.get_next_hash_table_batch(MY_SPEC.set_exprs_, 
                                                             batch_size, 
                                                             read_rows, 
                                                             const_cast<const ObChunkDatumStore::StoredRow**>(store_rows_)))) {
       if (OB_ITER_END != ret) {
+        LOG_WARN("failed to get next hash table batch", K(ret));
       } else {
         get_row_from_hash_table_ = false;
         ret = OB_SUCCESS;
@@ -317,6 +329,7 @@ int ObHashExceptOp::inner_get_next_batch(const int64_t max_row_cnt)
   if (OB_FAIL(ret)) {
   } else if (OB_FAIL(get_next_batch_from_hashtable(batch_size))) {
     if (OB_ITER_END != ret) {
+      LOG_WARN("failed to get next row from hash table", K(ret));
     }
   }
   if (OB_ITER_END == ret) {

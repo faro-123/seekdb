@@ -46,6 +46,7 @@ int ObStoreFormat::find_row_store_type(const ObString &row_store, ObRowStoreType
   int ret = OB_SUCCESS;
 
   if (row_store.empty()) {
+    LOG_WARN("Replace empty rowstore with default row store type", K(row_store_type), K(row_store), K(ret));
     row_store_type = get_default_row_store_type();
   } else {
     row_store_type = MAX_ROW_STORE;
@@ -56,6 +57,7 @@ int ObStoreFormat::find_row_store_type(const ObString &row_store, ObRowStoreType
     }
     if (!is_row_store_type_valid(row_store_type)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("Unexpected row store type", K(row_store_type), K(row_store), K(ret));
     }
   }
 
@@ -71,9 +73,11 @@ int ObStoreFormat::find_store_format_type(const ObString &store_format,
 
   store_format_type = OB_STORE_FORMAT_INVALID;
   if (store_format.empty()) {
+    LOG_WARN("Empty store format str keep invalid type", K(store_format), K(store_format_type), K(ret));
   } else if (!(OB_STORE_FORMAT_INVALID < start && start <= OB_STORE_FORMAT_MAX)
               || !(OB_STORE_FORMAT_INVALID < end && end <= OB_STORE_FORMAT_MAX)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("Unexpected store format type", K(start), K(end), K(ret));
   } else {
     for (int64_t i = start; i < end && !is_store_format_valid(store_format_type); i++) {
       if (0 == store_format.case_compare(get_store_format_name(static_cast<ObStoreFormatType> (i)))) {
@@ -82,6 +86,7 @@ int ObStoreFormat::find_store_format_type(const ObString &store_format,
     }
     if (!is_store_format_valid(store_format_type)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("Unexpected store format type", K(store_format), K(store_format_type), K(ret));
     }
   }
 

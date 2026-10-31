@@ -16,7 +16,6 @@
 
 #define USING_LOG_PREFIX SQL_ENG
 
-#include "config_bridge.h"
 #include "sql/engine/aggregate/ob_scalar_aggregate_op.h"
 #include "sql/engine/px/ob_px_util.h"
 
@@ -38,10 +37,12 @@ int ObScalarAggregateOp::inner_open()
   } else if (FALSE_IT(aggr_processor_.set_io_event_observer(&io_event_observer_))) {
   } else if (MY_SPEC.enable_hash_base_distinct_
     && OB_FAIL(init_hp_infras_group_mgr())) {
+    LOG_WARN("failed to init hp infras group manager", K(ret));
   } else if (OB_FAIL(aggr_processor_.init_one_group())) {
   } else {
     bool need_dir_id = aggr_processor_.processor_need_alloc_dir_id();
     if (need_dir_id && OB_FAIL(ObChunkStoreUtil::alloc_dir_id(dir_id_))) {
+      LOG_WARN("failed to alloc dir id", K(ret));
     } else if (need_dir_id && FALSE_IT(aggr_processor_.set_dir_id(dir_id_))) {
     } else if (FALSE_IT(aggr_processor_.set_io_event_observer(&io_event_observer_))) {
     } else if (OB_FAIL(aggr_processor_.init_one_group())) {
@@ -106,6 +107,7 @@ int ObScalarAggregateOp::inner_get_next_row()
     clear_evaluated_flag();
     if (OB_FAIL(child_->get_next_row())) {
       if (OB_ITER_END != ret) {
+        LOG_WARN("fail to get next row", K(ret));
       // The entire aggregated collection is an empty set, return an empty set group generated row
       } else if (OB_FAIL(aggr_processor_.collect_for_empty_set())) {
       }
@@ -114,12 +116,14 @@ int ObScalarAggregateOp::inner_get_next_row()
       if (OB_FAIL(aggr_processor_.get_group_row(0, group_row))) {
       } else if (OB_ISNULL(group_row)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("group_row is null", K(ret));
       } else if (OB_FAIL(aggr_processor_.prepare(*group_row))) {
       } else {
         while (OB_SUCC(ret)) {
           clear_evaluated_flag();
           if (OB_FAIL((child_->get_next_row()))) {
             if (OB_ITER_END != ret) {
+              LOG_WARN("fail to get row from child", K(ret));
             }
           } else if (OB_FAIL(try_check_status())) {
           } else if (OB_FAIL(aggr_processor_.process(*group_row))) {
@@ -151,6 +155,7 @@ int ObScalarAggregateOp::inner_get_next_batch(const int64_t max_row_cnt)
   if (OB_FAIL(aggr_processor_.get_group_row(0, group_row))) {
   } else if (OB_ISNULL(group_row)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("group_row is null", K(ret));
   } else {
     ObEvalCtx::BatchInfoScopeGuard guard(eval_ctx_);
     while (OB_SUCC(ret)
@@ -205,11 +210,12 @@ int ObScalarAggregateOp::init_hp_infras_group_mgr()
                     MY_SPEC.id_,
                     &ctx_))) {
     } else if (OB_FAIL(hp_infras_mgr_.init(
-      config::enable_sql_operator_dump(), est_rows, MY_SPEC.width_, true/*unique*/, 1/*ways*/,
+      GCONF.is_sql_operator_dump_enabled(), est_rows, MY_SPEC.width_, true/*unique*/, 1/*ways*/,
       &eval_ctx_, &sql_mem_processor_, &io_event_observer_))) {
     } else if (FALSE_IT(distinct_cnt = aggr_processor_.get_distinct_count())) {
     } else if (aggr_processor_.has_distinct() && distinct_cnt > 0
         && OB_FAIL(hp_infras_mgr_.reserve_hp_infras(distinct_cnt))) {
+      LOG_WARN("failed to reserve", K(ret), K(distinct_cnt));
     } else {
       aggr_processor_.set_hp_infras_mgr(&hp_infras_mgr_);
       aggr_processor_.set_enable_hash_distinct();

@@ -44,8 +44,34 @@ struct ObSRMergeCmp
   virtual ~ObSRMergeCmp() {}
 
   int init(sql::ObDatumMeta id_meta, const ObFixedArray<const ObDatum *, ObIAllocator> *iter_ids);
-  int cmp(const ObSRMergeItem &l, const ObSRMergeItem &r, int64_t &cmp_ret);
+  int cmp(const ObSRMergeItem &l, const ObSRMergeItem &r, int64_t &cmp_ret)
+  {
+    if (OB_LIKELY(is_inited_ && uint64_cmp_)) {
+      const ObDatum &left = get_id_datum(l.iter_idx_);
+      const ObDatum &right = get_id_datum(r.iter_idx_);
+      if (OB_UNLIKELY(left.is_null() || right.is_null())) {
+        cmp_ret = static_cast<int>(right.is_null()) - static_cast<int>(left.is_null());
+      } else {
+        const uint64_t left_value = left.get_uint64();
+        const uint64_t right_value = right.get_uint64();
+        cmp_ret = left_value > right_value ? 1 : (left_value < right_value ? -1 : 0);
+      }
+      return OB_SUCCESS;
+    } else if (OB_LIKELY(is_inited_ && binary_string_cmp_)) {
+      const ObDatum &left = get_id_datum(l.iter_idx_);
+      const ObDatum &right = get_id_datum(r.iter_idx_);
+      if (OB_UNLIKELY(left.is_null() || right.is_null())) {
+        cmp_ret = static_cast<int>(right.is_null()) - static_cast<int>(left.is_null());
+      } else {
+        const int result = left.get_string().compare(right.get_string());
+        cmp_ret = result > 0 ? 1 : (result < 0 ? -1 : 0);
+      }
+      return OB_SUCCESS;
+    }
+    return cmp_general(l, r, cmp_ret);
+  }
 private:
+  int cmp_general(const ObSRMergeItem &l, const ObSRMergeItem &r, int64_t &cmp_ret);
   inline const ObDatum &get_id_datum(const int64_t iter_idx)
   {
     const ObDatum *datum = iter_ids_->at(iter_idx);
@@ -57,6 +83,8 @@ private:
   // TODO: if memory lifetime of docid datum is guaranteed by dim_iters, we can use pointer to datum directly
   //       and avoid deep copy into merge heap here
   const ObFixedArray<const ObDatum *, ObIAllocator> *iter_ids_;
+  bool uint64_cmp_;
+  bool binary_string_cmp_;
   bool is_inited_;
 };
 

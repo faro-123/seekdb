@@ -36,6 +36,7 @@ class ObMultiVersionSchemaService;
 }
 namespace common
 {
+class ObServerConfig;
 };
 
 namespace rootserver
@@ -66,6 +67,7 @@ public:
   int init(const bool is_primary_service,
            ObMajorMergeInfoManager &merge_info_mgr,
            share::schema::ObMultiVersionSchemaService &schema_service,
+           common::ObServerConfig &config,
            common::ObMySQLProxy &sql_proxy);
 
   virtual int start() override;
@@ -117,6 +119,7 @@ private:
   mutable ObMajorMergeIdling idling_;
 
   ObMajorMergeInfoManager *merge_info_mgr_;
+  common::ObServerConfig *config_;
   common::ObMySQLProxy *sql_proxy_;
   ObBasicMergeProgressChecker *progress_checker_;
   DISALLOW_COPY_AND_ASSIGN(ObMajorMergeScheduler);

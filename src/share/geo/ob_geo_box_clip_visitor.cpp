@@ -79,6 +79,7 @@ int ObGeoBoxClipVisitor::get_geometry(ObGeometry *&geo)
           OB_NEWx(ObCartesianMultipoint, allocator_, res_geo_->get_srid(), *allocator_);
       if (OB_ISNULL(mpt)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory", K(ret));
       }
       for (uint32_t i = 0; OB_SUCC(ret) && i < res_geo_->size(); ++i) {
         if (OB_FAIL(mpt->push_back(
@@ -93,6 +94,7 @@ int ObGeoBoxClipVisitor::get_geometry(ObGeometry *&geo)
           OB_NEWx(ObCartesianMultipolygon, allocator_, res_geo_->get_srid(), *allocator_);
       if (OB_ISNULL(mpy)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory", K(ret));
       }
       for (uint32_t i = 0; OB_SUCC(ret) && i < res_geo_->size(); ++i) {
         if (OB_FAIL(
@@ -107,6 +109,7 @@ int ObGeoBoxClipVisitor::get_geometry(ObGeometry *&geo)
           OB_NEWx(ObCartesianMultilinestring, allocator_, res_geo_->get_srid(), *allocator_);
       if (OB_ISNULL(mls)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory", K(ret));
       }
       for (uint32_t i = 0; OB_SUCC(ret) && i < res_geo_->size(); ++i) {
         if (OB_FAIL(mls->push_back(
@@ -170,6 +173,7 @@ int ObGeoBoxClipVisitor::visit(ObCartesianMultipoint *geo)
             geo->get_srid());
         if (OB_ISNULL(pt)) {
           ret = OB_ALLOCATE_MEMORY_FAILED;
+          LOG_WARN("fail to alloc memory for geometry", K(ret));
         } else if (OB_FAIL(res_geo_->push_back(*pt))) {
         }
       }
@@ -268,6 +272,7 @@ int ObGeoBoxClipVisitor::line_visit_inside_or_edge(const ObCartesianLineString &
       if (first_inside_idx < idx - 1 || !new_line.empty() || clip_box) {
         if (OB_FAIL(construct_intersect_line(line, first_inside_idx, idx, new_line))) {
         } else if (clip_box && OB_FAIL(new_line.push_back(cur_pt_edge))) {
+          LOG_WARN("fail to push back geometry", K(ret));
         } else if (OB_FAIL(mls->push_back(new_line))) {
         } else {
           new_line.clear();
@@ -380,6 +385,7 @@ int ObGeoBoxClipVisitor::line_visit(
     mls = OB_NEWx(ObCartesianMultilinestring, allocator_, line.get_srid(), *allocator_);
     if (OB_ISNULL(mls)) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("fail to alloc memory for geometry", K(ret));
     }
   }
   if (OB_SUCC(ret)) {
@@ -539,6 +545,7 @@ int ObGeoBoxClipVisitor::close_ring(
     } else if (pos & ObBoxPosition::OUTSIDE || end_pos & ObBoxPosition::OUTSIDE
                || pos & ObBoxPosition::INSIDE || end_pos & ObBoxPosition::INSIDE) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("point should be on boundary", K(ret));
     } else {
       to_next_edge(pos);
       if (pos & ObBoxPosition::LEFT_EDGE) {
@@ -581,6 +588,7 @@ int ObGeoBoxClipVisitor::distance(double x1, double y1, double x2, double y2, do
     } else if (pos & ObBoxPosition::OUTSIDE || end_pos & ObBoxPosition::OUTSIDE
                || pos & ObBoxPosition::INSIDE || end_pos & ObBoxPosition::INSIDE) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("point should be on boundary", K(ret));
     } else {
       to_next_edge(pos);
       if (pos & ObBoxPosition::LEFT_EDGE) {
@@ -656,6 +664,7 @@ int ObGeoBoxClipVisitor::make_polygon_ext_ring(ObCartesianMultilinestring &mls, 
       if (OB_SUCC(ret)
           && OB_FAIL(distance(ring.back().get<0>(), ring.back().get<1>(), ring.front().get<0>(),
               ring.front().get<1>(), dist))) {
+        LOG_WARN("fail to get distance", K(ret));
       }
       double min_dist = -1;
       int32_t min_pos = 0;
@@ -675,6 +684,7 @@ int ObGeoBoxClipVisitor::make_polygon_ext_ring(ObCartesianMultilinestring &mls, 
         } else if (FALSE_IT(reorder_ring(ring))) {
         } else if (ring.size() < 4) {
           ret = OB_ERR_GIS_INVALID_DATA;
+          LOG_WARN("Invalid number of ring", K(ret), K(ring.size()));
         } else {
           ObCartesianPolygon poly;
           poly.exterior_ring() = ring;
@@ -692,6 +702,7 @@ int ObGeoBoxClipVisitor::make_polygon_ext_ring(ObCartesianMultilinestring &mls, 
           }
         }
         if (OB_SUCC(ret) && OB_FAIL(mls.remove(min_pos))) {
+          LOG_WARN("fail to remove linestring", K(ret));
         }
       }
     }
@@ -721,9 +732,11 @@ int ObGeoBoxClipVisitor::make_polygons(
         ObCartesianLineString *tmp_line = reinterpret_cast<ObCartesianLineString *>(&ext_ring);
         if (OB_FAIL(gis_context.append_geo_arg(tmp_line))
             || OB_FAIL(gis_context.append_geo_arg(&new_mpy[j]))) {
+          LOG_WARN("build gis context failed", K(ret), K(gis_context.get_geo_count()));
         } else if (OB_FAIL(ObGeoFunc<ObGeoFuncType::CoveredBy>::geo_func::eval(
                        gis_context, is_covered_by))) {
         } else if (is_covered_by && OB_FAIL(new_mpy[j].interior_rings().push_back(ext_ring))) {
+          LOG_WARN("fail to push back linearring", K(ret));
         }
       }
     }
@@ -812,6 +825,7 @@ int ObGeoBoxClipVisitor::visit_polygon_inner_ring(
       ObGeoEvalCtx gis_context(*mem_ctx_);
       if (OB_FAIL(gis_context.append_geo_arg(&pt))
           || OB_FAIL(gis_context.append_geo_arg(&tmp_py))) {
+        LOG_WARN("build gis context failed", K(ret), K(gis_context.get_geo_count()));
       } else if (OB_FAIL(
                      ObGeoFunc<ObGeoFuncType::Within>::gis_func::eval(gis_context, is_within))) {
       }
@@ -849,6 +863,7 @@ int ObGeoBoxClipVisitor::visit_polygon_ext_ring(const ObCartesianLinearring &ext
     ObCartesianPoint pt(xmid, ymid);
     ObGeoEvalCtx gis_context(*mem_ctx_);
     if (OB_FAIL(gis_context.append_geo_arg(&pt)) || OB_FAIL(gis_context.append_geo_arg(&tmp_py))) {
+      LOG_WARN("build gis context failed", K(ret), K(gis_context.get_geo_count()));
     } else if (OB_FAIL(ObGeoFunc<ObGeoFuncType::Within>::gis_func::eval(
                    gis_context, is_inner_inside))) {
     }
@@ -867,6 +882,7 @@ int ObGeoBoxClipVisitor::visit_polygon(ObCartesianPolygon &poly, ObCartesianMult
     mpy = OB_NEWx(ObCartesianMultipolygon, allocator_, poly.get_srid(), *allocator_);
     if (OB_ISNULL(mpy)) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("fail to alloc memory for geometry", K(ret));
     }
   }
   if (OB_SUCC(ret)) {

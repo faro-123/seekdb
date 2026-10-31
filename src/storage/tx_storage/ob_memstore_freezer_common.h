@@ -43,8 +43,7 @@ struct ObRetryMajorInfo
     : frozen_scn_(0)
   {}
   bool is_valid() const {
-    // Construction and reset leave no failed major-freeze request to retry.
-    return frozen_scn_ > 0;
+    return true;
   }
   void reset() {
     frozen_scn_ = 0;

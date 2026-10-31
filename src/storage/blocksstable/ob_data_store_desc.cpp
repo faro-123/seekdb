@@ -16,7 +16,6 @@
 
 #define USING_LOG_PREFIX STORAGE
 
-#include "config_bridge.h"
 #include "storage/blocksstable/ob_data_store_desc.h"
 #include "storage/blocksstable/ob_sstable_meta.h"
 #include "share/ob_server_struct.h"
@@ -234,6 +233,7 @@ int ObColDataStoreDesc::init(
       }
     }
     if (FAILEDx(gene_col_default_checksum_array(merge_schema))) {
+      STORAGE_LOG(WARN, "failed to init default column checksum", KR(ret), K(merge_schema));
     } else if (FALSE_IT(fresh_col_meta(merge_schema))) {
     } else if (OB_FAIL(datum_utils_.init(
         col_desc_array_, schema_rowkey_col_cnt_, allocator_))) {
@@ -397,16 +397,12 @@ int ObDataStoreDesc::get_emergency_row_store_type()
 {
   int ret = OB_SUCCESS;
 
-  const rust::String partition_id = config::_force_skip_encoding_partition_id();
-  if (partition_id.empty()) {
+  if (GCONF._force_skip_encoding_partition_id.get_value_string().empty()) {
     // no need check emergency row store type
   } else {
     char partition_key[OB_TMP_BUF_SIZE_256];
-    if (partition_id.size() >= sizeof(partition_key)) {
-      ret = OB_BUF_NOT_ENOUGH;
+    if (OB_FAIL(GCONF._force_skip_encoding_partition_id.copy(partition_key, OB_TMP_BUF_SIZE_256))) {
     } else {
-      MEMCPY(partition_key, partition_id.data(), partition_id.size());
-      partition_key[partition_id.size()] = '\0';
       char *endptr = nullptr;
       ObTabletID emergency_tablet_id(std::strtoull(partition_key, &endptr, 0));
       
@@ -425,6 +421,7 @@ int ObDataStoreDesc::get_emergency_row_store_type()
           endptr++;
           (void)(std::strtoull(endptr, &endptr, 0));
           if (OB_SUCC(ret)) {
+            oceanbase::share::ObTaskController::get().allow_next_syslog();
             if (get_tablet_id() == emergency_tablet_id) {
               STORAGE_LOG(INFO, "Succ to find specified emergency partition to skip encoding",
                   K(emergency_tablet_id), K(*this));
@@ -651,7 +648,7 @@ int ObWholeDataStoreDesc::init(
   if (is_ddl) {
     // for ddl and direct load, we only limit the encoding granularit for share nothing mode
 
-    encoding_granularity = config::ob_encoding_granularity();
+    encoding_granularity = GCONF.ob_encoding_granularity;
 
   }
 
@@ -672,6 +669,7 @@ int ObWholeDataStoreDesc::inner_init(const ObMergeSchema &merge_schema)
   }
   if (FAILEDx(desc_.init(static_desc_, col_desc_, merge_schema,
       merge_schema.get_row_store_type()))) {
+    STORAGE_LOG(WARN, "failed to init desc", KR(ret), K_(static_desc));
   }
   return ret;
 }
@@ -694,6 +692,7 @@ int ObWholeDataStoreDesc::gen_index_store_desc(const ObDataStoreDesc &data_desc)
     }
   }
   if (FAILEDx(desc_.col_desc_->add_binary_col_desc(desc_.get_row_column_count() + 1))) {
+    STORAGE_LOG(WARN, "Fail to push varchar column for index block", K(ret), K(desc_));
   } else if (OB_UNLIKELY(!desc_.is_valid())) {
     ret = OB_ERR_UNEXPECTED;
     STORAGE_LOG(WARN, "Unexpected invalid index store descriptor", K(ret), K(desc_), K(data_desc));

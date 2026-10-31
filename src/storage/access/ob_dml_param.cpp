@@ -35,11 +35,13 @@ int ObRow2ExprsProjector::init(const sql::ObExprPtrIArray &exprs,
     if (op.is_vectorized()) {
       if (has_virtual_) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("table scan with virtual column is not supported right now", K(ret));
       } else {
         // reset datum pointers to reserved buffer.
         FOREACH_CNT_X(e, exprs, OB_SUCC(ret)) {
           if (!(*e)->is_batch_result()) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("table scan output is not batch result", K(ret));
           } else {
             (*e)->locate_datums_for_update(op.get_eval_ctx(), op.get_batch_size());
           }
@@ -263,6 +265,7 @@ int ScanResumePoint::init(bool *is_paused)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(is_paused)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected null ptr");
   } else {
     is_paused_ = is_paused;
     ATOMIC_STORE(is_paused_, false);

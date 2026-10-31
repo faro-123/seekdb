@@ -36,6 +36,7 @@ OB_DEF_SERIALIZE(ObTableRowStoreOpInput)
   ARRAY_FOREACH(multi_row_store_, i) {
     if (OB_ISNULL(multi_row_store_.at(i))) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("row store is null");
     }
     OB_UNIS_ENCODE(*multi_row_store_.at(i));
   }
@@ -97,6 +98,7 @@ int ObTableRowStoreOp::inner_open()
   if (OB_UNLIKELY(MY_INPUT.multi_row_store_.empty())
       || OB_ISNULL(MY_INPUT.multi_row_store_.at(0))) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("multi row store is invalid", K(ret), K_(MY_INPUT.multi_row_store));
   } else if (OB_FAIL(MY_INPUT.multi_row_store_.at(0)->begin(row_store_it_))) {
   } else {
     row_store_idx_ = 0;
@@ -112,6 +114,7 @@ int ObTableRowStoreOp::inner_rescan()
   } else if (OB_UNLIKELY(MY_INPUT.multi_row_store_.empty())
       || OB_ISNULL(MY_INPUT.multi_row_store_.at(0))) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("multi row store is invalid", K(ret), K_(MY_INPUT.multi_row_store));
   } else if (OB_FAIL(MY_INPUT.multi_row_store_.at(0)->begin(row_store_it_))) {
   } else {
     row_store_idx_ = 0;
@@ -130,6 +133,7 @@ int ObTableRowStoreOp::inner_get_next_row()
   if (OB_FAIL(try_check_status())) {
   } else if (OB_FAIL(fetch_stored_row())) {
     if (OB_UNLIKELY(OB_ITER_END != ret)) {
+      LOG_WARN("fail to get next row", K(ret));
     } else if (row_store_idx_ < MY_INPUT.multi_row_store_.count() - 1) {
       // Iterate next row_store
       ++row_store_idx_;
@@ -137,9 +141,11 @@ int ObTableRowStoreOp::inner_get_next_row()
       ObTableModifyOpInput *dml_input = static_cast<ObTableModifyOpInput*>(parent_->get_input());
       if (OB_ISNULL(multi_row_store.at(row_store_idx_))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("row store is null", K(multi_row_store), K(row_store_idx_));
       } else if (OB_FAIL(multi_row_store.at(row_store_idx_)->begin(row_store_it_))) {
       } else if (OB_FAIL(fetch_stored_row())) {
         if (OB_UNLIKELY(OB_ITER_END != ret)) {
+          LOG_WARN("fail to get next row", K(ret));
         }
       }
     }
@@ -156,6 +162,7 @@ int ObTableRowStoreOp::fetch_stored_row()
   int ret = OB_SUCCESS;
   if (OB_FAIL(row_store_it_.get_next_row(eval_ctx_, MY_SPEC.output_))) {
     if (OB_ITER_END != ret) {
+      LOG_WARN("get next stored row failed", K(ret));
     }
   }
 

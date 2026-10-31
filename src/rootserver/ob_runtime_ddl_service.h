@@ -26,6 +26,7 @@ namespace common
 {
 using ObAddrIArray = ObIArray<ObAddr>;
 using ObAddrArray = ObSEArray<ObAddr, 3>;
+class ObServerConfig;
 }
 namespace share
 {

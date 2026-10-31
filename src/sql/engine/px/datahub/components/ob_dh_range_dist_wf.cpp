@@ -77,6 +77,7 @@ OB_DEF_DESERIALIZE(ObRDWFPartialInfo)
       auto src = reinterpret_cast<const ObStoredDatumRow *>(buf + pos);
       row = static_cast<ObStoredDatumRow *>(alloc_.alloc(src->row_size_));
       if (NULL == row) {
+        LOG_WARN("allocate memory failed", K(ret));
         ret = OB_ALLOCATE_MEMORY_FAILED;
       } else {
         MEMCPY(row, src, src->row_size_);
@@ -84,6 +85,7 @@ OB_DEF_DESERIALIZE(ObRDWFPartialInfo)
         if (row_size != src->row_size_
             ||data_len < pos + row_size) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("unexpected size", K(ret), K(pos), K(data_len), K(row_size), K(src->row_size_));
         } else {
           pos += src->row_size_;
         }
@@ -134,6 +136,7 @@ OB_DEF_DESERIALIZE(ObRDWFWholeMsg)
       ObRDWFPartialInfo *info = OB_NEWx(ObRDWFPartialInfo, (&arena_alloc_), arena_alloc_);
       if (NULL == info) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate memory failed", K(ret));
       } else {
         OB_UNIS_DECODE(*info);
         OZ(infos_.push_back(info));
@@ -161,6 +164,7 @@ ObRDWFPartialInfo *ObRDWFPartialInfo::dup(common::ObArenaAllocator &alloc) const
   ObRDWFPartialInfo *info = OB_NEWx(ObRDWFPartialInfo, (&alloc), alloc);
   if (NULL == info) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("alloc memory failed", K(ret));
   } else {
     info->sqc_id_ = sqc_id_;
     info->thread_id_ = thread_id_;
@@ -191,6 +195,7 @@ int ObRDWFPieceMsgCtx::alloc_piece_msg_ctx(const ObRDWFPieceMsg &pkt,
                     ctx);
   if (OB_ISNULL(msg_ctx)) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("allocate memory failed", K(ret));
   }
   return ret;
 }
@@ -207,6 +212,7 @@ int ObRDWFPieceMsgCtx::formalize_store_row()
       auto ns = static_cast<ObStoredDatumRow *>(arena_alloc_.alloc(size));
       if (NULL == ns) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("allocate memory failed", K(ret), K(size));
       } else {
         *ns = *s;
         ns->row_size_ = size;
@@ -238,6 +244,7 @@ int ObRDWFPieceMsgCtx::send_whole_msg(common::ObIArray<ObPxSqcMeta> &sqcs)
   ObOperatorKit *op_kit = exec_ctx_.get_operator_kit(op_id_);
   if (NULL == op_kit || NULL == op_kit->spec_ || PHY_WINDOW_FUNCTION != op_kit->spec_->type_) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("no window function operator", K(ret), KP(op_kit), K(op_id_));
   } else {
     auto wf = static_cast<const ObWindowFunctionSpec *>(op_kit->spec_);
     if (OB_FAIL(wf->rd_generate_patch(*this))) {
@@ -269,6 +276,7 @@ int ObRDWFPieceMsgCtx::send_whole_msg(common::ObIArray<ObPxSqcMeta> &sqcs)
                                  { return info->sqc_id_ < id; });
       if (it == infos_.end() || (*it)->sqc_id_ != sqc.get_sqc_id()) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("sqc not found", K(ret), K(sqc));
       } else {
         while (OB_SUCC(ret) && it != infos_.end() && (*it)->sqc_id_ == sqc.get_sqc_id()) {
           OZ(msg.infos_.push_back(*it));

@@ -336,6 +336,7 @@ int ObThWorker::check_status()
     } else if (IS_INTERRUPTED()) {
       ObInterruptCode &ic = GET_INTERRUPT_CODE();
       ret = ic.code_;
+      LOG_WARN("received a interrupt", K(ic), K(ret));
     }
   }
   return ret;

@@ -1,0 +1,52 @@
+every document ID and relevance agree with short query
++----+
+| ok |
++----+
+|  1 |
++----+
+empty partitions and absent tokens
++----+
+| ok |
++----+
+|  1 |
++----+
+long query limit
++----+
+| ok |
++----+
+|  1 |
++----+
+ranked result preserves the unique best document
++----+
+| ok |
++----+
+|  1 |
++----+
+prepared long and short queries preserve scores
++----+
+| ok |
++----+
+|  1 |
++----+
++----+
+| ok |
++----+
+|  1 |
++----+
++----+
+| ok |
++----+
+|  1 |
++----+
+long query sees transactional updates and deletes
++----+
+| ok |
++----+
+|  1 |
++----+
+rollback restores all postings
++----+
+| ok |
++----+
+|  1 |
++----+

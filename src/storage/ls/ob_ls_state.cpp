@@ -52,6 +52,7 @@ int ObLSRunningState::StateHelper::switch_state(const int64_t op)
   };
 
   if (OB_UNLIKELY(!Ops::is_valid(op))) {
+    LOG_WARN("invalid argument", K(op));
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_UNLIKELY(!State::is_valid(state_))) {
     LOG_WARN("ObLSRunningState current state is invalid", K_(state), K(op));
@@ -162,6 +163,7 @@ int ObLSPersistentState::StateHelper::switch_state(const int64_t op)
   };
 
   if (OB_UNLIKELY(!Ops::is_valid(op))) {
+    LOG_WARN("invalid argument", K(op));
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_UNLIKELY(!State::is_valid(state_))) {
     LOG_WARN("ObLSPersistentState current state is invalid", K_(state), K(op));
@@ -226,6 +228,7 @@ int ObLSPersistentState::serialize(char* buf, const int64_t buf_len, int64_t& po
   int ret = OB_SUCCESS;
   if (OB_ISNULL(buf) || OB_UNLIKELY(buf_len <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid args", KR(ret), KP(buf), K(buf_len));
   } else if (OB_FAIL(serialization::encode_vi64(buf, buf_len, pos, state_))) {
   }
   return ret;
@@ -236,6 +239,7 @@ int ObLSPersistentState::deserialize(const char* buf, const int64_t data_len, in
   int ret = OB_SUCCESS;
   if (OB_ISNULL(buf) || OB_UNLIKELY(data_len <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid args", KR(ret), KP(buf), K(data_len));
   } else if (OB_FAIL(serialization::decode_vi64(buf, data_len, pos, &state_))) {
   }
   return ret;

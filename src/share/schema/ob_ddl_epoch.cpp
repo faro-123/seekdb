@@ -42,6 +42,7 @@ int ObDDLEpochMgr::init(ObMySQLProxy *sql_proxy, share::schema::ObMultiVersionSc
   if (inited_) {
   } else if (sql_proxy == NULL || schema_service == NULL) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("ObDDLEpochMgr init", KR(ret), K(sql_proxy), K(schema_service));
   } else {
     sql_proxy_ = sql_proxy;
     schema_service_ = schema_service;
@@ -55,6 +56,7 @@ int ObDDLEpochMgr::get_ddl_epoch(int64_t &ddl_epoch)
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ObDDLEpochMgr not init", KR(ret));
   } else {
     SpinRLockGuard guard(lock_);
     int find = false;
@@ -67,6 +69,7 @@ int ObDDLEpochMgr::get_ddl_epoch(int64_t &ddl_epoch)
     }
     if (!find) {
       ret = OB_ENTRY_NOT_EXIST;
+      LOG_WARN("not found ddl epoch", KR(ret));
     }
   }
   return ret;
@@ -77,6 +80,7 @@ int ObDDLEpochMgr::remove_ddl_epoch()
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ObDDLEpochMgr not init", KR(ret));
   } else {
     SpinWLockGuard guard(lock_);
     LOG_INFO("remove_ddl_epoch", K(ddl_epoch_stat_));
@@ -96,6 +100,7 @@ int ObDDLEpochMgr::remove_all_ddl_epoch()
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ObDDLEpochMgr not init", KR(ret));
   } else {
     SpinWLockGuard guard(lock_);
     LOG_INFO("remove_all_ddl_epoch", K(ddl_epoch_stat_));
@@ -134,6 +139,7 @@ int ObDDLEpochMgr::promote_ddl_epoch(int64_t wait_us, int64_t &ddl_epoch_ret)
 
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ObDDLEpochMgr not init", KR(ret));
   } else {
     bool locked = false;
     int64_t start_time = ObTimeUtility::current_time();
@@ -153,6 +159,7 @@ int ObDDLEpochMgr::promote_ddl_epoch(int64_t wait_us, int64_t &ddl_epoch_ret)
           ret = OB_SUCCESS;
           need_promote = true;
         } else {
+          LOG_WARN("get_ddl_epoch fail", KR(ret));
         }
       } else {
         ddl_epoch_ret = ddl_epoch_tmp;
@@ -175,6 +182,7 @@ int ObDDLEpochMgr::promote_ddl_epoch(int64_t wait_us, int64_t &ddl_epoch_ret)
       lock_for_promote_.unlock();
     } else {
       ret = OB_TIMEOUT;
+      LOG_WARN("promote_epoch fail", KR(ret));
     }
   }
   return ret;
@@ -192,6 +200,7 @@ int ObDDLEpochMgr::promote_ddl_epoch_inner_(int64_t &new_ddl_epoch)
   ObGlobalStatProxy proxy(trans);
   if (OB_FAIL(trans.start(sql_proxy_))) {
   } else if (OB_FAIL(ObGlobalStatProxy::select_ddl_epoch_for_update(trans, ddl_epoch_tmp))) {
+    LOG_WARN("update ddl epoch", KR(ret));
     // Compatibility
     if (ret == OB_ITER_END) {
       ret = OB_SUCCESS;
@@ -227,6 +236,7 @@ int ObDDLEpochMgr::check_and_lock_ddl_epoch(
   // So, we don't protect parallel ddl trans commit by lock.
   ObGlobalStatProxy global_stat_proxy(trans);
   if (OB_FAIL(global_stat_proxy.select_ddl_epoch_for_update(trans, ddl_epoch_core))) {
+    LOG_WARN("fail to get ddl epoch from inner table", KR(ret));
     if (OB_ERR_NULL_VALUE == ret) {
       // ignore ret
       (void) remove_ddl_epoch();
@@ -235,6 +245,7 @@ int ObDDLEpochMgr::check_and_lock_ddl_epoch(
     if (ddl_epoch_local == ddl_epoch_core) {
     } else {
       ret = OB_RS_NOT_MASTER;
+      LOG_WARN("ddl epoch changed", KR(ret), K(ddl_epoch_local), K(ddl_epoch_core));
       // ignore ret
       (void) remove_ddl_epoch();
     }

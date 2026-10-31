@@ -1585,13 +1585,11 @@ public:
   static int extract_const_bool_expr_info(ObTransformerCtx *ctx,
                                           const common::ObIArray<ObRawExpr*> &exprs,
                                           common::ObIArray<int64_t> &true_exprs,
-                                          common::ObIArray<int64_t> &false_exprs,
-                                          bool skip_warning_expr = false);
+                                          common::ObIArray<int64_t> &false_exprs);
   static int extract_const_bool_expr_result(ObTransformerCtx *ctx,
                                             ObRawExpr *expr,
                                             bool &is_true,
-                                            bool &is_false,
-                                            bool skip_warning_expr = false);
+                                            bool &is_false);
   /* extract exprs in all_exprs whoes indexs are in target_idx to target_exprs */
   static int extract_target_exprs_by_idx(const ObIArray<ObRawExpr*> &all_exprs,
                                          const ObIArray<int64_t> &target_idx,
@@ -1599,11 +1597,7 @@ public:
   static int calc_const_expr_result(ObRawExpr * expr,
                                     ObTransformerCtx *ctx,
                                     ObObj &result,
-                                    bool &calc_happend,
-                                    bool *has_warning = NULL);
-  static int check_static_expr_has_warning(ObTransformerCtx *ctx,
-                                           ObRawExpr *expr,
-                                           bool &has_warning);
+                                    bool &calc_happend);
   static int check_integer_result_type(common::ObIArray<ObRawExpr*> &exprs,
                                        bool &is_valid_type);
 
@@ -1880,6 +1874,9 @@ public:
   static int check_contain_lost_deterministic_expr(const ObIArray<ObRawExpr*> &exprs,
                                                    bool &is_contain);
   // check whether the score calculated by match expr is actually utilized
+  static int check_need_calc_match_score(const ObDMLStmt *stmt,
+                                        ObRawExpr *match_expr,
+                                        bool &need_calc);
   static int check_expr_eq_zero(ObExecContext *ctx,
                                 ObRawExpr *expr, 
                                 bool &eq_zero, 
@@ -2168,10 +2165,12 @@ int ObTransformUtils::get_expr_idx(const ObIArray<T *> &source,
   idx = -1;
   if (OB_ISNULL(target)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("dest expr is null", K(ret));
   }
   for (int64_t i = 0; OB_SUCC(ret) && idx == -1 && i < source.count(); ++i) {
     if (OB_ISNULL(source.at(i))) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("expr in source is null", K(ret));
     } else if (source.at(i) == target) {
       idx = i;
     }

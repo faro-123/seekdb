@@ -136,6 +136,7 @@ int ObSelectStmt::add_window_func_expr(ObWinFunRawExpr *expr)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(expr)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("get unexpected null", K(ret));
   } else if (OB_FAIL(win_func_exprs_.push_back(expr))) {
   } else {
     expr->set_explicited_reference();
@@ -156,10 +157,12 @@ int ObSelectStmt::remove_window_func_expr(ObWinFunRawExpr *expr)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(expr)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("get unexpected null", K(ret));
   } else {
     for (int64_t i = 0; OB_SUCC(ret) && i < win_func_exprs_.count(); i++) {
       if (OB_ISNULL(win_func_exprs_.at(i))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("get unexpected null", K(ret));
       } else if (expr == win_func_exprs_.at(i)) {
         ret = win_func_exprs_.remove(i);
         break;
@@ -175,9 +178,11 @@ int ObSelectStmt::check_aggr_and_winfunc(ObRawExpr &expr)
   if (expr.is_aggr_expr() &&
       !ObRawExprUtils::find_expr(agg_items_, &expr)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("aggr expr does not exist in the stmt", K(agg_items_), K(expr), K(ret));
   } else if (expr.is_win_func_expr() &&
              !ObRawExprUtils::find_expr(win_func_exprs_, &expr)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("win func expr does not exist in the stmt", K(ret), K(expr));
   }
   return ret;
 }
@@ -223,6 +228,7 @@ int ObSelectStmt::deep_copy_stmt_struct(ObIAllocator &allocator,
   const ObSelectStmt &other = static_cast<const ObSelectStmt &>(input);
   if (OB_UNLIKELY(!input.is_select_stmt())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("input stmt is invalid", K(ret));
   } else if (OB_FAIL(set_query_.assign(other.set_query_))) {
   } else if (OB_FAIL(ObDMLStmt::deep_copy_stmt_struct(allocator, expr_copier, other))) {
   } else if (OB_FAIL(expr_copier.copy(other.group_exprs_, group_exprs_))) {
@@ -260,6 +266,7 @@ int ObSelectStmt::deep_copy_stmt_struct(ObIAllocator &allocator,
       void *ptr = allocator.alloc(sizeof(ObSelectIntoItem));
       if (OB_ISNULL(ptr)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("failed to allocate select into item", K(ret));
       } else {
         temp_into_item = new(ptr) ObSelectIntoItem();
         if (OB_FAIL(temp_into_item->deep_copy(allocator, expr_copier, *other.into_item_))) {
@@ -280,6 +287,7 @@ int ObSelectStmt::create_select_list_for_set_stmt(ObRawExprFactory &expr_factory
   ObSelectStmt *child_stmt = NULL;
   if (OB_ISNULL(child_stmt = get_set_query(0))) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("null stmt", K(ret), K(child_stmt), K(get_set_op()));
   } else {
     int64_t num = child_stmt->get_select_item_size();
     for (int64_t i = 0; OB_SUCC(ret) && i < num; i++) {
@@ -311,6 +319,8 @@ int ObSelectStmt::update_stmt_table_id(ObIAllocator *allocator, const ObSelectSt
   if (OB_FAIL(ObDMLStmt::update_stmt_table_id(allocator, other))) {
   } else if (OB_UNLIKELY(set_query_.count() != other.set_query_.count())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("get unexpected child query count", K(ret), K(set_query_.count()),
+                                                 K(other.set_query_.count()));
   } else {
     ObSelectStmt *child_query = NULL;
     ObSelectStmt *other_child_query = NULL;
@@ -318,6 +328,7 @@ int ObSelectStmt::update_stmt_table_id(ObIAllocator *allocator, const ObSelectSt
       if (OB_ISNULL(other_child_query = other.set_query_.at(i))
           || OB_ISNULL(child_query = set_query_.at(i))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("null statement", K(ret), K(child_query), K(other_child_query));
       } else if (OB_FAIL(SMART_CALL(child_query->update_stmt_table_id(allocator, *other_child_query)))) {
       } else { /* do nothing*/ }
     }
@@ -443,6 +454,7 @@ int ObSelectStmt::set_set_query(const int64_t index, ObSelectStmt *stmt)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(index < 0 || index >= set_query_.count())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("failed to set child query", K(ret), K(index), K(set_query_.count()));
   } else {
     set_query_.at(index) = stmt;
   }
@@ -544,14 +556,17 @@ int ObSelectStmt::check_and_get_same_aggr_item(ObRawExpr *expr,
   same_aggr = NULL;
   if (OB_ISNULL(expr)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("expr is null", K(ret));
   } else {
     bool is_existed = false;
     for (int64_t i = 0; OB_SUCC(ret) && !is_existed && i < agg_items_.count(); ++i) {
       bool need_check_status = (i + 1) % 1000 == 0;
       if (OB_ISNULL(agg_items_.at(i))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("expr is null", K(ret));
       } else if (need_check_status &&
                  OB_FAIL(THIS_WORKER.check_status())) {
+        LOG_WARN("failed to check status", K(ret));
       } else if (agg_items_.at(i)->same_as(*expr)) {
         is_existed = true;
         same_aggr = agg_items_.at(i);
@@ -567,6 +582,7 @@ int ObSelectStmt::get_same_win_func_item(const ObRawExpr *expr, ObWinFunRawExpr 
   win_expr = NULL;
   if (OB_ISNULL(query_ctx_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected null", K(ret));
   } else {
     ObQuestionmarkEqualCtx cmp_ctx;
     bool is_existed = false;
@@ -578,10 +594,12 @@ int ObSelectStmt::get_same_win_func_item(const ObRawExpr *expr, ObWinFunRawExpr 
         is_existed = true;
       } else if (need_check_status &&
                  OB_FAIL(THIS_WORKER.check_status())) {
+        LOG_WARN("failed to check status", K(ret));
       }
     }
     if (OB_SUCC(ret) && OB_FAIL(append(query_ctx_->all_equal_param_constraints_,
                                        cmp_ctx.equal_pairs_))) {
+      LOG_WARN("failed to append equal param info", K(ret));
     }
   }
   return ret;
@@ -620,6 +638,7 @@ int ObSelectStmt::clear_sharable_expr_reference()
     for (int64_t i = 0; OB_SUCC(ret) && i < agg_items_.count(); i++) {
       if (OB_ISNULL(expr = agg_items_.at(i))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("get unexpected null", K(ret));
       } else {
         expr->clear_explicited_referece();
       }
@@ -627,6 +646,7 @@ int ObSelectStmt::clear_sharable_expr_reference()
     for (int64_t i = 0; OB_SUCC(ret) && i < win_func_exprs_.count(); i++) {
       if (OB_ISNULL(expr = win_func_exprs_.at(i))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("get unexpected null", K(ret));
       } else {
         expr->clear_explicited_referece();
       }
@@ -642,6 +662,7 @@ int ObSelectStmt::remove_useless_sharable_expr(ObRawExprFactory *expr_factory,
   int ret = OB_SUCCESS;
   if (OB_ISNULL(expr_factory)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("get unexpected null", K(ret));
   } else if (OB_FAIL(ObDMLStmt::remove_useless_sharable_expr(expr_factory, session_info, explicit_for_col))) {
   } else {
     ObRawExpr *expr = NULL;
@@ -649,6 +670,7 @@ int ObSelectStmt::remove_useless_sharable_expr(ObRawExprFactory *expr_factory,
     for (int64_t i = agg_items_.count() - 1; OB_SUCC(ret) && i >= 0; i--) {
       if (OB_ISNULL(expr = agg_items_.at(i))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("get unexpected null", K(ret));
       } else if (expr->is_explicited_reference()) {
         /*do nothing*/
       } else if (OB_FAIL(agg_items_.remove(i))) {
@@ -658,6 +680,7 @@ int ObSelectStmt::remove_useless_sharable_expr(ObRawExprFactory *expr_factory,
     for (int64_t i = win_func_exprs_.count() - 1; OB_SUCC(ret) && i >= 0; i--) {
       if (OB_ISNULL(expr = win_func_exprs_.at(i))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("get unexpected null", K(ret));
       } else if (expr->is_explicited_reference()) {
         /*do nothing*/
       } else if (OB_FAIL(win_func_exprs_.remove(i))) {
@@ -716,6 +739,7 @@ int ObSelectStmt::get_select_exprs(ObIArray<ObRawExpr*> &select_exprs)
   for (int64_t i = 0; OB_SUCC(ret) && i < select_items_.count(); ++i) {
     if (OB_ISNULL(expr = select_items_.at(i).expr_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("null select expr", K(ret));
     } else if (OB_FAIL(select_exprs.push_back(expr))) {
     } else { /*do nothing*/ }
   }
@@ -730,6 +754,7 @@ int ObSelectStmt::get_select_exprs(ObIArray<ObRawExpr*> &select_exprs) const
   for (int64_t i = 0; OB_SUCC(ret) && i < select_items_.count(); ++i) {
     if (OB_ISNULL(expr = select_items_.at(i).expr_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("null select expr", K(ret));
     } else if (OB_FAIL(select_exprs.push_back(expr))) {
     } else { /*do nothing*/}
   }
@@ -743,6 +768,7 @@ int ObSelectStmt::get_select_exprs_without_lob(ObIArray<ObRawExpr*> &select_expr
   for (int64_t i = 0; OB_SUCC(ret) && i < select_items_.count(); ++i) {
     if (OB_ISNULL(expr = select_items_.at(i).expr_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("null select expr", K(ret));
     } else if (ObLongTextType == expr->get_data_type()) {
       /*do nothing*/
     } else if (OB_FAIL(select_exprs.push_back(expr))) {
@@ -758,6 +784,7 @@ int ObSelectStmt::get_equal_set_conditions(ObIArray<ObRawExpr *> &conditions,
   int ret = OB_SUCCESS;
   if (!(check_having && has_rollup()) &&
       OB_FAIL(ObDMLStmt::get_equal_set_conditions(conditions, is_strict, check_having))) {
+    LOG_WARN("failed to get equal set cond", K(ret));
   } else if (!check_having) {
     // do nothing
   } else if (OB_FAIL(append(conditions, having_exprs_))) {
@@ -774,6 +801,7 @@ int ObSelectStmt::get_set_stmt_size(int64_t &size) const
       const ObSelectStmt *stmt = (i == -1) ? this : set_stmts.at(i);
       if (OB_ISNULL(stmt)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("stmt is null", K(ret));
       } else if (!stmt->is_set_stmt()) {
         // do nothing
       } else if (OB_FAIL(append(set_stmts, stmt->set_query_))) {
@@ -818,6 +846,7 @@ int ObSelectStmt::recursive_get_expr(ObRawExpr *expr,
   int ret = OB_SUCCESS;
   if (OB_ISNULL(expr)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("get unexpected null", K(ret));
   } else if (expr->has_flag(target_flag)) {
     ret = exprs.push_back(expr);
   } else if (expr->has_flag(search_flag)) {
@@ -851,11 +880,13 @@ int ObSelectStmt::get_pure_set_exprs(ObIArray<ObRawExpr*> &pure_set_exprs) const
     for (int64_t i = 0; OB_SUCC(ret) && i < get_select_item_size(); ++i) {
       if (OB_ISNULL(select_expr = get_select_item(i).expr_)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("get unexpected null", K(ret), K(i));
       } else if (!select_expr->has_flag(CNT_SET_OP)) {
         /* do nothing, for recursive union all, exists search/cycle pseudo columns*/
       } else if (OB_ISNULL(set_op_expr = get_pure_set_expr(select_expr))
                  || OB_UNLIKELY(!set_op_expr->is_set_op_expr())) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("get unexpected expr", K(ret), K(i), K(*select_expr));
       } else if (OB_FAIL(pure_set_exprs.push_back(set_op_expr))) {
       }
     }
@@ -998,6 +1029,7 @@ int ObSelectStmt::is_duplicate_insensitive_aggregation(bool &is_dup_insens_aggr)
       const ObAggFunRawExpr *agg_expr = get_aggr_item(i);
       if (OB_ISNULL(agg_expr)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("agg expr is null", K(ret));
       } else if (agg_expr->get_expr_type() == T_FUN_SYS_BIT_AND
                  || agg_expr->get_expr_type() == T_FUN_SYS_BIT_OR
                  || agg_expr->get_expr_type() == T_FUN_MAX
@@ -1026,6 +1058,7 @@ int ObSelectStmt::is_query_deterministic(bool &is_deterministic) const
     for (int64_t i = 0; OB_SUCC(ret) && is_deterministic && i < relation_exprs.count(); i++) {
       if (OB_ISNULL(relation_exprs.at(i))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("got null expr");
       } else {
         is_deterministic = relation_exprs.at(i)->is_deterministic();
       }
@@ -1033,6 +1066,7 @@ int ObSelectStmt::is_query_deterministic(bool &is_deterministic) const
     for (int64_t i = 0; OB_SUCC(ret) && is_deterministic && i < set_query_.count(); i++) {
       if (OB_ISNULL(set_query_.at(i))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("got null expr");
       } else if (OB_FAIL(SMART_CALL(set_query_.at(i)->is_query_deterministic(is_deterministic)))) {
       }
     }
@@ -1040,6 +1074,7 @@ int ObSelectStmt::is_query_deterministic(bool &is_deterministic) const
       const TableItem *table_item = get_table_item(i);
       if (OB_ISNULL(table_item)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("table_item is null", K(i));
       } else if (table_item->is_basic_table() ||
                  table_item->is_values_table() ||
                  table_item->is_json_table() ||

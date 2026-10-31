@@ -15,9 +15,9 @@
 use crate::*;
 
 pub(crate) const LOCAL_RUN_DIR: &str = "run";
-#[cfg(all(unix, feature = "native-network"))]
+#[cfg(unix)]
 pub(crate) const UNIX_SOCKET_NAME: &str = "sql.sock";
-#[cfg(all(windows, feature = "native-network"))]
+#[cfg(windows)]
 pub(crate) const PIPE_DISCOVERY_NAME: &str = "sql.pipe";
 
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -31,7 +31,6 @@ pub(crate) struct LocalEndpointGuard {
 }
 
 impl LocalEndpointGuard {
-    #[cfg(feature = "native-network")]
     #[cfg_attr(not(unix), allow(dead_code))]
     pub(crate) fn new(path: PathBuf) -> Self {
         Self {
@@ -53,17 +52,12 @@ impl Drop for LocalEndpointGuard {
     }
 }
 
-pub struct NioReactor {
+pub struct Reactor {
     pub(crate) wakers: Vec<Arc<Waker>>,
-    pub(crate) stop: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
     pub(crate) joins: Vec<JoinHandle<()>>,
     local_endpoint: Option<LocalEndpointGuard>,
     keepalive: Arc<TcpKeepaliveState>,
-    bound_tcp_port: u32,
-    #[cfg(feature = "memory-transport")]
-    pub(crate) memory_peers: Vec<PeerHandoff>,
-    #[cfg(feature = "memory-transport")]
-    pub(crate) next_memory_peer: AtomicUsize,
 }
 
 pub(crate) struct TcpKeepaliveState {
@@ -180,29 +174,26 @@ impl<V> ConnSlab<V> {
     }
 }
 
-#[derive(Clone)]
 pub(crate) struct PeerHandoff {
-    pub(crate) incoming: Arc<Mutex<Vec<ConnStream>>>,
-    pub(crate) waker: Arc<Waker>,
+    incoming: Arc<Mutex<Vec<ConnStream>>>,
+    waker: Arc<Waker>,
 }
 
-pub(crate) const HANDOFF_CAP: usize = 1024;
+const HANDOFF_CAP: usize = 1024;
 
 pub(crate) struct EventLoop {
     pub(crate) poll: Poll,
-    #[cfg(feature = "native-network")]
     pub(crate) listener: Option<TcpListener>,
-    #[cfg(all(unix, feature = "native-network"))]
+    #[cfg(unix)]
     pub(crate) unix_listener: Option<UnixListener>,
-    #[cfg(all(windows, feature = "native-network"))]
+    #[cfg(windows)]
     pub(crate) pipe_name: Arc<Vec<u16>>,
-    #[cfg(all(windows, feature = "native-network"))]
+    #[cfg(windows)]
     pub(crate) pending_pipe: Option<NamedPipe>,
-    #[cfg(all(windows, feature = "native-network"))]
+    #[cfg(windows)]
     pub(crate) pipe_startup: Option<std::sync::mpsc::Sender<bool>>,
     pub(crate) incoming: Arc<Mutex<Vec<ConnStream>>>,
     pub(crate) peers: Vec<PeerHandoff>,
-    #[cfg(feature = "native-network")]
     pub(crate) next_accept_target: usize,
     pub(crate) reg: Arc<Registry>,
     pub(crate) waker: Arc<Waker>,
@@ -214,7 +205,7 @@ pub(crate) struct EventLoop {
     pub(crate) commit_batch: Vec<QueuedCompletion>,
     pub(crate) completions: Arc<Mutex<Vec<QueuedCompletion>>>,
     pub(crate) stop: Arc<AtomicBool>,
-    pub(crate) handler: Handler,
+    pub(crate) cb: NioCallbacks,
     pub(crate) session_size: usize,
     pub(crate) tls_config: Option<Arc<rustls::ServerConfig>>,
     pub(crate) keepalive: Arc<TcpKeepaliveState>,
@@ -235,11 +226,11 @@ impl EventLoop {
             if stopping && self.conns.is_empty() && self.retired.is_empty() {
                 break;
             }
-            #[cfg(all(windows, feature = "native-network"))]
+            #[cfg(windows)]
             if self.pending_pipe.is_none() && !stopping {
                 self.rearm_pending();
             }
-            #[cfg(all(windows, feature = "native-network"))]
+            #[cfg(windows)]
             if let Some(startup) = self.pipe_startup.take() {
                 let _ = startup.send(self.pending_pipe.is_some());
             }
@@ -272,9 +263,8 @@ impl EventLoop {
                     }
                     match event.token() {
                         WAKER => {}
-                        #[cfg(feature = "native-network")]
                         LISTENER => self.accept_all(),
-                        #[cfg(all(any(unix, windows), feature = "native-network"))]
+                        #[cfg(any(unix, windows))]
                         LOCAL_LISTENER => self.accept_local(),
                         token => {
                             let transport_closed = event.is_error()
@@ -307,8 +297,6 @@ impl EventLoop {
     }
 
     pub(crate) fn begin_shutdown(&mut self) {
-        #[cfg(feature = "memory-transport")]
-        self.incoming.lock().unwrap().clear();
         let conns: Vec<Arc<Conn>> = self.conns.values().cloned().collect();
         let mut completed = Vec::new();
         for conn in conns {
@@ -408,29 +396,26 @@ impl EventLoop {
         let sess = conn.sess();
         insert_conn_mapping(conn);
         let mut greeting = NioGreetingInfo::zeroed();
-        let rc = unsafe {
-            ob_sql_sock_handler_on_connect(self.handler.0, sess, fd, is_unix, &mut greeting)
+        let rejected = match self.cb.on_connect {
+            Some(on_connect) => {
+                let rc = on_connect(self.cb.ctx, sess, fd, is_unix, &mut greeting);
+                conn.session_constructed.store(true, Ordering::Release);
+                rc != 0
+            }
+            None => true,
         };
-        conn.session_constructed.store(true, Ordering::Release);
-        let rejected = rc != 0;
         if rejected || conn.err.load(Ordering::Acquire) || !send_greeting(conn, &greeting) {
             self.abort_admission(conn, preregistered);
             return false;
         }
+        if preregistered {
+            return true;
+        }
         let registered = {
             let mut g = conn.mu.lock().unwrap();
-            let interest = if g.want_write {
-                Interest::READABLE | Interest::WRITABLE
-            } else {
-                Interest::READABLE
-            };
-            if preregistered {
-                self.reg
-                    .reregister(&mut g.sock, conn.token, interest)
-                    .is_ok()
-            } else {
-                self.reg.register(&mut g.sock, conn.token, interest).is_ok()
-            }
+            self.reg
+                .register(&mut g.sock, conn.token, Interest::READABLE)
+                .is_ok()
         };
         if !registered {
             self.abort_admission(conn, true);
@@ -450,7 +435,6 @@ impl EventLoop {
         self.retire_or_release(conn.clone());
     }
 
-    #[cfg(feature = "native-network")]
     pub(crate) fn accept_all(&mut self) {
         loop {
             let listener = match self.listener.as_ref() {
@@ -469,7 +453,7 @@ impl EventLoop {
         }
     }
 
-    #[cfg(all(unix, feature = "native-network"))]
+    #[cfg(unix)]
     pub(crate) fn accept_local(&mut self) {
         loop {
             let listener = match self.unix_listener.as_ref() {
@@ -485,7 +469,7 @@ impl EventLoop {
         }
     }
 
-    #[cfg(all(windows, feature = "native-network"))]
+    #[cfg(windows)]
     pub(crate) fn accept_local(&mut self) {
         let pending = match self.pending_pipe.take() {
             Some(p) => p,
@@ -524,7 +508,7 @@ impl EventLoop {
         self.rearm_pending();
     }
 
-    #[cfg(all(windows, feature = "native-network"))]
+    #[cfg(windows)]
     fn rearm_pending(&mut self) {
         let result =
             create_pipe_instance(&self.pipe_name).and_then(|pipe| self.try_arm_pending(pipe));
@@ -533,7 +517,7 @@ impl EventLoop {
         }
     }
 
-    #[cfg(all(windows, feature = "native-network"))]
+    #[cfg(windows)]
     fn try_arm_pending(&mut self, mut pipe: NamedPipe) -> std::io::Result<()> {
         self.reg.register(
             &mut pipe,
@@ -552,7 +536,6 @@ impl EventLoop {
         Ok(())
     }
 
-    #[cfg(feature = "native-network")]
     fn distribute(&mut self, stream: ConnStream) {
         let fanout = self.peers.len() + 1;
         let target = self.next_accept_target;
@@ -597,9 +580,6 @@ impl EventLoop {
 
     fn drain_incoming(&mut self) {
         loop {
-            if self.stop.load(Ordering::Acquire) {
-                break;
-            }
             let sock = match self.incoming.lock().unwrap().pop() {
                 Some(sock) => sock,
                 None => break,
@@ -634,7 +614,7 @@ impl EventLoop {
             conn.signal_mid_read();
             return;
         }
-        let handled = pump(conn, self.handler);
+        let handled = pump(conn, self.cb);
         if !handled {
             mark_connection_error(conn);
         }
@@ -795,11 +775,11 @@ impl EventLoop {
             let mut g = conn.mu.lock().unwrap();
             send_tls_close_notify_locked(&conn, &mut g);
             let _ = conn.reg.deregister(&mut g.sock);
-            #[cfg(all(unix, feature = "native-network"))]
+            #[cfg(unix)]
             unsafe {
                 libc::shutdown(raw_fd(&g.sock), libc::SHUT_RDWR);
             }
-            #[cfg(any(not(unix), feature = "memory-transport"))]
+            #[cfg(not(unix))]
             let _ = g.sock.shutdown(std::net::Shutdown::Both);
         }
         self.notify_disconnect(&conn);
@@ -813,7 +793,9 @@ impl EventLoop {
         if conn.session_constructed.load(Ordering::Acquire)
             && !conn.disconnect_notified.swap(true, Ordering::AcqRel)
         {
-            unsafe { ob_sql_sock_handler_on_disconnect(self.handler.0, conn.sess()) };
+            if let Some(on_disconnect) = self.cb.on_disconnect {
+                on_disconnect(self.cb.ctx, conn.sess());
+            }
         }
     }
 
@@ -821,7 +803,9 @@ impl EventLoop {
         if conn.session_constructed.load(Ordering::Acquire)
             && !conn.close_notified.swap(true, Ordering::AcqRel)
         {
-            unsafe { ob_sql_sock_handler_on_close(self.handler.0, conn.sess(), err) };
+            if let Some(on_close) = self.cb.on_close {
+                on_close(self.cb.ctx, conn.sess(), err);
+            }
         }
     }
 
@@ -849,7 +833,7 @@ impl EventLoop {
     }
 }
 
-#[cfg(all(unix, feature = "native-network"))]
+#[cfg(unix)]
 fn bind_tcp_listener(addr: SocketAddr) -> std::io::Result<TcpListener> {
     use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
@@ -865,19 +849,20 @@ fn bind_tcp_listener(addr: SocketAddr) -> std::io::Result<TcpListener> {
     Ok(TcpListener::from_std(listener))
 }
 
-#[cfg(all(not(unix), feature = "native-network"))]
+#[cfg(not(unix))]
 fn bind_tcp_listener(addr: SocketAddr) -> std::io::Result<TcpListener> {
     TcpListener::bind(addr)
 }
 
-pub const NIO_START_OK: i32 = 0;
-pub const NIO_START_EINVAL: i32 = 1;
-pub const NIO_START_EADDR: i32 = 3;
-pub const NIO_START_ECALLBACKS: i32 = 4;
-pub const NIO_START_EIO: i32 = 5;
-pub const NIO_START_ETLS: i32 = 6;
+pub(crate) const NIO_START_OK: i32 = 0;
+pub(crate) const NIO_START_EINVAL: i32 = 1;
+pub(crate) const NIO_START_EABI: i32 = 2;
+pub(crate) const NIO_START_EADDR: i32 = 3;
+pub(crate) const NIO_START_ECALLBACKS: i32 = 4;
+pub(crate) const NIO_START_EIO: i32 = 5;
+pub(crate) const NIO_START_ETLS: i32 = 6;
+pub(crate) const NIO_TLS_MIN_TLSV1_3: u8 = 4;
 
-#[cfg(feature = "native-network")]
 fn build_tls_server_config(
     tls: &NioTlsConfig,
 ) -> Result<Arc<rustls::ServerConfig>, Box<dyn std::error::Error>> {
@@ -927,24 +912,27 @@ fn write_start_err(out_err: *mut i32, reason: i32) {
 }
 
 /// # Safety
-/// `addr` is a valid C string; `handler` is the ObSqlSockHandler* the
-/// ob_sql_sock_handler_on_* shims accept; `out_err` is null or points to
-/// writable i32 storage.
+/// `addr` is a valid C string; `cb` points to a valid callbacks struct;
+/// `out_err` is null or points to writable i32 storage.
 #[no_mangle]
 pub unsafe extern "C" fn nio_start(
     addr: *const c_char,
-    handler: *mut c_void,
+    abi_version: u32,
+    cb: *const NioCallbacks,
+    callbacks_size: usize,
     session_size: usize,
     thread_count: usize,
     tls: *const NioTlsConfig,
     tls_size: usize,
     out_err: *mut i32,
     disable_tcp: c_int,
-) -> *mut NioReactor {
+) -> *mut Reactor {
     unsafe {
         nio_start_in_dir(
             addr,
-            handler,
+            abi_version,
+            cb,
+            callbacks_size,
             session_size,
             thread_count,
             tls,
@@ -959,7 +947,9 @@ pub unsafe extern "C" fn nio_start(
 #[allow(clippy::too_many_arguments)]
 pub(crate) unsafe fn nio_start_in_dir(
     addr: *const c_char,
-    handler: *mut c_void,
+    abi_version: u32,
+    cb: *const NioCallbacks,
+    callbacks_size: usize,
     session_size: usize,
     thread_count: usize,
     tls: *const NioTlsConfig,
@@ -967,8 +957,14 @@ pub(crate) unsafe fn nio_start_in_dir(
     out_err: *mut i32,
     disable_tcp: c_int,
     local_run_dir: &Path,
-) -> *mut NioReactor {
+) -> *mut Reactor {
+    if abi_version != NIO_ABI_VERSION {
+        write_start_err(out_err, NIO_START_EABI);
+        return std::ptr::null_mut();
+    }
     if addr.is_null()
+        || cb.is_null()
+        || callbacks_size != std::mem::size_of::<NioCallbacks>()
         || session_size == 0
         || !(1..=MAX_IO_THREADS).contains(&thread_count)
         || !matches!(disable_tcp, 0 | 1)
@@ -978,22 +974,6 @@ pub(crate) unsafe fn nio_start_in_dir(
         write_start_err(out_err, NIO_START_EINVAL);
         return std::ptr::null_mut();
     }
-    #[cfg(feature = "memory-transport")]
-    let tls_config = {
-        if !tls.is_null() || disable_tcp != 1 {
-            write_start_err(
-                out_err,
-                if !tls.is_null() {
-                    NIO_START_ETLS
-                } else {
-                    NIO_START_EINVAL
-                },
-            );
-            return std::ptr::null_mut();
-        }
-        None
-    };
-    #[cfg(feature = "native-network")]
     let tls_config = match unsafe { tls.as_ref() } {
         None => None,
         Some(tls) => match build_tls_server_config(tls) {
@@ -1016,41 +996,46 @@ pub(crate) unsafe fn nio_start_in_dir(
             return std::ptr::null_mut();
         }
     };
-    #[cfg(feature = "memory-transport")]
-    let _ = (addr, local_run_dir); // Parsed for ABI consistency; no socket or file is opened.
-    if handler.is_null() {
+    let cb = unsafe { *cb };
+    if cb.ctx.is_null()
+        || cb.on_connect.is_none()
+        || cb.on_readable.is_none()
+        || cb.on_disconnect.is_none()
+        || cb.on_close.is_none()
+    {
         write_start_err(out_err, NIO_START_ECALLBACKS);
         return std::ptr::null_mut();
     }
-    let handler = Handler(handler);
 
-    let started = (|| -> std::io::Result<NioReactor> {
+    let started = (|| -> std::io::Result<Reactor> {
         let stop = Arc::new(AtomicBool::new(false));
         let keepalive = Arc::new(TcpKeepaliveState::new());
-        #[cfg(feature = "native-network")]
         let mut listener = if disable_tcp == 0 {
             Some(bind_tcp_listener(addr)?)
         } else {
             None
         };
-        #[cfg(feature = "memory-transport")]
-        let (bound_tcp_port, local_endpoint) = (0, None);
-        #[cfg(feature = "native-network")]
-        let bound_tcp_port = if let Some(listener) = listener.as_ref() {
-            u32::from(listener.local_addr()?.port())
-        } else {
-            0
-        };
-        #[cfg(all(unix, feature = "native-network"))]
+        #[cfg(unix)]
         let (mut unix_listener, local_endpoint) = {
             let socket_path = local_run_dir.join(UNIX_SOCKET_NAME);
             let _ = std::fs::create_dir_all(local_run_dir);
             let _ = std::fs::remove_file(&socket_path);
-            let l = UnixListener::bind(&socket_path)?;
-            let guard = LocalEndpointGuard::new(socket_path);
-            (Some(l), Some(guard))
+            match UnixListener::bind(&socket_path) {
+                Ok(l) => {
+                    let guard = LocalEndpointGuard::new(socket_path);
+                    (Some(l), Some(guard))
+                }
+                Err(err) if disable_tcp != 0 => return Err(err),
+                Err(err) => {
+                    eprintln!(
+                        "sql-nio: local endpoint {} unavailable ({err}); serving TCP only",
+                        socket_path.display(),
+                    );
+                    (None, None)
+                }
+            }
         };
-        #[cfg(all(windows, feature = "native-network"))]
+        #[cfg(windows)]
         let (pipe_name, mut pending_discovery) = {
             let secs = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1071,31 +1056,39 @@ pub(crate) unsafe fn nio_start_in_dir(
                 .collect();
             let staged = match std::fs::write(&staged_path, bare.as_bytes()) {
                 Ok(()) => Some((LocalEndpointGuard::new(staged_path), discovery_path)),
-                Err(err) => return Err(err),
+                Err(err) if disable_tcp != 0 => return Err(err),
+                Err(err) => {
+                    eprintln!(
+                        "sql-nio: pipe discovery staging unavailable ({err}); serving TCP only",
+                    );
+                    None
+                }
             };
             (Arc::new(wide), staged)
         };
-        #[cfg(all(not(any(unix, windows)), feature = "native-network"))]
+        #[cfg(not(any(unix, windows)))]
         let local_endpoint: Option<LocalEndpointGuard> = {
             let _ = local_run_dir;
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "local SQL-NIO endpoint is unsupported on this platform",
-            ));
+            if disable_tcp != 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "local-only SQL-NIO has no transport on this platform",
+                ));
+            }
+            None
         };
         let mut ios = Vec::with_capacity(thread_count);
         let mut handoffs = Vec::with_capacity(thread_count);
-        #[cfg(all(windows, feature = "native-network"))]
+        #[cfg(windows)]
         let (pipe_startup_tx, pipe_startup_rx) = std::sync::mpsc::channel();
         for index in 0..thread_count {
             let poll = Poll::new()?;
-            #[cfg(feature = "native-network")]
             if index == 0 {
                 if let Some(listener) = listener.as_mut() {
                     poll.registry()
                         .register(listener, LISTENER, Interest::READABLE)?;
                 }
-                #[cfg(all(unix, feature = "native-network"))]
+                #[cfg(unix)]
                 if let Some(l) = unix_listener.as_mut() {
                     poll.registry()
                         .register(l, LOCAL_LISTENER, Interest::READABLE)?;
@@ -1107,23 +1100,21 @@ pub(crate) unsafe fn nio_start_in_dir(
             let incoming = Arc::new(Mutex::new(Vec::new()));
             let io = EventLoop {
                 poll,
-                #[cfg(feature = "native-network")]
                 listener: None,
-                #[cfg(all(unix, feature = "native-network"))]
+                #[cfg(unix)]
                 unix_listener: if index == 0 {
                     unix_listener.take()
                 } else {
                     None
                 },
-                #[cfg(all(windows, feature = "native-network"))]
+                #[cfg(windows)]
                 pipe_name: pipe_name.clone(),
-                #[cfg(all(windows, feature = "native-network"))]
+                #[cfg(windows)]
                 pending_pipe: None,
-                #[cfg(all(windows, feature = "native-network"))]
+                #[cfg(windows)]
                 pipe_startup: Some(pipe_startup_tx.clone()),
                 incoming: incoming.clone(),
                 peers: Vec::new(),
-                #[cfg(feature = "native-network")]
                 next_accept_target: 0,
                 reg,
                 waker: waker.clone(),
@@ -1135,7 +1126,7 @@ pub(crate) unsafe fn nio_start_in_dir(
                 commit_batch: Vec::new(),
                 completions: Arc::new(Mutex::new(Vec::new())),
                 stop: stop.clone(),
-                handler,
+                cb,
                 session_size,
                 tls_config: tls_config.clone(),
                 keepalive: keepalive.clone(),
@@ -1149,14 +1140,9 @@ pub(crate) unsafe fn nio_start_in_dir(
             });
             ios.push((index, io, waker));
         }
-        #[cfg(all(windows, feature = "native-network"))]
+        #[cfg(windows)]
         drop(pipe_startup_tx);
-        #[cfg(feature = "native-network")]
-        {
-            ios[0].1.listener = listener;
-        }
-        #[cfg(feature = "memory-transport")]
-        let memory_peers = handoffs.clone();
+        ios[0].1.listener = listener;
         ios[0].1.peers = handoffs.split_off(1);
 
         let mut wakers = Vec::with_capacity(thread_count);
@@ -1185,7 +1171,7 @@ pub(crate) unsafe fn nio_start_in_dir(
                 }
             }
         }
-        #[cfg(all(windows, feature = "native-network"))]
+        #[cfg(windows)]
         let local_endpoint = {
             let deadline = Instant::now() + Duration::from_secs(5);
             let mut armed_pipe_count = 0usize;
@@ -1211,17 +1197,19 @@ pub(crate) unsafe fn nio_start_in_dir(
             }
             if armed_pipe_count == 0 {
                 pending_discovery.take();
-                stop.store(true, Ordering::Release);
-                for waker in &wakers {
-                    let _ = waker.wake();
+                if disable_tcp != 0 {
+                    stop.store(true, Ordering::Release);
+                    for waker in &wakers {
+                        let _ = waker.wake();
+                    }
+                    for join in joins.drain(..) {
+                        let _ = join.join();
+                    }
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::AddrNotAvailable,
+                        "no named-pipe instance could be armed",
+                    ));
                 }
-                for join in joins.drain(..) {
-                    let _ = join.join();
-                }
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::AddrNotAvailable,
-                    "no named-pipe instance could be armed",
-                ));
             }
             match pending_discovery.take() {
                 Some((staged, discovery_path)) => {
@@ -1230,7 +1218,7 @@ pub(crate) unsafe fn nio_start_in_dir(
                             staged.removed.store(true, Ordering::Release);
                             Some(LocalEndpointGuard::new(discovery_path))
                         }
-                        Err(err) => {
+                        Err(err) if disable_tcp != 0 => {
                             stop.store(true, Ordering::Release);
                             for waker in &wakers {
                                 let _ = waker.wake();
@@ -1240,22 +1228,23 @@ pub(crate) unsafe fn nio_start_in_dir(
                             }
                             return Err(err);
                         }
+                        Err(err) => {
+                            eprintln!(
+                                "sql-nio: pipe discovery publication failed ({err}); serving TCP only",
+                            );
+                            None
+                        }
                     }
                 }
                 None => None,
             }
         };
-        Ok(NioReactor {
+        Ok(Reactor {
             wakers,
             stop,
             joins,
             local_endpoint,
             keepalive,
-            bound_tcp_port,
-            #[cfg(feature = "memory-transport")]
-            memory_peers,
-            #[cfg(feature = "memory-transport")]
-            next_memory_peer: AtomicUsize::new(0),
         })
     })();
 
@@ -1274,17 +1263,8 @@ pub(crate) unsafe fn nio_start_in_dir(
 /// # Safety
 /// `reactor` is null or a live handle.
 #[no_mangle]
-pub unsafe extern "C" fn nio_get_bound_tcp_port(reactor: *const NioReactor) -> u32 {
-    unsafe { reactor.as_ref() }
-        .map(|reactor| reactor.bound_tcp_port)
-        .unwrap_or(0)
-}
-
-/// # Safety
-/// `reactor` is null or a live handle.
-#[no_mangle]
 pub unsafe extern "C" fn nio_update_tcp_keepalive_params(
-    reactor: *mut NioReactor,
+    reactor: *mut Reactor,
     enabled: c_int,
     idle: u32,
     interval: u32,
@@ -1311,7 +1291,7 @@ pub unsafe extern "C" fn nio_update_tcp_keepalive_params(
 /// # Safety
 /// `reactor` is null or a live handle.
 #[no_mangle]
-pub unsafe extern "C" fn nio_stop(reactor: *mut NioReactor) {
+pub unsafe extern "C" fn nio_stop(reactor: *mut Reactor) {
     if let Some(e) = unsafe { reactor.as_ref() } {
         if let Some(endpoint) = e.local_endpoint.as_ref() {
             endpoint.remove_once();
@@ -1326,7 +1306,7 @@ pub unsafe extern "C" fn nio_stop(reactor: *mut NioReactor) {
 /// # Safety
 /// `reactor` is null or a live handle, used once.
 #[no_mangle]
-pub unsafe extern "C" fn nio_wait_destroy(reactor: *mut NioReactor) {
+pub unsafe extern "C" fn nio_wait_destroy(reactor: *mut Reactor) {
     if reactor.is_null() {
         return;
     }

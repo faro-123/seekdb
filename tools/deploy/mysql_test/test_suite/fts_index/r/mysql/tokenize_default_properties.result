@@ -1,0 +1,37 @@
+result_format: 4
+space defaults
++------+
+| ok   |
++------+
+|    1 |
++------+
+beng defaults
++------+
+| ok   |
++------+
+|    1 |
++------+
+ik defaults
++------+
+| ok   |
++------+
+|    1 |
++------+
+ngram defaults
++------+
+| ok   |
++------+
+|    1 |
++------+
+ngram2 defaults
++------+
+| ok   |
++------+
+|    1 |
++------+
+empty and null documents
++------+
+| ok   |
++------+
+|    1 |
++------+

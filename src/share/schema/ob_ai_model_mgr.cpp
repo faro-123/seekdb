@@ -103,6 +103,7 @@ int ObAiModelMgr::init()
 
   if (is_inited_) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("ai model mgr init twice", K(ret), K(lbt()));
   } else if (OB_FAIL(ai_model_id_map_.init())) {
   } else if (OB_FAIL(ai_model_name_map_.init())) {
   } else {
@@ -129,6 +130,7 @@ int ObAiModelMgr::assign(const ObAiModelMgr &other)
 
   if (!is_inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ai model mgr not init", K(ret));
   } else if (this != &other) {
     if (OB_FAIL(ai_model_infos_.assign(other.ai_model_infos_))) {
     } else if (OB_FAIL(ai_model_id_map_.assign(other.ai_model_id_map_))) {
@@ -145,6 +147,7 @@ int ObAiModelMgr::deep_copy(const ObAiModelMgr &other)
 
   if (!is_inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ai model mgr not init", K(ret));
   } else if (this != &other) {
     reset();  
     for (AiModelIter iter = other.ai_model_infos_.begin();
@@ -153,6 +156,7 @@ int ObAiModelMgr::deep_copy(const ObAiModelMgr &other)
       ObAiModelSchema *ai_model_schema = *iter;
       if (OB_ISNULL(ai_model_schema)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected NULL ai_model_schema", K(ai_model_schema), K(ret));
       } else if (OB_FAIL(add_ai_model(*ai_model_schema, ai_model_schema->get_case_mode()))) {
       }
     }
@@ -166,6 +170,7 @@ int ObAiModelMgr::get_ai_model_schema_count(int64_t &schema_count) const
   int ret = OB_SUCCESS;
 
   if (!is_inited_) {
+    LOG_WARN("ai model mgr not init");
   } else {
     schema_count = ai_model_infos_.size();
   }
@@ -179,6 +184,7 @@ int ObAiModelMgr::get_schema_statistics(ObSchemaStatisticsInfo &schema_info) con
 
   if (!is_inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ai model mgr not init", K(ret));
   } else {
     schema_info.reset();
     schema_info.schema_type_ = AI_MODEL_SCHEMA;
@@ -188,6 +194,7 @@ int ObAiModelMgr::get_schema_statistics(ObSchemaStatisticsInfo &schema_info) con
          it++) {
       if (OB_ISNULL(*it)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("schema is null", K(ret));
       } else {
         schema_info.size_ += (*it)->get_convert_size();
       }
@@ -204,15 +211,19 @@ int ObAiModelMgr::get_ai_model_schema(const uint64_t ai_model_id, const ObAiMode
 
   if (!is_inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ai model mgr not init", K(ret));
   } else if (OB_INVALID_ID == ai_model_id) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid ai_model_id", K(ret), K(ai_model_id));
   } else if (OB_FAIL(ai_model_id_map_.get_refactored(ai_model_id, tmp_schema))) {
     if (OB_HASH_NOT_EXIST == ret) {
       ret = OB_SUCCESS;
     } else {
+      LOG_WARN("failed to get ai_model_schema", K(ret), K(ai_model_id));
     }
   } else if (OB_ISNULL(tmp_schema)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected NULL ai_model_schema", K(ret), K(ai_model_id));
   } else {
     ai_model_schema = tmp_schema;
   }
@@ -229,8 +240,10 @@ int ObAiModelMgr::get_ai_model_schema( const common::ObString &name,
 
   if (!is_inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ai model mgr not init", K(ret));
   } else if (name.empty()) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arguments", K(ret), K(name));
   }  else {
     ObAiModelHashWrapper hash_wrapper(name, case_mode);
 
@@ -238,9 +251,11 @@ int ObAiModelMgr::get_ai_model_schema( const common::ObString &name,
       if (OB_HASH_NOT_EXIST == ret) {
         ret = OB_SUCCESS;
       } else {
+        LOG_WARN("failed to get ai_model_schema", K(ret), K(name));
       }
     } else if (OB_ISNULL(tmp_schema)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected NULL ai_model_schema", K(ret), K(name));
     } else {
       ai_model_schema = tmp_schema;
     }
@@ -261,11 +276,14 @@ int ObAiModelMgr::add_ai_model(const ObAiModelSchema &ai_model_schema, common::O
 
   if (!is_inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ai model mgr not init", K(ret));
   } else if (OB_UNLIKELY(!ai_model_schema.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid ai_model_schema", K(ret), K(ai_model_schema));
   } else if (OB_FAIL(ObSchemaUtils::alloc_schema(allocator_, ai_model_schema, new_schema))) {
   } else if (OB_ISNULL(new_schema)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected NULL new_schema", K(ret), K(ai_model_schema));
   } else if (OB_FALSE_IT(new_schema->set_case_mode(case_mode))) {
   } else if (OB_FAIL(ai_model_infos_.replace(new_schema,
                                              iter,
@@ -305,22 +323,33 @@ int ObAiModelMgr::del_ai_model(const ObAiModelId &ai_model_id)
 
   if (!is_inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ai model mgr not init", K(ret));
   } else if (!ai_model_id.is_valid()) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid ai_model_id", K(ret), K(ai_model_id));
   } else if (OB_FAIL(ai_model_infos_.remove_if(ai_model_id,
                                                compare_with_ai_model_id,
                                                equal_to_ai_model_id,
                                                schema))) {
   } else if (OB_ISNULL(schema)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected NULL ai_model_schema", K(ret), K(ai_model_id));
   } else {
     int hash_ret = OB_SUCCESS;
     ObAiModelHashWrapper hash_wrapper(schema->get_name(),
                                       schema->get_case_mode());
 
     if (OB_SUCCESS != (hash_ret = ai_model_id_map_.erase_refactored(schema->get_ai_model_id()))) {
+      LOG_WARN("failed erase_refactored from id hashmap",
+               K(ret),
+               K(hash_ret),
+               K(schema->get_ai_model_id()));
       ret = OB_HASH_NOT_EXIST != hash_ret ? hash_ret : ret;
     } else if (OB_SUCCESS != (hash_ret = ai_model_name_map_.erase_refactored(hash_wrapper))) {
+      LOG_WARN("failed erase_refactored from name hashmap",
+               K(ret),
+               K(hash_ret),
+               K(hash_wrapper));
       ret = OB_HASH_NOT_EXIST != hash_ret ? hash_ret : ret;
     }
   }
@@ -348,6 +377,7 @@ int ObAiModelMgr::get_ai_model_schemas_in_runtime(common::ObIArray<const ObAiMod
 
   if (!is_inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ai model mgr not init", K(ret));
   } else {
     ai_model_schemas.reuse();
 
@@ -357,6 +387,7 @@ int ObAiModelMgr::get_ai_model_schemas_in_runtime(common::ObIArray<const ObAiMod
       const ObAiModelSchema *schema = *iter;
       if (OB_ISNULL(schema)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected NULL schema", K(ret), K(schema), K(ai_model_infos_));
       } else if (OB_FAIL(ai_model_schemas.push_back(schema))) {
       }
     }
@@ -371,6 +402,7 @@ int ObAiModelMgr::rebuild_ai_model_hashmap()
 
   if (!is_inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ai model mgr not init", K(ret));
   } else {
     ai_model_id_map_.clear();
     ai_model_name_map_.clear();
@@ -381,6 +413,7 @@ int ObAiModelMgr::rebuild_ai_model_hashmap()
       ObAiModelSchema *schema = *iter;
       if (OB_ISNULL(schema)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected NULL schema", K(ret), K(ai_model_infos_));
       } else {
         ObAiModelHashWrapper hash_wrapper(schema->get_name(),
                                           schema->get_case_mode());

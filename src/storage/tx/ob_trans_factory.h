@@ -29,7 +29,6 @@ namespace transaction
 {
 class ObTransCtx;
 class ObTxCtx;
-class TxCtxCache;
 //class ObPartitionTransCtxMgr;
 class ObLSTxCtxMgr;
 //class TransRpcTask;
@@ -45,7 +44,7 @@ class ObTxCommitCallbackTask;
 class ObTxCtxFactory
 {
 public:
-  static ObTxCtx *alloc(TxCtxCache *cache = nullptr);
+  static ObTxCtx *alloc();
   static void release(ObTransCtx *ctx);
   static int64_t get_alloc_count() { return ATOMIC_LOAD(&active_tx_ctx_count_); }
   static int64_t get_release_count() { return 0; }

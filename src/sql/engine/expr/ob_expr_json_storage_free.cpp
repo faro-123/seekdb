@@ -81,6 +81,7 @@ int ObExprJsonStorageFree::calc(ObEvalCtx &ctx, const ObDatum &data, ObDatumMeta
       if (ret == OB_ERR_INVALID_JSON_TEXT) {
         LOG_USER_ERROR(OB_ERR_INVALID_JSON_TEXT);
       }
+      LOG_WARN("fail to get json base", K(ret), K(type), K(j_str), K(j_in_type));
     } else if (OB_FAIL(j_base->get_free_space(free_space))) {
     } else {
       res.set_int32(free_space);
@@ -100,6 +101,7 @@ int ObExprJsonStorageFree::eval_json_storage_free(const ObExpr &expr, ObEvalCtx 
 
   if (OB_ISNULL(arg)) {
     ret = OB_ERR_NULL_VALUE;
+    LOG_WARN("arg is null", K(ret));
   } else if (OB_FAIL(arg->eval(ctx, datum))) {
   } else {
     ObEvalCtx::TempAllocGuard tmp_alloc_g(ctx);

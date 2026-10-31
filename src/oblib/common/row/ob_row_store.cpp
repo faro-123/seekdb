@@ -200,6 +200,7 @@ int ObRowStore::BlockInfo::append_row_by_copy(const ObIArray<int64_t> &reserved_
           int64_t index = reserved_columns.at(i);
           if (OB_UNLIKELY(index >= row.count_)) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("invalid index", K(index), K(row.count_), K(ret));
           } else {
             stored_row->reserved_cells_[i] = row_clone->cells_[reserved_columns.at(i)];
           }
@@ -307,6 +308,7 @@ int ObRowStore::Iterator::get_next_stored_row(StoredRow *&stored_row)
   stored_row = NULL;
   if (NULL == row_store_) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("row store is NULL", K(ret));
   } else {
     if (NULL == cur_iter_block_) {
       cur_iter_block_ = row_store_->blocks_.get_first();
@@ -841,6 +843,7 @@ int ObRowStore::adjust_row_cells_reference()
     while (OB_SUCC(ret)) {
       if (OB_FAIL(row_store_it.get_next_stored_row(stored_row))) {
         if (OB_ITER_END != ret) {
+          LOG_WARN("get next stored row from row store failed", K(ret));
         }
       } else {
         int64_t pos = 0;

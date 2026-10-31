@@ -173,8 +173,10 @@ int ObIOAllocator::init(const int64_t memory_limit)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("io allocator init twice", K(ret), K(is_inited_));
   } else if (OB_UNLIKELY(memory_limit <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(memory_limit));
   } else if (OB_FAIL(inner_allocator_.init(OB_MALLOC_MIDDLE_BLOCK_SIZE,
                                            ObModIds::OB_IO_CONTROL,
                                            memory_limit))) {
@@ -200,6 +202,7 @@ int ObIOAllocator::update_memory_limit(const int64_t memory_limit)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(memory_limit <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(memory_limit));
   } else if (memory_limit == memory_limit_) {
     // do nothing
   } else if (FALSE_IT(inner_allocator_.set_total_limit(memory_limit))) {
@@ -226,13 +229,16 @@ void *ObIOAllocator::alloc(const int64_t size)
   void *ret_buf = nullptr;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("io allocator is not inited", K(ret), K(is_inited_));
   } else if (OB_UNLIKELY(size <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(size));
   } else {
     // get buf from normal allocator
     if (OB_ISNULL(ret_buf)) {
       if (OB_ISNULL(ret_buf = inner_allocator_.alloc(size))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("failed to allocate io mem block", K(ret), K(size));
       }
     }
   }
@@ -355,6 +361,7 @@ int ObIOUsage::refresh_group_num(const int64_t group_num)
   ObQSyncLockWriteGuard guard(lock_);
   if (group_num < 1) {
     ret = OB_INVALID_CONFIG;
+    LOG_WARN("invalid group num", K(ret), K(group_num));
   } else {
     int64_t IO_GROUP_MODE_CNT = static_cast<int64_t>(ObIOGroupMode::MODECNT);
     for (int64_t i = info_.count(); OB_SUCC(ret) && i < group_num * IO_GROUP_MODE_CNT; ++i) {
@@ -507,6 +514,7 @@ int ObIOMemStat::refresh_group_num(const int64_t group_num)
   int ret = OB_SUCCESS;
   if (group_num < 1) {
     ret = OB_INVALID_CONFIG;
+    LOG_WARN("invalid group num", K(ret), K(group_num));
   } else {
     int64_t IO_GROUP_MODE_CNT = static_cast<int64_t>(ObIOGroupMode::MODECNT);
     for (int64_t i = group_mem_infos_.count(); OB_SUCC(ret) && i < group_num * IO_GROUP_MODE_CNT; ++i) {
@@ -549,6 +557,7 @@ int ObIOMemStat::dec(const ObIORequest &req)
       ret = OB_ERR_UNEXPECTED;
       ATOMIC_STORE(&group_mem_infos_.at(idx).total_cnt_, 0);
       ATOMIC_STORE(&group_mem_infos_.at(idx).total_size_, 0);
+      LOG_WARN("invalid io mem stats", K(ret), K(idx), K(group_mem_infos_.at(idx)), K(req), K(req.get_buf_size()));
     }
   }
   return ret;
@@ -636,6 +645,7 @@ int ObIOChannel::base_init(ObDeviceChannel *device_channel)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(nullptr == device_channel)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), KP(device_channel));
   } else {
     device_channel_ = device_channel;
     device_handle_ = device_channel->device_handle_;
@@ -701,11 +711,13 @@ int ObAsyncIOChannel::init(ObDeviceChannel *device_channel)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret), K(is_inited_));
   } else if (OB_FAIL(base_init(device_channel))) {
   } else if (OB_FAIL(depth_cond_.init(ObWaitEventIds::IO_CHANNEL_COND_WAIT))) {
   } else if (OB_FAIL(device_handle_->io_setup(MAX_AIO_EVENT_CNT, io_context_))) {
   } else if (OB_ISNULL(io_events_ = device_handle_->alloc_io_events(MAX_AIO_EVENT_CNT))) {
     ret = OB_ERR_SYS;
+    LOG_WARN("alloc io events failed", K(ret), KP(io_events_));
   } else {
     polling_timeout_.tv_sec = 0;
     polling_timeout_.tv_nsec = AIO_POLLING_TIMEOUT_NS;
@@ -773,6 +785,7 @@ void ObAsyncIOChannel::run1()
   const int64_t thread_id = get_thread_idx();
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret), K(is_inited_));
   } else {
     char device_name[32] = "";
     (void)device_handle_->get_device_name(device_name, sizeof(device_name));
@@ -797,16 +810,20 @@ int ObAsyncIOChannel::submit(ObIORequest &req)
   const int64_t current_ts = ObTimeUtility::current_time();
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret), K(is_inited_));
   } else if (OB_UNLIKELY(device_handle_ != req.fd_.device_handle_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(req), KP(device_handle_));
   } else if (OB_ISNULL(req.io_result_)) {
     ret = OB_INVALID_ARGUMENT;
   } else if ((!req.get_flag().is_detect()) && (submit_count_ >= MAX_AIO_EVENT_CNT - MAX_DETECT_DISK_HUNG_IO_CNT)) {
     ret = OB_EAGAIN;
     if (REACH_TIME_INTERVAL(1000000L)) {
+      LOG_WARN("too many io requests", K(ret), K(submit_count_));
     }
   } else if (OB_UNLIKELY(current_ts > req.timeout_ts())) {
     ret = OB_TIMEOUT;
+    LOG_WARN("io timeout because current time is larger than timeout timestamp", K(ret), K(current_ts), K(req));
   } else if ((!req.get_flag().is_detect()) && (device_channel_->used_io_depth_ > device_channel_->max_io_depth_ - MAX_DETECT_DISK_HUNG_IO_CNT)) {
     ret = OB_EAGAIN;
     if (REACH_TIME_INTERVAL(1 * 1000L * 1000L)) {
@@ -822,6 +839,7 @@ int ObAsyncIOChannel::submit(ObIORequest &req)
     if (OB_FAIL(device_handle_->io_submit(io_context_, req.control_block_))) {
       ATOMIC_DEC(&submit_count_);
       req.dec_ref(); // ref for file system
+      LOG_WARN("io_submit failed", K(ret), K(submit_count_), K(req));
     } else {
     }
   }
@@ -833,8 +851,10 @@ void ObAsyncIOChannel::cancel(ObIORequest &req)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret), K(is_inited_));
   } else if (OB_ISNULL(req.io_result_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("io result is null", KR(ret), K(req));
   } else if (0 != req.io_result_->time_log_.submit_ts_ && 0 == req.io_result_->time_log_.return_ts_) {
     // Note: here if ob_io_cancel failed (possibly due to kernel not supporting io_cancel),
     // neither we or the get_events thread would call control.callback_->process(),
@@ -845,6 +865,7 @@ void ObAsyncIOChannel::cancel(ObIORequest &req)
       ATOMIC_DEC(&submit_count_);
       ATOMIC_FAS(&device_channel_->used_io_depth_, get_io_depth(req.get_align_size()));
       req.dec_ref(); // ref for file system
+      LOG_WARN("Shouldn't go here, io cancel not supported", K(ret), K(req));
     }
   }
 }
@@ -859,6 +880,7 @@ void ObAsyncIOChannel::get_events()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret), K(is_inited_));
   } else if (OB_FAIL(device_handle_->io_getevents(io_context_, 1/*min_nr*/, io_events_, &polling_timeout_))) {
     if (REACH_TIME_INTERVAL(10 * 1000 * 1000)) {
       LOG_ERROR("io get_events failed", K(ret));
@@ -869,6 +891,7 @@ void ObAsyncIOChannel::get_events()
     for (int64_t i = 0; i < io_events_->get_complete_cnt(); ++i) { // ignore ret
       if (OB_ISNULL(req = reinterpret_cast<ObIORequest *>(io_events_->get_ith_data(i)))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("req is null", K(ret));
       } else {
         RequestHolder holder(req);
         ObTraceIdGuard trace_id_guard(req->trace_id_);
@@ -889,6 +912,7 @@ void ObAsyncIOChannel::get_events()
             int64_t aligned_size = 0;
             if (OB_ISNULL(req->fd_.device_handle_)) {
               ret = OB_ERR_UNEXPECTED;
+              LOG_WARN("device handle is null", K(ret), K(req));
             } else if (OB_FAIL(req->fd_.device_handle_->get_io_aligned_size(aligned_size))) {
             } else if (0 == complete_size || !is_io_aligned(complete_size, aligned_size)) { // reach end of file
               if (OB_FAIL(on_partial_return(*req, complete_size))) {
@@ -947,9 +971,11 @@ int ObAsyncIOChannel::on_full_return(ObIORequest &req, const int64_t complete_si
   int ret = OB_SUCCESS;
   if (OB_ISNULL(req.io_result_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("io result is null", K(ret));
   } else {
     req.io_result_->complete_size_ = complete_size;
     if (OB_FAIL(req.io_service_->enqueue_callback(req))) {
+      LOG_WARN("push io request into callback queue failed", K(ret), K(req));
       req.io_result_->finish(ret, &req);
     }
   }
@@ -961,6 +987,7 @@ int ObAsyncIOChannel::on_partial_return(ObIORequest &req, const int64_t complete
   int ret = OB_SUCCESS;
   if (OB_ISNULL(req.io_result_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("io result is null", K(ret));
   } else {
     // partial return ignore callback
     req.io_result_->complete_size_ += complete_size;
@@ -989,11 +1016,14 @@ int ObAsyncIOChannel::on_partial_retry(ObIORequest &req, const int64_t complete_
   int64_t aligned_size = 0;
   if (OB_ISNULL(req.fd_.device_handle_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("device handle is null", K(ret), K(req));
   } else if (OB_FAIL(req.fd_.device_handle_->get_io_aligned_size(aligned_size))) {
   } else if (OB_UNLIKELY(!is_io_aligned(complete_size, aligned_size))) {
     ret = OB_ERR_SYS;
+    LOG_WARN("complete size not aligned", K(ret), K(complete_size), K(aligned_size));
   } else if (OB_ISNULL(req.io_result_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("io result is null", K(ret));
   } else {
     int64_t next_offset = req.get_align_offset();
     int64_t next_size = req.get_align_size();
@@ -1006,6 +1036,7 @@ int ObAsyncIOChannel::on_partial_retry(ObIORequest &req, const int64_t complete_
     } else if (OB_FAIL(submit(req))) {
     } else if (OB_ISNULL(req.control_block_)) {
       ret = OB_ERR_SYS;
+      LOG_WARN("io control block is null", KR(ret), K(req));
     } else {
       req.control_block_->set_is_retry(true);
     }
@@ -1027,11 +1058,13 @@ int ObAsyncIOChannel::on_full_retry(ObIORequest &req)
     LOG_WARN("retry too many times", K(ret), K(req));
   } else if (OB_ISNULL(req.io_result_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("io result is null", K(ret));
   } else if (FALSE_IT(req.io_result_->complete_size_ = 0)) {
   } else if (OB_FAIL(req.prepare())) {
   } else if (OB_FAIL(submit(req))) {
   } else if (OB_ISNULL(req.control_block_)) {
     ret = OB_ERR_SYS;
+    LOG_WARN("io control block is null", KR(ret), K(req));
   } else {
     req.control_block_->set_is_retry(true);
   }
@@ -1048,6 +1081,7 @@ int ObAsyncIOChannel::on_failed(ObIORequest &req, const ObIORetCode &ret_code)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(req.io_result_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("io result is null", K(ret));
   } else {
     req.io_result_->finish(ret_code, &req);
   }
@@ -1071,8 +1105,10 @@ int ObSyncIOChannel::init(ObDeviceChannel *device_channel, const int64_t thread_
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret), K(is_inited_));
   } else if (thread_num < 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(thread_num));
   } else if (OB_FAIL(base_init(device_channel))) {
   } else if (OB_FAIL(start_thread(cal_thread_count(thread_num), SYNC_IO_TASK_COUNT))) {
   } else {
@@ -1097,8 +1133,10 @@ void ObSyncIOChannel::handle(void *task)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret), K(is_inited_));
   } else if (OB_ISNULL(task)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("task is NULL", K(ret));
   } else {
     char device_name[32] = "";
     (void)device_handle_->get_device_name(device_name, sizeof(device_name));
@@ -1122,9 +1160,11 @@ int ObSyncIOChannel::submit(ObIORequest &req)
       static_cast<int64_t>(4LL * 1024LL * 1024LL * 1024LL)));
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret), K(is_inited_));
   } else if (OB_UNLIKELY(used_io_depth_ >= io_depth)) {
     ret = OB_EAGAIN;
     if (REACH_TIME_INTERVAL(1 * 1000L * 1000L)) {
+      LOG_WARN("reach io depth", K(ret), K(io_depth), K(used_io_depth_));
     }
   } else {
     req.inc_ref(); // ref for file system
@@ -1132,9 +1172,11 @@ int ObSyncIOChannel::submit(ObIORequest &req)
     if (OB_FAIL(ObSimpleThreadPool::push(&req))) {
       req.dec_ref(); // ref for file system
       if (OB_EAGAIN != ret) {
+        LOG_WARN("push request failed", K(ret), K(req));
       } else {
         // io sender will retry submitting request
         if (REACH_TIME_INTERVAL(1000000L)) {
+          LOG_WARN("too many io request in the sync channel", K(ret), K(get_queue_num()));
         }
       }
     }
@@ -1145,6 +1187,7 @@ int ObSyncIOChannel::submit(ObIORequest &req)
 void ObSyncIOChannel::cancel(ObIORequest &req)
 {
   int ret = OB_NOT_SUPPORTED;
+  LOG_WARN("cancel is not supported on sync io channel", K(ret), K(req));
 }
 
 int64_t ObSyncIOChannel::get_queue_count() const
@@ -1182,10 +1225,13 @@ int ObSyncIOChannel::do_sync_io(ObIORequest &req)
   // no need to perform io for req that has already been canceled
   if (req.is_canceled()) {
     ret = OB_CANCELED;
+    LOG_WARN("req is canceled", K(ret), K(req));
   } else if (OB_ISNULL(device_handle)) {
     ret = OB_ERR_SYS;
+    LOG_WARN("device handle is null", K(ret));
   } else if (OB_ISNULL(req.io_result_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("io result is null", K(ret));
   } else if (FALSE_IT(io_offset = static_cast<int64_t>(req.io_result_->offset_))) {
   } else if (FALSE_IT(req.io_result_->time_log_.submit_ts_ = ObTimeUtility::fast_current_time())) {
   } else if (req.get_flag().is_read()) {
@@ -1199,12 +1245,14 @@ int ObSyncIOChannel::do_sync_io(ObIORequest &req)
     }
   } else {
     ret = OB_NOT_SUPPORTED;
+    LOG_WARN("not supported io mode", K(ret), K(req));
   }
   if (OB_SUCC(ret)) {
     req.io_result_->time_log_.return_ts_ = ObTimeUtility::fast_current_time();
     req.io_result_->complete_size_ = io_size;
     if (req.can_callback()) {
       if (OB_FAIL(req.io_service_->enqueue_callback(req))) {
+        LOG_WARN("push io request into callback queue failed", K(ret), K(req));
         req.io_result_->finish(ret, &req);
       }
     } else {
@@ -1217,6 +1265,7 @@ int ObSyncIOChannel::do_sync_io(ObIORequest &req)
   }
   const int64_t cost_us = ObTimeUtility::current_time() - start_us;
   if (OB_UNLIKELY(cost_us > 3 * 1000 * 1000LL)) { // 3s
+    LOG_WARN("slow sync io", KR(ret), K(cost_us), K(req));
   }
   return ret;
 }
@@ -1261,11 +1310,13 @@ int ObDeviceChannel::init(ObIODevice *device_handle,
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret), K(is_inited_));
   } else if (OB_UNLIKELY(nullptr == device_handle
         || async_channel_thread_count < 0  /* object device async channel count allow set 0 */
         || sync_channel_thread_count < 0
         || max_io_depth <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), KP(device_handle), K(async_channel_thread_count), K(sync_channel_thread_count), K(max_io_depth));
   } else {
     device_handle_ = device_handle;
     used_io_depth_ = 0;
@@ -1277,6 +1328,7 @@ int ObDeviceChannel::init(ObIODevice *device_handle,
       void *buf = nullptr;
       if (OB_ISNULL(buf = allocator.alloc(sizeof(ObAsyncIOChannel)))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("alloc async channel failed", K(ret), K(i), K(async_channel_thread_count));
       } else if (FALSE_IT(ch = new (buf) ObAsyncIOChannel())) {
       } else if (OB_FAIL(ch->init(this))) {
       } else if (OB_FAIL(ch->start())) {
@@ -1295,6 +1347,7 @@ int ObDeviceChannel::init(ObIODevice *device_handle,
       void *buf = nullptr;
       if (OB_ISNULL(buf = allocator.alloc(sizeof(ObSyncIOChannel)))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("alloc sync channel failed", K(ret), K(sync_channel_thread_count));
       } else if (FALSE_IT(ch = new (buf) ObSyncIOChannel())) {
       } else if (OB_FAIL(ch->init(this, sync_channel_thread_count))) {
       } else if (OB_FAIL(sync_channels_.push_back(ch))) {
@@ -1365,6 +1418,7 @@ int ObDeviceChannel::submit(ObIORequest &req)
   const bool is_sync = req.io_result_ != nullptr && req.get_flag().is_sync();
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret), K(is_inited_));
   } else {
     if (is_sync) {
       lock_for_sync_io_.lock();
@@ -1372,6 +1426,7 @@ int ObDeviceChannel::submit(ObIORequest &req)
     if (OB_FAIL(get_random_io_channel(is_sync ? sync_channels_ : async_channels_, ch))) {
     } else if (OB_FAIL(ch->submit(req))) {
       if (OB_EAGAIN != ret) {
+        LOG_WARN("submit request failed", K(ret), K(req));
       }
     }
     if (is_sync) {
@@ -1416,8 +1471,10 @@ int ObDeviceChannel::get_random_io_channel(ObIArray<ObIOChannel *> &io_channels,
   ch = nullptr;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret), K(is_inited_));
   } else if (OB_UNLIKELY(io_channels.count() <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(io_channels.count()));
   } else {
     int64_t idx = 0;
     for (idx = 0; idx < io_channels.count(); idx++) {
@@ -1455,8 +1512,10 @@ int ObIOCallbackManager::init(const int64_t thread_count,
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret), K(is_inited_));
   } else if (OB_UNLIKELY(thread_count <= 0 || queue_depth <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arguments", K(ret), K(thread_count), K(queue_depth));
   } else {
     config_thread_count_ = thread_count;
     if (OB_FAIL(ObLinkQueueThreadPool::set_thread_count(thread_count))) {
@@ -1486,8 +1545,10 @@ int ObIOCallbackManager::enqueue_callback(ObIORequest &req)
   const int64_t current_ts = ObTimeUtility::current_time();
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("Not init", K(ret));
   } else if (OB_UNLIKELY(current_ts > req.timeout_ts())) {
     ret = OB_TIMEOUT;
+    LOG_WARN("io timeout because current time is larger than timeout timestamp", K(ret), K(current_ts), K(req));  
   } else if (OB_NOT_NULL(req.io_result_)) {
     ObThreadCondGuard guard(req.io_result_->get_cond());
     if (OB_FAIL(guard.get_ret())) {
@@ -1501,6 +1562,7 @@ int ObIOCallbackManager::enqueue_callback(ObIORequest &req)
       // Create a wrapper task
       if (OB_FAIL(ObLinkQueueThreadPool::push(&req.req_node_))) {
         req.dec_ref(); // ref for callback queue
+        LOG_WARN("push callback failed", K(ret), K(req));
       }
     }
   }
@@ -1515,6 +1577,7 @@ void ObIOCallbackManager::handle(LinkTask *task)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(req)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), KP(req));
   } else {
     const int64_t begin_time = ObTimeUtility::fast_current_time();
     req->dec_ref(); // ref for callback queue
@@ -1534,6 +1597,7 @@ void ObIOCallbackManager::handle(LinkTask *task)
       bool free_raw_buf = true;
       if (OB_ISNULL(req->io_result_)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("io result is null", K(ret));
       } else {
         ObTimeGuard time_guard("cb_process", 100000); //100ms
         ObThreadCondGuard guard(req->io_result_->get_cond());
@@ -1543,6 +1607,7 @@ void ObIOCallbackManager::handle(LinkTask *task)
           // canceled, do nothing
         } else if (OB_UNLIKELY(begin_time > req->timeout_ts())) {
           ret = OB_TIMEOUT;
+          LOG_WARN("io timeout because current time is larger than timeout timestamp", K(ret), "current_time", begin_time, KPC(req));
         } else if (OB_FAIL(req->io_result_->ret_code_.io_ret_)) {
           //failed, ignore
         } else if (!req->can_callback()) {
@@ -1579,8 +1644,10 @@ int ObIOCallbackManager::update_thread_count(const int64_t thread_count)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("Not init", K(ret));
   } else if (OB_UNLIKELY(thread_count <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(thread_count));
   } else {
     int64_t cur_thread_count = config_thread_count_;
     if (thread_count == cur_thread_count) {
@@ -1654,6 +1721,7 @@ int ObIOFaultDetector::init()
   bool thread_pool_inited = false;
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("io fault detector init twice", K(ret), K(!is_inited_));
   } else if (OB_FAIL(common::ObSimpleThreadPool::init(1, IO_HEALTH_QUEUE_DEPTH, "IO_HEALTH"))) {
   } else if (FALSE_IT(thread_pool_inited = true)) {
   } else if (OB_FAIL(common::ObSimpleThreadPool::set_adaptive_thread(1, 1))) {
@@ -1686,9 +1754,11 @@ int ObIOFaultDetector::start()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("io fault detector not init", K(ret), KP(is_inited_));
   } else if (common::ObSimpleThreadPool::get_thread_count() <= 0
       && !common::ObSimpleThreadPool::try_expand_one(1)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("start thread pool failed", K(ret));
   }
   return ret;
 }
@@ -1705,8 +1775,10 @@ void ObIOFaultDetector::handle(void *task)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("io fault detector not init", K(ret), KP(is_inited_));
   } else if (OB_ISNULL(task)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), KP(task));
   } else {
     RetryTask *retry_task = reinterpret_cast<RetryTask *>(task);
     retry_task->io_info_.flag_.set_unlimited();
@@ -1739,6 +1811,7 @@ void ObIOFaultDetector::handle(void *task)
             if (OB_TMP_FAIL(handle.get_fs_errno(sys_io_errno))) {
             }
             if (OB_TIMEOUT == ret || OB_IO_TIMEOUT == ret) {
+              LOG_WARN("ObIOManager::read failed", K(ret), K(retry_task->io_info_), K(timeout_ms));
               ret = OB_SUCCESS;
             } else if (OB_EAGAIN == ret) { //maybe channel is busy, wait and retry
               ob_usleep(100 * 1000); // 100ms
@@ -1799,6 +1872,7 @@ int ObIOFaultDetector::record_timing_task(const int64_t first_id, const int64_t 
   RetryTask *retry_task = nullptr;
   if (OB_ISNULL(retry_task = op_alloc(RetryTask))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("alloc RetryTask failed", K(ret));
   } else {
     
     retry_task->io_info_.size_ = 4096;
@@ -1845,6 +1919,7 @@ void ObIOFaultDetector::record_io_timeout(const ObIOResult &result, const ObIORe
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("io fault detector not init", K(ret), K(is_inited_));
   } else if (result.flag_.is_detect()) {
     //ignore, do not retry
   } else if (req.get_flag().is_sync()) {
@@ -1853,6 +1928,7 @@ void ObIOFaultDetector::record_io_timeout(const ObIOResult &result, const ObIORe
     RetryTask *retry_task = nullptr;
     if (OB_ISNULL(retry_task = op_alloc(RetryTask))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("alloc RetryTask failed", K(ret));
     } else if (OB_FAIL(set_detect_task_io_info_(retry_task->io_info_, result, req))) {
     } else {
       retry_task->timeout_ms_ = io_config_.data_storage_warning_tolerance_time_; // default 5s
@@ -1865,8 +1941,10 @@ void ObIOFaultDetector::record_io_timeout(const ObIOResult &result, const ObIORe
     }
   } else if (result.flag_.is_write()) {
     ret = OB_NOT_SUPPORTED;
+    LOG_WARN("write IORequest failed", K(ret), K(result));
   } else {
     ret = OB_NOT_SUPPORTED;
+    LOG_WARN("not supported io mode", K(ret), K(result));
   }
 }
 
@@ -1875,6 +1953,7 @@ void ObIOFaultDetector::record_io_error(const ObIOResult &result, const ObIORequ
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("io fault detector not init", K(ret), K(is_inited_));
   } else if (result.flag_.is_detect()) {
     //ignore, do not retry
   } else if (req.get_flag().is_sync()) {
@@ -1884,8 +1963,10 @@ void ObIOFaultDetector::record_io_error(const ObIOResult &result, const ObIORequ
     }
   } else if (result.flag_.is_write()) {
     ret = OB_NOT_SUPPORTED;
+    LOG_WARN("write IORequest failed", K(ret), K(result));
   } else {
     ret = OB_NOT_SUPPORTED;
+    LOG_WARN("not supported io mode", K(ret), K(result));
   }
 }
 
@@ -1895,6 +1976,7 @@ int ObIOFaultDetector::record_read_failure_(const ObIOResult &result, const ObIO
   RetryTask *retry_task = nullptr;
   if (OB_ISNULL(retry_task = op_alloc(RetryTask))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("alloc RetryTask failed", K(ret));
   } else if (OB_FAIL(set_detect_task_io_info_(retry_task->io_info_, result, req))) {
   } else {
     retry_task->timeout_ms_ = 5000L; // 5s
@@ -1935,6 +2017,7 @@ int ObIOTracer::init()
   const ObMemAttr attr("io_trace_map");
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret));
   } else if (OB_FAIL(trace_map_.create(1009, attr))) {
   } else {
     is_inited_ = true;
@@ -1994,8 +2077,10 @@ int ObIOTracer::trace_request(const ObIORequest *req, const char *msg, const Tra
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("the io tracer is not init", K(ret));
   } else if (OB_UNLIKELY(nullptr == req)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), KP(req), KCSTRING(msg), K(trace_type));
   } else if (ObIOTracer::TraceType::IS_FIRST == trace_type) {
     TraceInfo trace_info;
     char *bt_str = lbt();
@@ -2044,6 +2129,7 @@ int64_t ObIOTracer::to_string(char *buf, const int64_t len) const
           if (OB_FAIL(bt_count_.atomic_refactored(entry.second, update_fn))) {
           }
         } else {
+          LOG_WARN("insert backtrace count failed", K(ret));
         }
       }
       return ret;

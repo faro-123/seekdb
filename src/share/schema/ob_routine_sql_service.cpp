@@ -31,6 +31,7 @@ int ObRoutineSqlService::create_package(ObPackageInfo &package_info,
   int ret = OB_SUCCESS;
   if (OB_ISNULL(sql_client)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("sql_client is NULL, ", K(ret));
   } else if (!package_info.is_valid()) {
     ret = OB_INVALID_ARGUMENT;
     SHARE_SCHEMA_LOG(WARN, "package_info is invalid", K(package_info), K(ret));
@@ -62,6 +63,7 @@ int ObRoutineSqlService::drop_package(const uint64_t database_id,
   if (OB_UNLIKELY(OB_INVALID_ID == database_id)
       || OB_UNLIKELY(OB_INVALID_ID == package_id)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid package info in drop procedure", KR(ret), K(database_id), K(package_id));
   } else if (OB_FAIL(del_package(sql_client, package_id, new_schema_version))) {
   } else {
     ObSchemaOperation opt;
@@ -100,6 +102,7 @@ int ObRoutineSqlService::add_package(common::ObISQLClient &sql_client,
       }
       if (OB_SUCC(ret) && !is_single_row(affected_rows)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("affected_rows unexpected to be one", K(affected_rows), K(ret));
       }
     }
     if (OB_SUCC(ret)) {
@@ -108,6 +111,7 @@ int ObRoutineSqlService::add_package(common::ObISQLClient &sql_client,
       } else if (OB_FAIL(exec.exec_insert(OB_ALL_PACKAGE_HISTORY_TNAME, dml, affected_rows))) {
       } else if (!is_single_row(affected_rows)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("affected_rows unexpected to be one", K(affected_rows), K(ret));
       }
     }
    }
@@ -121,6 +125,7 @@ int ObRoutineSqlService::create_routine(ObRoutineInfo &routine_info,
   int ret = OB_SUCCESS;
   if (OB_ISNULL(sql_client)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("sql_client is NULL, ", K(ret));
   } else if (!routine_info.is_valid()) {
     ret = OB_INVALID_ARGUMENT;
     SHARE_SCHEMA_LOG(WARN, "routine_info is invalid", K(routine_info), K(ret));
@@ -178,9 +183,11 @@ int ObRoutineSqlService::replace_routine(ObRoutineInfo &routine_info,
     LOG_WARN("old_routine_info", K(*old_routine_info), K(old_routine_info->get_routine_params().count()));
     if (!routine_info.is_valid()) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("new routine info is invalid", K(routine_info), K(ret));
     } else if (OB_FAIL(add_routine(*sql_client, routine_info, true))) {
     } else if (old_routine_info->get_routine_params().count() > 0
                && OB_FAIL(del_routine_params(*sql_client, *old_routine_info, del_param_schema_version))) {
+      LOG_WARN("del routine params failed", K(routine_info), K(ret));
     } else if (OB_FAIL(add_routine_params(*sql_client, routine_info))) {
     } else {
       ObSchemaOperation opt;
@@ -214,6 +221,7 @@ int ObRoutineSqlService::drop_routine(const ObRoutineInfo &routine_info,
     LOG_WARN("invalid routine info in drop procedure", K(db_id), K(routine_id));
   } else if (OB_FAIL(del_routine(sql_client, routine_info, new_schema_version))) {
   } else if (routine_info.get_routine_params().count() > 0 && OB_FAIL(del_routine_params(sql_client, routine_info, new_schema_version))) {
+    LOG_WARN("delete from __all_routine_param failed", K(ret));
   } else {
     ObSchemaOperation opt;
     
@@ -246,6 +254,7 @@ int ObRoutineSqlService::del_package(ObISQLClient &sql_client,
     if (OB_FAIL(exec.exec_delete(OB_ALL_PACKAGE_TNAME, dml, affected_rows))) {
     } else if (!is_single_row(affected_rows)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected error", K(affected_rows), K(ret));
     }
   }
 
@@ -258,6 +267,7 @@ int ObRoutineSqlService::del_package(ObISQLClient &sql_client,
     } else if (OB_FAIL(sql_client.write(sql.ptr(), affected_rows))) {
     } else if (1 != affected_rows) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("no row has inserted", K(ret));
     }
   }
   return ret;
@@ -280,6 +290,7 @@ int ObRoutineSqlService::del_routine(ObISQLClient &sql_client,
     if (OB_FAIL(exec.exec_delete(OB_ALL_ROUTINE_TNAME, dml, affected_rows))) {
     } else if (!is_single_row(affected_rows)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected error", K(affected_rows), K(ret), K(routine_info), K(new_schema_version));
     }
   }
 
@@ -294,6 +305,7 @@ int ObRoutineSqlService::del_routine(ObISQLClient &sql_client,
     } else if (OB_FAIL(sql_client.write(sql.ptr(), affected_rows))) {
     } else if (1 != affected_rows) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("no row has inserted", K(ret));
     } else {
       // do nothing
     }
@@ -319,6 +331,8 @@ int ObRoutineSqlService::del_routine_params(ObISQLClient &sql_client,
     if (OB_FAIL(exec.exec_delete(OB_ALL_ROUTINE_PARAM_TNAME, dml, affected_rows))) {
     } else if (affected_rows < routine_info.get_routine_params().count()) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected error", K(routine_info),
+                K(affected_rows), K(routine_info.get_routine_params().count()));
     } else {
       // do nothing
     }
@@ -337,6 +351,7 @@ int ObRoutineSqlService::del_routine_params(ObISQLClient &sql_client,
       const ObRoutineParam *routine_param = NULL;
       if (OB_ISNULL(routine_param = routine_params.at(i))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("routine param is null");
       } else if (OB_FAIL(sql.append_fmt("%s(%lu, %lu, %lu, %d)", (0 == i) ? "" : ",",
           ObSchemaUtils::get_extract_schema_id(routine_param->get_routine_id()),
           routine_param->get_sequence(),
@@ -347,6 +362,8 @@ int ObRoutineSqlService::del_routine_params(ObISQLClient &sql_client,
     if (OB_SUCC(ret)) {
       if (OB_FAIL(sql_client.write(sql.ptr(), affected_rows))) {
       } else if (routine_params.count() != affected_rows) {
+        LOG_WARN("affected_rows not same with routine_param_count", K(affected_rows),
+                 "param_count", routine_params.count(), K(ret));
       }
     }
   }
@@ -375,6 +392,7 @@ int ObRoutineSqlService::gen_package_dml(
       || OB_FAIL(dml.add_column("route_sql", ObHexEscapeSqlStr(package_info.get_route_sql())))
       || OB_FAIL(dml.add_gmt_create())
       || OB_FAIL(dml.add_gmt_modified())) {
+    LOG_WARN("add column failed", K(ret));
   }
   return ret;
 }
@@ -404,6 +422,7 @@ int ObRoutineSqlService::gen_routine_dml(
       || OB_FAIL(dml.add_column("routine_body", ObHexEscapeSqlStr(routine_info.get_routine_body())))
       || OB_FAIL(dml.add_column("comment", ObHexEscapeSqlStr(routine_info.get_comment())))
       || OB_FAIL(dml.add_column("route_sql", ObHexEscapeSqlStr(routine_info.get_route_sql())))) {
+    LOG_WARN("add column failed", K(ret));
   }
   if (OB_FAIL(ret)) {
   } else if (OB_FAIL(dml.add_column("type_id", routine_info.get_type_id()))) {
@@ -411,6 +430,7 @@ int ObRoutineSqlService::gen_routine_dml(
   if (OB_FAIL(ret)) {
   } else if ((!is_replace && OB_FAIL(dml.add_gmt_create()))
       || OB_FAIL(dml.add_gmt_modified())) {
+    LOG_WARN("add column failed", K(ret));
   }
   return ret;
 }
@@ -427,6 +447,7 @@ int ObRoutineSqlService::gen_routine_param_dml(
     int64_t pos = 0;
     if (OB_ISNULL(extended_type_info_buf = static_cast<char *>(allocator.alloc(OB_MAX_VARBINARY_LENGTH)))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("allocate memory for extended type info buf failed", K(ret));
     } else if (OB_FAIL(routine_param.serialize_extended_type_info(extended_type_info_buf, OB_MAX_VARBINARY_LENGTH, pos))) {
     } else {
       bin_extended_type_info.assign_ptr(extended_type_info_buf, static_cast<int32_t>(pos));
@@ -453,6 +474,7 @@ int ObRoutineSqlService::gen_routine_param_dml(
       || OB_FAIL(dml.add_column("param_coll_type", routine_param.get_param_type().get_collation_type()))
       || OB_FAIL(dml.add_column("flag", routine_param.get_flag()))
       || OB_FAIL(dml.add_column("default_value", ObHexEscapeSqlStr(routine_param.get_default_value())))) {
+    LOG_WARN("add column failed", K(ret));
   }
   if (OB_FAIL(ret)) {
   } else if (is_sys_database_id(routine_param.get_type_owner())) {
@@ -469,6 +491,7 @@ int ObRoutineSqlService::gen_routine_param_dml(
       || OB_FAIL(dml.add_column("extended_type_info", ObHexEscapeSqlStr(bin_extended_type_info)))
       || OB_FAIL(dml.add_gmt_create())
       || OB_FAIL(dml.add_gmt_modified())) {
+    LOG_WARN("add column failed", K(ret));
   }
   return ret;
 }
@@ -497,6 +520,7 @@ int ObRoutineSqlService::add_routine(ObISQLClient &sql_client,
       }
       if (OB_SUCC(ret) && !is_single_row(affected_rows)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("affected_rows unexpected to be one", K(affected_rows), K(ret));
       }
     }
     if (OB_SUCC(ret)) {
@@ -505,6 +529,7 @@ int ObRoutineSqlService::add_routine(ObISQLClient &sql_client,
       } else if (OB_FAIL(exec.exec_insert(OB_ALL_ROUTINE_HISTORY_TNAME, dml, affected_rows))) {
       } else if (!is_single_row(affected_rows)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("affected_rows unexpected to be one", K(affected_rows), K(ret));
       }
     }
   }
@@ -524,6 +549,7 @@ int ObRoutineSqlService::add_routine_params(ObISQLClient &sql_client,
     ObRoutineParam *routine_param = routine_params.at(i);
     if (OB_ISNULL(routine_param)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("routine param is null", K(i));
     } else {
       routine_param->set_routine_id(routine_info.get_routine_id());
       routine_param->set_schema_version(routine_info.get_schema_version());
@@ -539,6 +565,7 @@ int ObRoutineSqlService::add_routine_params(ObISQLClient &sql_client,
         if (OB_FAIL(exec.exec_insert(OB_ALL_ROUTINE_PARAM_TNAME, dml, affected_rows))) {
         } else if (!is_single_row(affected_rows)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("affected_rows unexpected to be one", K(affected_rows), K(ret));
         }
       }
       if (OB_SUCC(ret)) {
@@ -547,6 +574,7 @@ int ObRoutineSqlService::add_routine_params(ObISQLClient &sql_client,
         } else if (OB_FAIL(exec.exec_insert(OB_ALL_ROUTINE_PARAM_HISTORY_TNAME, dml, affected_rows))) {
         } else if (!is_single_row(affected_rows)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("affected_rows unexpected to be one", K(affected_rows), K(ret));
         }
       }
     }

@@ -354,6 +354,7 @@ public:
     int ret = OB_SUCCESS;
     if (OB_ISNULL(expr_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected null", KPC(this));
     } else {
       ret = get_const_sel(ctx, *expr_, selectivity);
     }
@@ -396,6 +397,7 @@ public:
     int ret = OB_SUCCESS;
     if (OB_ISNULL(expr_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected null", KPC(this));
     } else {
       ret = get_column_sel(table_metas, ctx, *expr_, selectivity);
     }
@@ -443,6 +445,7 @@ public:
     int ret = OB_SUCCESS;
     if (OB_ISNULL(expr_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected null", KPC(this));
     } else {
       ret = get_in_sel(table_metas, ctx, *expr_, selectivity);
     }

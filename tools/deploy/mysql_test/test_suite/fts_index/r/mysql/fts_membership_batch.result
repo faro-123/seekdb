@@ -1,0 +1,113 @@
+result_format: 4
+merged batches deduplicate and retain all unique postings
++------+
+| ok   |
++------+
+|    1 |
++------+
++------+
+| ok   |
++------+
+|    1 |
++------+
++------+
+| ok   |
++------+
+|    1 |
++------+
++------+
+| ok   |
++------+
+|    1 |
++------+
+counted limit offset and empty cases
++------+
+| ok   |
++------+
+|    1 |
++------+
++------+
+| ok   |
++------+
+|    1 |
++------+
++------+
+| ok   |
++------+
+|    1 |
++------+
++------+
+| ok   |
++------+
+|    1 |
++------+
++------+
+| ok   |
++------+
+|    1 |
++------+
+scalar counted limit returns its last row before end
++------+
+| ok   |
++------+
+|    1 |
++------+
++------+
+| ok   |
++------+
+|    1 |
++------+
++------+
+| ok   |
++------+
+|    1 |
++------+
+value-sensitive aggregate distinct and outer filter retain semantics
++------+
+| ok   |
++------+
+|    1 |
++------+
++------+
+| ok   |
++------+
+|    1 |
++------+
++------+
+| ok   |
++------+
+|    1 |
++------+
+explicit relevance ordering still selects the best match
++----+
+| ok |
++----+
+|  1 |
++----+
+prepared rescan switches posting lists and limit parameters
++----------+
+| count(*) |
++----------+
+|        1 |
++----------+
++----------+
+| count(*) |
++----------+
+|        0 |
++----------+
++----------+
+| count(*) |
++----------+
+|       20 |
++----------+
+own writes and rollback update merged membership
++------+
+| ok   |
++------+
+|    1 |
++------+
++------+
+| ok   |
++------+
+|    1 |
++------+

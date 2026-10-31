@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-#include "config_bridge.h"
 #include "sql/resolver/ddl/ob_alter_table_stmt.h"
 #include "query/session/ob_session_access.h"
 #include "sql/session/ob_sql_session_info.h"
@@ -139,7 +138,7 @@ void ObAlterTableStmt::set_lock_priority()
 {
   int ret = OB_SUCCESS;
 
-  if (config::enable_lock_priority()) {
+  if (GCONF.enable_lock_priority) {
     alter_table_arg_.lock_priority_ = ObTableLockPriority::HIGH1;
   }
 }

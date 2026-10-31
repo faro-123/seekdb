@@ -16,12 +16,10 @@
 
 
 #include "ob_trans_factory.h"
-#include "lib/worker.h"
-#include "query/session/ob_session_access.h"
+#include "lib/objectpool/ob_server_object_pool.h"
 #include "share/rc/ob_server_runtime.h"
 #include "share/ob_server_struct.h"
 #include "ob_tx_ctx.h"
-#include "tx_ctx_cache.h"
 
 namespace oceanbase
 {
@@ -88,7 +86,7 @@ const char *ObLSTxCtxMgrFactory::mod_type_ = "OB_PARTITION_TRANS_CTX_MGR";
 
 #define MAKE_FACTORY_CLASS_IMPLEMENT_USE_RP_ALLOC(object_name, LABEL, arg...) MAKE_FACTORY_CLASS_IMPLEMENT(object_name, LABEL, RP, arg)
 
-ObTxCtx *ObTxCtxFactory::alloc(TxCtxCache *cache)
+ObTxCtx *ObTxCtxFactory::alloc()
 {
   int tmp_ret = OB_SUCCESS;
   ObTxCtx *ctx = NULL;
@@ -98,21 +96,10 @@ ObTxCtx *ObTxCtxFactory::alloc(TxCtxCache *cache)
   if (ATOMIC_LOAD(&active_tx_ctx_count_) > MAX_TX_CTX_COUNT && GCTX.status_ == ObServiceStatus::SS_SERVING) {
     TRANS_LOG_RET(ERROR, tmp_ret, "transaction context memory alloc failed", K_(active_tx_ctx_count));
     tmp_ret = OB_TRANS_CTX_COUNT_REACH_LIMIT;
-  } else {
-    if (nullptr == cache) {
-      sql::ObSQLSessionInfo *session = THIS_WORKER.get_session();
-      cache = static_cast<TxCtxCache *>(
-          query::ObSessionAccess::get_tx_ctx_cache(session, true));
-    }
-    if (nullptr != cache) {
-      ctx = cache->alloc();
-    } else {
-      TxCtxCache::Node *node = TxCtxCache::alloc_node(nullptr);
-      ctx = nullptr == node ? nullptr : TxCtxCache::node_to_ctx(node);
-    }
-  }
-  if (NULL != ctx) {
+  } else if (NULL != (ctx = sop_borrow(ObTxCtx))) {
     (void)ATOMIC_FAA(&active_tx_ctx_count_, 1);
+  } else {
+    // do nothing
   }
   if (REACH_TIME_INTERVAL(TRANS_MEM_STAT_INTERVAL)) {
     TRANS_LOG(INFO, "ObTxCtx statistics", K_(active_tx_ctx_count), K_(total_release_tx_ctx_count));
@@ -130,7 +117,7 @@ void ObTxCtxFactory::release(ObTransCtx *ctx)
   } else {
     ObTxCtx *tx_ctx = static_cast<ObTxCtx *>(ctx);
     tx_ctx->destroy();
-    TxCtxCache::free(tx_ctx);
+    sop_return(ObTxCtx, tx_ctx);
     (void)ATOMIC_FAA(&active_tx_ctx_count_, -1);
     (void)ATOMIC_FAA(&total_release_tx_ctx_count_, 1);
     ctx = NULL;

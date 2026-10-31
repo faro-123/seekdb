@@ -30,7 +30,7 @@ class ObServerReloadConfig
   : public common::ObReloadConfig
 {
 public:
-  explicit ObServerReloadConfig(share::ObGlobalContext &gctx);
+  ObServerReloadConfig(common::ObServerConfig &config, share::ObGlobalContext &gctx);
   virtual ~ObServerReloadConfig();
 
   int operator()();

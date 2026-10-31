@@ -1,0 +1,6 @@
+# description: preserve BENG and IK normalization/tokenization after hot-path changes
+
+--result_format 4
+
+select tokenize('Hello HELLO hello! 全文索引 分词器 OceanBase-2026', 'beng', '[{"output": "all"}]');
+select tokenize('Hello HELLO hello! 全文索引 分词器 OceanBase-2026', 'ik', '[{"output": "all"}]');

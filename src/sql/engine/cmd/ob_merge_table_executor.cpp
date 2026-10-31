@@ -43,14 +43,17 @@ int ObMergeTableExecutor::execute(ObExecContext &ctx, ObMergeTableStmt &stmt)
 
   if (OB_ISNULL(session)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("session is null", K(ret));
   } else if (OB_ISNULL(ctx.get_sql_proxy())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("sql proxy is null", K(ret));
   } else if (OB_FAIL(
                  query::ObInnerSQLConnectionAccess::
                      create_spi_connection_with_external_session(
                          session, conn_guard))) {
   } else if (OB_ISNULL(conn = conn_guard.get_ptr())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("inner sql connection is null", K(ret));
   } else {
   }
 
@@ -72,6 +75,7 @@ int ObMergeTableExecutor::execute(ObExecContext &ctx, ObMergeTableStmt &stmt)
         common::sqlclient::ObMySQLResult *result = res.get_result();
         if (OB_ISNULL(result)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("result is null", K(ret));
         } else if (OB_FAIL(result->next())) {
         } else if (OB_FAIL(result->get_int("conflict_cnt", conflict_cnt))) {
         }
@@ -85,6 +89,7 @@ int ObMergeTableExecutor::execute(ObExecContext &ctx, ObMergeTableStmt &stmt)
           "Use THEIRS or OURS strategy to resolve. FAIL strategy is",
           conflict_cnt);
       ret = OB_OP_NOT_ALLOW;
+      LOG_WARN("merge conflict detected", K(ret), K(conflict_cnt));
       LOG_USER_ERROR(OB_OP_NOT_ALLOW, err_msg);
     }
   }

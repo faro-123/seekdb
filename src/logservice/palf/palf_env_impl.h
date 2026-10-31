@@ -23,6 +23,7 @@
 #include "lib/trace/ob_trace_event.h"
 #include "lib/utility/ob_macro_utils.h"
 #include "lib/utility/utility.h"
+#include "share/ob_occam_timer.h"
 #include "share/scn.h"
 #include "share/log/palf/log_define.h"
 #include "log_shared_queue_thread.h"
@@ -92,12 +93,12 @@ public:
   int update_disk_options(const PalfDiskOptions &disk_opts);
 
   void change_to_normal(const int64_t sequence);
-  PalfDiskOptions get_disk_opts_for_stopping_writing() const
+  const PalfDiskOptions& get_disk_opts_for_stopping_writing() const
   {
     ObSpinLockGuard guard(disk_opts_lock_);
     return disk_opts_for_stopping_writing_;
   }
-  PalfDiskOptions get_disk_opts_for_recycling_blocks() const
+  const PalfDiskOptions& get_disk_opts_for_recycling_blocks() const
   {
     ObSpinLockGuard guard(disk_opts_lock_);
     return disk_opts_for_recycling_blocks_;
@@ -197,7 +198,6 @@ public:
   virtual ~PalfEnvImpl();
 public:
   int init(const PalfOptions &options,
-           share::LocalStore &store,
            const char *base_dir,
            const common::ObAddr &self,
            common::ObILogAllocator *alloc_mgr,
@@ -208,7 +208,7 @@ public:
   // start function contains two meanings:
   //
   // 1. Start all the worker threads contained in PalfEnvImpl
-  // 2. Load local metadata and the log files in base_dir to recover the log stream.
+  // 2. According to the log_storage and meta_storage files included in base_dir, load the required metadata and logs for the log stream, and perform fault recovery
   //
   // @return :TODO
   int start();
@@ -286,7 +286,6 @@ private:
   typedef RWLock::RLockGuard RLockGuard;
   typedef RWLock::WLockGuard WLockGuard;
   RWLock palf_meta_lock_;
-  share::LocalStore *store_;
   common::ObILogAllocator *log_alloc_mgr_;
   ILogBlockPool *log_block_pool_;
   LogIOTaskCbThreadPool cb_thread_pool_;

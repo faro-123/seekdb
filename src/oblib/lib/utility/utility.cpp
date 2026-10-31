@@ -17,7 +17,6 @@
 #define USING_LOG_PREFIX LIB
 
 #include "utility.h"
-#include "lib/utility/ob_printf.h"
 #include "dirent.h"
 #if defined(__APPLE__)
 #include <sys/sysctl.h>
@@ -1459,6 +1458,7 @@ int sql_append_hex_escape_str(const ObString &str, ObSqlString &sql)
       buf[pos++] = HEXSTR[c & 0xF];   // lower 4 bits
       if (pos >= LOCAL_BUF_LEN - 2) { // leave space for ' and \0
         if (OB_FAIL(sql.append(buf, pos))) {
+          LOG_WARN("append string failed", K(ret));
           break;
         }
         pos = 0;
@@ -1651,7 +1651,7 @@ int ob_alloc_printf(ObString &result, ObIAllocator &alloc, const char* fmt, va_l
   int ret = OB_SUCCESS;
   va_list ap2;
   va_copy(ap2, ap);
-  int64_t n = ob_vsnprintf(NULL, 0, fmt, ap);
+  int64_t n = vsnprintf(NULL, 0, fmt, ap);
   if (n < 0) {
     LOG_ERROR("vsnprintf failed", K(n), K(errno));
     ret = OB_ERR_SYS;
@@ -1661,7 +1661,7 @@ int ob_alloc_printf(ObString &result, ObIAllocator &alloc, const char* fmt, va_l
       ret = OB_ALLOCATE_MEMORY_FAILED;
       LOG_ERROR("no memory");
     } else {
-      int64_t n2 = ob_vsnprintf(buf, n+1, fmt, ap2);
+      int64_t n2 = vsnprintf(buf, n+1, fmt, ap2);
       if (n2 < 0) {
         LOG_ERROR("vsnprintf failed", K(n), K(errno));
         ret = OB_ERR_SYS;
@@ -2027,6 +2027,7 @@ int long_to_str10(int64_t val,char *dst, const int64_t buf_len, const bool is_si
   if (OB_ISNULL(dst)
       || buf_len < 2) {//at least one char and '\0'
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Input invalid", KP(dst), K(buf_len), K(ret));
   } else {
     char buffer[65];
     uint64_t uval = (uint64_t) val;
@@ -2153,10 +2154,6 @@ int ob_atoull(const char *str, uint64_t &res)
 
 struct tm *ob_localtime(const time_t *unix_sec, struct tm *result)
 {
-#ifdef __EMSCRIPTEN__
-  // Use the host timezone through musl/Emscripten, including DST transitions.
-  return unix_sec != nullptr && result != nullptr ? localtime_r(unix_sec, result) : nullptr;
-#else
   static const int HOURS_IN_DAY = 24;
   static const int MINUTES_IN_HOUR = 60;
   static const int DAYS_FROM_UNIX_TIME = 2472632;
@@ -2191,7 +2188,6 @@ struct tm *ob_localtime(const time_t *unix_sec, struct tm *result)
     result->tm_year = tmp_b * 100 + tmp_d - 6700 + (tmp_m / 10);
   }
   return result;
-#endif
 }
 
 
@@ -2303,9 +2299,6 @@ int64_t get_level1_dcache_size()
   static int64_t l1_dcache_size = get_cpu_cache_size(-1, path, 32768/*default L1 dcache size : 32K*/);
 #elif defined(_WIN32)
   static int64_t l1_dcache_size = get_cpu_cache_size(-1, path, 32768);
-#elif defined(__EMSCRIPTEN__)
-  // Browser APIs do not expose CPU caches. Use the native tuning fallback.
-  static constexpr int64_t l1_dcache_size = 32768;
 #endif
   return l1_dcache_size;
 }
@@ -2319,9 +2312,6 @@ int64_t get_level1_icache_size()
   static int64_t l1_icache_size = get_cpu_cache_size(-1, path, 32768/*default L1 icache size : 32K*/);
 #elif defined(_WIN32)
   static int64_t l1_icache_size = get_cpu_cache_size(-1, path, 32768);
-#elif defined(__EMSCRIPTEN__)
-  // Browser APIs do not expose CPU caches. Use the native tuning fallback.
-  static constexpr int64_t l1_icache_size = 32768;
 #endif
   return l1_icache_size;
 }
@@ -2335,9 +2325,6 @@ int64_t get_level2_cache_size()
   static int64_t l2_cache_size = get_cpu_cache_size(-1, path, 524288/*default L2 cache size : 512K*/);
 #elif defined(_WIN32)
   static int64_t l2_cache_size = get_cpu_cache_size(-1, path, 524288);
-#elif defined(__EMSCRIPTEN__)
-  // Browser APIs do not expose CPU caches. Use the native tuning fallback.
-  static constexpr int64_t l2_cache_size = 524288;
 #endif
   return l2_cache_size;
 }
@@ -2351,38 +2338,33 @@ int64_t get_level3_cache_size()
   static int64_t l3_cache_size = get_cpu_cache_size(-1, path, 8388608/*default L3 cache size : 8192K*/);
 #elif defined(_WIN32)
   static int64_t l3_cache_size = get_cpu_cache_size(-1, path, 8388608);
-#elif defined(__EMSCRIPTEN__)
-  // Browser APIs do not expose CPU caches. Use the native tuning fallback.
-  static constexpr int64_t l3_cache_size = 8388608;
 #endif
   return l3_cache_size;
 }
 
 int extract_cert_expired_time(const char* cert, const int64_t cert_len, int64_t &expired_time)
 {
-#ifdef __EMSCRIPTEN__
-  // The local browser engine has no native TLS certificate service.
-  UNUSED(cert);
-  UNUSED(cert_len);
-  UNUSED(expired_time);
-  return OB_NOT_SUPPORTED;
-#else
   int ret = OB_SUCCESS;
   STACK_OF(X509_INFO)  *chain = NULL;
   BIO *cbio = NULL;
   if (OB_ISNULL(cert)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("certificate is null", K(ret));
   } else if (OB_ISNULL(cbio = BIO_new_mem_buf((void*)cert, cert_len))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("BIO_new_mem_buf failed", K(ret));
   } else if (OB_ISNULL(chain = PEM_X509_INFO_read_bio(cbio, NULL, NULL, NULL))) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("PEM_X509_INFO_read_bio failed", K(ret));
   } else {
     ASN1_TIME *notAfter = NULL;
     X509_INFO *x509_info = NULL;
     if (OB_ISNULL(x509_info = sk_X509_INFO_value(chain, 0))) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("get app cert failed!", K(ret));
     } else if (OB_ISNULL((notAfter = X509_get_notAfter(x509_info->x509)))) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("X509_get_notAfter failed",K(ret));
     } else {
       struct tm tm1;
       memset (&tm1, 0, sizeof (tm1));
@@ -2404,7 +2386,6 @@ int extract_cert_expired_time(const char* cert, const int64_t cert_len, int64_t 
     sk_X509_INFO_pop_free(chain, X509_INFO_free);
   }
   return ret;
-#endif
 }
 
 enum CAP_UNIT
@@ -2526,6 +2507,7 @@ int read_one_int(const char *file_name, int64_t &value)
     fclose(fp);
   } else {
     ret = OB_FILE_NOT_EXIST;
+    LOG_WARN("File does not exist", K(ret));
   }
   return ret;
 }
@@ -2551,6 +2533,7 @@ int get_os_info(char *name, int64_t name_size, char *release, int64_t release_si
   int ret = OB_SUCCESS;
   if (OB_ISNULL(name) || name_size <= 0 || OB_ISNULL(release) || release_size <= 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Invalid argument", K(ret), KP(name), K(name_size), KP(release), K(release_size));
   } else {
 #ifdef __APPLE__
     // On macOS, use sysctl to get system info
@@ -2561,11 +2544,13 @@ int get_os_info(char *name, int64_t name_size, char *release, int64_t release_si
     size_t len = static_cast<size_t>(release_size);
     if (0 != sysctlbyname("kern.osproductversion", release, &len, NULL, 0)) {
       ret = OB_ERR_SYS;
+      LOG_WARN("Failed to get macOS version via sysctl", K(ret), K(errno));
     }
     release[release_size - 1] = '\0';
 #else
     FILE *file = fopen("/etc/os-release", "r");
     if (NULL == file) {
+      LOG_WARN("Failed to open /etc/os-release", K(ret));
       ret = OB_IO_ERROR;
     } else {
       char line[64];
@@ -2589,6 +2574,7 @@ int get_cpu_model(char *buf, int64_t buf_size)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(buf) || buf_size <= 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Invalid argument", K(ret), KP(buf), K(buf_size));
   } else {
 #ifdef __APPLE__
     // On macOS, use sysctl to get CPU brand string
@@ -2600,12 +2586,14 @@ int get_cpu_model(char *buf, int64_t buf_size)
       len = static_cast<size_t>(buf_size);
       if (0 != sysctlbyname("hw.model", buf, &len, NULL, 0)) {
         ret = OB_ERR_SYS;
+        LOG_WARN("Failed to get CPU model via sysctl", K(ret), K(errno));
       }
     }
     buf[buf_size - 1] = '\0';
 #else
     FILE *file = fopen("/proc/cpuinfo", "r");
     if (NULL == file) {
+      LOG_WARN("Failed to open /proc/cpuinfo", K(ret));
       ret = OB_IO_ERROR;
     } else {
       char line[256];

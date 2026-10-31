@@ -29,15 +29,14 @@ namespace obcall
 
 struct ObAdminSetConfigItem
 {
-  OB_UNIS_VERSION(2);
+  OB_UNIS_VERSION(1);
 public:
-  ObAdminSetConfigItem() : name_(), value_(), comment_(), is_reset_(false) {}
-  TO_STRING_KV(K_(name), K_(value), K_(comment), K_(is_reset));
+  ObAdminSetConfigItem() : name_(), value_(), comment_() {}
+  TO_STRING_KV(K_(name), K_(value), K_(comment));
 
   common::ObFixedLengthString<common::OB_MAX_CONFIG_NAME_LEN> name_;
   common::ObFixedLengthString<common::OB_MAX_CONFIG_VALUE_LEN> value_;
   common::ObFixedLengthString<common::OB_MAX_CONFIG_INFO_LEN> comment_;
-  bool is_reset_;
 };
 
 } // namespace obcall

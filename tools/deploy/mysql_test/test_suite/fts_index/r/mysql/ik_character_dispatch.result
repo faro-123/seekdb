@@ -1,0 +1,42 @@
+smart final character
++----+
+| ok |
++----+
+|  1 |
++----+
+max_word final character
++----+
+| ok |
++----+
+|  1 |
++----+
+punctuation only
++----+
+| ok |
++----+
+|  1 |
++----+
+smart multiple batches
++----+
+| ok |
++----+
+|  1 |
++----+
+max_word multiple batches
++----+
+| ok |
++----+
+|  1 |
++----+
+smart mixed characters
++----+
+| ok |
++----+
+|  1 |
++----+
+max_word mixed characters
++----+
+| ok |
++----+
+|  1 |
++----+

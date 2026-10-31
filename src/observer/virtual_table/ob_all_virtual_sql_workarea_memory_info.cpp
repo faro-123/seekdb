@@ -45,6 +45,7 @@ int ObSqlWorkareaMemoryInfoIterator::init()
   if (OB_ISNULL(
           ::oceanbase::share::server_service<::oceanbase::sql::ObSqlMemoryManager>())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected null of omt", KR(ret));
   }
   return ret;
 }
@@ -60,6 +61,7 @@ int ObSqlWorkareaMemoryInfoIterator::get_next_batch_wa_memory_info()
       ObSqlMemoryManager *sql_mem_mgr = nullptr;
       sql_mem_mgr = ::oceanbase::share::server_service<::oceanbase::sql::ObSqlMemoryManager>();
       if (nullptr != sql_mem_mgr && OB_FAIL(sql_mem_mgr->get_workarea_memory_info(memory_info_))) {
+        LOG_WARN("failed to get workarea stat", K(ret));
       }
     }
     done_ = true;
@@ -192,6 +194,7 @@ int ObSqlWorkareaMemoryInfo::inner_get_next_row(common::ObNewRow *&row)
     // do nothing
   } else if (OB_FAIL(iter_.get_next_wa_memory_info(memory_info))) {
     if (OB_ITER_END != ret) {
+      LOG_WARN("failed to get next channel", K(ret));
     }
   } else if (OB_FAIL(fill_row(*memory_info, row))) {
   }

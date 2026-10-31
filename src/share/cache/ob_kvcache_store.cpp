@@ -266,7 +266,7 @@ int ObKVCacheStore::alloc_kvpair_without_retry(
   } else {
     //small kv
     do {
-      mb_handle = ATOMIC_LOAD(&get_curr_mb(policy));
+      mb_handle = get_curr_mb(policy);
       if (NULL != mb_handle) {
         if (OB_FAIL(hazptr_holder.protect(protect_success, mb_handle))) {
         } else if (protect_success) {
@@ -288,7 +288,7 @@ int ObKVCacheStore::alloc_kvpair_without_retry(
       if (OB_SUCC(ret)) {
         ObKVMemBlockHandle *new_mb_handle = NULL;
         if (OB_FAIL(alloc(policy, block_size, new_mb_handle))) {
-        } else if (ATOMIC_BCAS(&get_curr_mb(policy), mb_handle, new_mb_handle)) {
+        } else if (ATOMIC_BCAS((uint64_t*)(&get_curr_mb(policy)), (uint64_t)mb_handle, (uint64_t)new_mb_handle)) {
           if (NULL != mb_handle) {
             mb_handle->set_full(global_status_.base_mb_score_);
           }
@@ -807,6 +807,7 @@ int ObKVCacheStore::alloc_mbhandle(const int64_t block_size, ObKVMemBlockHandle 
   const enum ObKVCachePolicy policy = LRU;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else if (OB_FAIL(alloc_mbhandle(policy, block_size, mb_handle))) {
   }
   return ret;
@@ -819,6 +820,7 @@ int ObKVCacheStore::alloc_mbhandle(ObKVMemBlockHandle *&mb_handle)
   const enum ObKVCachePolicy policy = LRU;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else if (OB_FAIL(alloc_mbhandle(policy, block_size_, mb_handle))) {
   }
   return ret;
@@ -829,8 +831,10 @@ int ObKVCacheStore::free_mbhandle(ObKVMemBlockHandle *mb_handle, const bool do_r
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else if (NULL == mb_handle) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arguments", K(ret), KP(mb_handle));
   } else {
     void *buf = NULL;
     int64_t mb_size = 0;

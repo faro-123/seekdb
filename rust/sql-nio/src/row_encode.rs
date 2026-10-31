@@ -14,15 +14,17 @@
 
 use crate::*;
 
-pub const NIO_FRAME_ERROR: c_int = -1;
-pub const NIO_FRAME_OK: c_int = 0;
-pub const NIO_FRAME_NEED_MORE: c_int = 1;
+pub(crate) const NIO_FRAME_ERROR: c_int = -1;
+pub(crate) const NIO_FRAME_OK: c_int = 0;
+pub(crate) const NIO_FRAME_NEED_MORE: c_int = 1;
 
 pub(crate) unsafe fn clear_framed_len(framed_len: *mut i64) {
     if !framed_len.is_null() {
         unsafe { framed_len.write(0) };
     }
 }
+
+use crate::ffi_check::{checked_array_len, checked_bytes_len};
 
 #[derive(Clone, Copy)]
 pub(crate) struct FfiMysqlFieldPlan {
@@ -37,13 +39,13 @@ pub(crate) fn mysql_field_plan(view: NioMysqlFieldView) -> Option<FfiMysqlFieldP
         return None;
     }
     let meta = response::FieldPayloadMeta {
-        schema_len: view.schema.len as usize,
-        table_len: view.table.len as usize,
-        org_table_len: view.org_table.len as usize,
-        name_len: view.name.len as usize,
-        org_name_len: view.org_name.len as usize,
-        type_owner_len: view.type_owner.len as usize,
-        type_name_len: view.type_name.len as usize,
+        schema_len: checked_bytes_len(view.schema.data, view.schema.len)?,
+        table_len: checked_bytes_len(view.table.data, view.table.len)?,
+        org_table_len: checked_bytes_len(view.org_table.data, view.org_table.len)?,
+        name_len: checked_bytes_len(view.name.data, view.name.len)?,
+        org_name_len: checked_bytes_len(view.org_name.data, view.org_name.len)?,
+        type_owner_len: checked_bytes_len(view.type_owner.data, view.type_owner.len)?,
+        type_name_len: checked_bytes_len(view.type_name.data, view.type_name.len)?,
         column_length: view.column_length,
         charset: view.charset,
         flags: view.flags,
@@ -112,8 +114,8 @@ pub(crate) unsafe fn ffi_mysql_kv_lengths(
 ) -> Option<response::OkKvLengths> {
     let kv = unsafe { data.add(index).read() };
     Some(response::OkKvLengths {
-        key_len: kv.key.len as usize,
-        value_len: kv.value.len as usize,
+        key_len: checked_bytes_len(kv.key.data, kv.key.len)?,
+        value_len: checked_bytes_len(kv.value.data, kv.value.len)?,
     })
 }
 
@@ -122,9 +124,11 @@ pub(crate) unsafe fn ffi_mysql_kv<'a>(
     index: usize,
 ) -> Option<response::OkKv<'a>> {
     let kv = unsafe { data.add(index).read() };
+    let key_len = checked_bytes_len(kv.key.data, kv.key.len)?;
+    let value_len = checked_bytes_len(kv.value.data, kv.value.len)?;
     Some(response::OkKv {
-        key: unsafe { ffi_bytes(kv.key.data, kv.key.len as usize) },
-        value: unsafe { ffi_bytes(kv.value.data, kv.value.len as usize) },
+        key: unsafe { ffi_bytes(kv.key.data, key_len) },
+        value: unsafe { ffi_bytes(kv.value.data, value_len) },
     })
 }
 
@@ -133,7 +137,7 @@ pub(crate) fn mysql_row_cell_meta(view: NioMysqlCellView) -> Option<response::Ro
         return None;
     }
     Some(response::RowCellMeta {
-        bytes_len: view.bytes.len as usize,
+        bytes_len: checked_bytes_len(view.bytes.data, view.bytes.len)?,
         value: view.value,
         days: view.days,
         microseconds: view.microseconds,
@@ -179,7 +183,7 @@ pub(crate) unsafe fn ffi_mysql_row_plan(
     if view.reserved != 0 {
         return None;
     }
-    let cell_count = view.cell_count as usize;
+    let cell_count = checked_array_len(view.cells, view.cell_count)?;
     let meta = response::RowPayloadMeta {
         protocol: view.protocol,
         cell_count,
@@ -349,11 +353,17 @@ pub(crate) unsafe fn encode_mysql_error(
     next_seq: *mut u8,
 ) -> c_int {
     unsafe { clear_framed_len(framed_len) };
-    let sql_state_len = sql_state_len as usize;
+    let sql_state_len = match checked_bytes_len(sql_state, sql_state_len) {
+        Some(sql_state_len) => sql_state_len,
+        None => return NIO_FRAME_ERROR,
+    };
     if sql_state_len != 5 {
         return NIO_FRAME_ERROR;
     }
-    let message_len = message_len as usize;
+    let message_len = match checked_bytes_len(message, message_len) {
+        Some(message_len) => message_len,
+        None => return NIO_FRAME_ERROR,
+    };
     let payload_len = match response::error_payload_len(message_len) {
         Some(payload_len) => payload_len,
         None => return NIO_FRAME_ERROR,
@@ -391,8 +401,14 @@ pub(crate) unsafe fn encode_mysql_auth_switch(
     next_seq: *mut u8,
 ) -> c_int {
     unsafe { clear_framed_len(framed_len) };
-    let plugin_name_len = plugin_name_len as usize;
-    let scramble_len = scramble_len as usize;
+    let plugin_name_len = match checked_bytes_len(plugin_name, plugin_name_len) {
+        Some(plugin_name_len) => plugin_name_len,
+        None => return NIO_FRAME_ERROR,
+    };
+    let scramble_len = match checked_bytes_len(scramble, scramble_len) {
+        Some(scramble_len) => scramble_len,
+        None => return NIO_FRAME_ERROR,
+    };
     let payload_len = match response::auth_switch_payload_len(plugin_name_len, scramble_len) {
         Some(payload_len) => payload_len,
         None => return NIO_FRAME_ERROR,
@@ -427,7 +443,10 @@ pub(crate) unsafe fn encode_mysql_local_infile(
     next_seq: *mut u8,
 ) -> c_int {
     unsafe { clear_framed_len(framed_len) };
-    let filename_len = filename_len as usize;
+    let filename_len = match checked_bytes_len(filename, filename_len) {
+        Some(filename_len) => filename_len,
+        None => return NIO_FRAME_ERROR,
+    };
     let payload_len = match response::local_infile_payload_len(filename_len) {
         Some(payload_len) => payload_len,
         None => return NIO_FRAME_ERROR,
@@ -461,7 +480,10 @@ pub(crate) unsafe fn encode_mysql_string(
     next_seq: *mut u8,
 ) -> c_int {
     unsafe { clear_framed_len(framed_len) };
-    let value_len = value_len as usize;
+    let value_len = match checked_bytes_len(value, value_len) {
+        Some(value_len) => value_len,
+        None => return NIO_FRAME_ERROR,
+    };
     unsafe {
         encode_mysql_generated_payload(
             buffer,
@@ -633,7 +655,11 @@ pub(crate) unsafe fn frame_mysql_packed_row_blob(
     next_seq: *mut u8,
 ) -> c_int {
     unsafe { clear_framed_len(framed_len) };
-    let blob = unsafe { ffi_bytes(blob, blob_len as usize) };
+    let blob_len = match checked_bytes_len(blob, blob_len) {
+        Some(blob_len) => blob_len,
+        _ => return NIO_FRAME_ERROR,
+    };
+    let blob = unsafe { ffi_bytes(blob, blob_len) };
     let payload = match parse_packed_row_blob(blob) {
         Some(payload) => payload,
         None => return NIO_FRAME_ERROR,
@@ -681,10 +707,23 @@ pub(crate) unsafe fn encode_mysql_ok(
     if view.reserved != 0 || view.behavior_flags & !NIO_MYSQL_OK_KNOWN_BEHAVIOR_FLAGS != 0 {
         return NIO_FRAME_ERROR;
     }
-    let message_len = view.message.len as usize;
-    let changed_schema_len = view.changed_schema.len as usize;
-    let system_var_count = view.system_var_count as usize;
-    let user_var_count = view.user_var_count as usize;
+    let message_len = match checked_bytes_len(view.message.data, view.message.len) {
+        Some(len) => len,
+        None => return NIO_FRAME_ERROR,
+    };
+    let changed_schema_len =
+        match checked_bytes_len(view.changed_schema.data, view.changed_schema.len) {
+            Some(len) => len,
+            None => return NIO_FRAME_ERROR,
+        };
+    let system_var_count = match checked_array_len(view.system_vars, view.system_var_count) {
+        Some(count) => count,
+        None => return NIO_FRAME_ERROR,
+    };
+    let user_var_count = match checked_array_len(view.user_vars, view.user_var_count) {
+        Some(count) => count,
+        None => return NIO_FRAME_ERROR,
+    };
 
     let meta = response::OkPayloadMeta {
         affected_rows: view.affected_rows,

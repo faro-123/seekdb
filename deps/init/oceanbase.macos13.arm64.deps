@@ -1,12 +1,12 @@
 [target-default]
 os=macos
 arch=arm64
-repo=https://mirrors.oceanbase.com/oceanbase/development-kit/darwin/13/arm64
+repo=https://mirrors.aliyun.com/oceanbase/development-kit/darwin/13/arm64
 
 [target-community]
 os=macos
 arch=arm64
-repo=https://mirrors.oceanbase.com/oceanbase/development-kit/darwin/13/arm64
+repo=https://mirrors.aliyun.com/oceanbase/development-kit/darwin/13/arm64
 
 [deps]
 devdeps-abseil-cpp-20211102.0-20260126.tar.gz
@@ -24,6 +24,7 @@ devdeps-vsag-1.1.0-20260126.tar.gz
 devdeps-xz-5.2.2-20260126.tar.gz
 devdeps-zlib-1.2.13-20260126.tar.gz
 devdeps-grpc-1.46.7-20260319.tar.gz
+devdeps-sqlite-3.38.1-20260319.tar.gz
 
 [tools]
 obdevtools-bison-2.4.1-20260122.tar.gz

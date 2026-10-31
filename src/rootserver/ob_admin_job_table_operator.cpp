@@ -100,11 +100,13 @@ ObAdminJobTableOperator::ObAdminJobTableOperator()
 int ObAdminJobTableOperator::init()
 {
   int ret = OB_SUCCESS;
-  if (OB_ISNULL(GCTX.local_store_)) {
+  if (OB_ISNULL(GCTX.meta_db_pool_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arguments", KR(ret), KP(GCTX.meta_db_pool_));
   } else if (OB_UNLIKELY(inited_)) {
     ret = OB_INIT_TWICE;
-  } else if (OB_FAIL(storage_.init(GCTX.local_store_))) {
+    LOG_WARN("init twice", KR(ret), K(inited_));
+  } else if (OB_FAIL(storage_.init(GCTX.meta_db_pool_))) {
   } else {
     inited_ = true;
     LOG_INFO("admin job table operator inited");
@@ -119,8 +121,10 @@ int ObAdminJobTableOperator::create_job(ObAdminJobType job_type, int64_t &job_id
   if (!is_valid_job_type(job_type)
       || NULL == (job_type_str = get_job_type_str(job_type))) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid job type", K(ret), K(job_type), K(job_type_str));
   } else if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else if (OB_FAIL(alloc_job_id(job_id))) {
   } else {
     share::ObAdminJobEntry entry;
@@ -145,9 +149,11 @@ int ObAdminJobTableOperator::find_job(
   job_id = 0;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else if (!is_valid_job_type(job_type)
       || NULL == (job_type_str = get_job_type_str(job_type))) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid job type", K(ret), K(job_type), K(job_type_str));
   } else if (OB_FAIL(storage_.find_job(common::ObString::make_string(job_type_str), job_id))) {
   }
   return ret;
@@ -162,9 +168,11 @@ int ObAdminJobTableOperator::get_job_count(
   job_count = 0;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else if (!is_valid_job_type(job_type)
       || NULL == (job_type_str = get_job_type_str(job_type))) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid job type", K(ret), K(job_type), K(job_type_str));
   } else if (OB_FAIL(storage_.get_job_count(common::ObString::make_string(job_type_str), job_count))) {
   }
   return ret;
@@ -176,6 +184,7 @@ int ObAdminJobTableOperator::complete_job(int64_t job_id, int result_code)
   const char *status_str = get_job_status_str_(result_code);
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", KR(ret), K(inited_));
   } else if (OB_FAIL(storage_.complete_job(job_id, common::ObString::make_string(status_str), result_code))) {
   }
   return ret;
@@ -187,6 +196,7 @@ int ObAdminJobTableOperator::load_max_job_id(int64_t &max_job_id)
   max_job_id = -1;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret));
   } else if (OB_FAIL(storage_.get_max_job_id(max_job_id))) {
   }
   return ret;
@@ -200,6 +210,7 @@ int ObAdminJobTableOperator::alloc_job_id(int64_t &job_id)
     if (max_job_id_ < 0) {
       int64_t max_job_id = 0;
       if (OB_FAIL(load_max_job_id(max_job_id)) || max_job_id < 0) {
+        LOG_WARN("failed to load max job id from the table", K(ret), K(max_job_id));
       } else {
         LOG_INFO("load the max job id", K(max_job_id));
         (void)ATOMIC_SET(&max_job_id_, max_job_id);

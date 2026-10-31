@@ -48,6 +48,7 @@ int ObTabletTruncateInfoReader::init(
   const common::ObTabletID &tablet_id = tablet.get_tablet_id();
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret), K_(is_inited));
   } else if (OB_FAIL((tablet.mds_range_query<ObTruncateInfoKey, ObTruncateInfo>(
       scan_param,
       iter_)))) {
@@ -69,9 +70,11 @@ int ObTabletTruncateInfoReader::get_next_truncate_info(
   mds::MdsDumpKV *kv = nullptr;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init", K(ret), K_(is_inited));
   } else if (OB_FAIL(iter_.get_next_mds_kv(allocator_, kv))) {
     if (OB_ITER_END == ret) {
     } else {
+      LOG_WARN("fail to get next mds kv", K(ret));
     }
   } else {
     const common::ObString &key_str = kv->k_.key_;
@@ -99,6 +102,7 @@ int ObTabletTruncateInfoReader::get_next_mds_kv(
   if (OB_FAIL(iter_.get_next_mds_kv(allocator, kv))) {
     if (OB_ITER_END == ret) {
     } else {
+      LOG_WARN("fail to get next mds kv", K(ret));
     }
   }
   return ret;

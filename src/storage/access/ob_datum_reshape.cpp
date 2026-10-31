@@ -54,6 +54,7 @@ int ObDatumReshape::pad_datum_value(const ObObjMeta &col_type,
       char *buffer = static_cast<char *>(allocator.alloc(padded_len));
       if (OB_ISNULL(buffer)) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("failed to allocate datum padding", K(ret), K(padded_len));
       } else {
         MEMCPY(buffer, datum_value.ptr_, datum_value.len_);
         int32_t pos = datum_value.len_;
@@ -82,6 +83,7 @@ int ObDatumReshape::reshape_datum_value(const ObObjMeta &col_type,
       const char *str = datum_value.ptr_;
       if (OB_ISNULL(dest_str = (char *)(allocator.alloc(binary_len)))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc mem to binary", K(ret), K(binary_len));
       } else {
         char pad_char = '\0';
         MEMCPY(dest_str, str, len);
@@ -112,6 +114,7 @@ int ObDatumReshape::reshape_datum_vector_value(const ObObjMeta &col_type,
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!batch_selector.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid args", KR(ret), K(batch_selector));
   } else {
     ObBatchSelector single_selector(static_cast<int64_t>(0), 1);
     ObBatchSelector &selector = datum_vector.is_batch() ? batch_selector : single_selector;
@@ -127,6 +130,7 @@ int ObDatumReshape::reshape_datum_vector_value(const ObObjMeta &col_type,
           char *dest_str = nullptr;
           if (OB_ISNULL(dest_str = (char *)(allocator.alloc(binary_len)))) {
             ret = OB_ALLOCATE_MEMORY_FAILED;
+            LOG_WARN("fail to alloc mem to binary", K(ret), K(binary_len));
           } else {
             MEMCPY(dest_str, str, len);
             MEMSET(dest_str + len, pad_char, binary_len - len);
@@ -211,11 +215,13 @@ static int new_discrete_vector(VecValueTypeClass value_tc,
 #undef DISCRETE_VECTOR_INIT_SWITCH
     default:
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected discrete vector value type class", KR(ret), K(value_tc));
       break;
   }
   if (OB_FAIL(ret)) {
   } else if (OB_ISNULL(vector)) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("fail to alloc vecttor", KR(ret));
   } else {
     ObDiscreteBase *discrete_vec = static_cast<ObDiscreteBase *>(vector);
     const int64_t nulls_size = ObBitVector::memory_size(max_batch_size);
@@ -226,10 +232,13 @@ static int new_discrete_vector(VecValueTypeClass value_tc,
     char **ptrs = nullptr;
     if (OB_ISNULL(nulls = to_bit_vector(allocator.alloc(nulls_size)))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("fail to alloc mem", KR(ret), K(nulls_size));
     } else if (OB_ISNULL(lens = static_cast<int32_t *>(allocator.alloc(lens_size)))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("fail to alloc mem", KR(ret), K(lens_size));
     } else if (OB_ISNULL(ptrs = static_cast<char **>(allocator.alloc(ptrs_size)))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("fail to alloc mem", KR(ret), K(ptrs_size));
     } else {
       nulls->reset(max_batch_size);
       discrete_vec->set_nulls(nulls);
@@ -250,6 +259,7 @@ int ObDatumReshape::reshape_vector_value(const ObObjMeta &col_type,
   int ret = OB_SUCCESS;
   if (OB_ISNULL(vector) || !selector.is_valid()) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid args", KR(ret), KP(vector), K(selector));
   } else if (fast_check_vector_is_all_null(vector, selector.get_max())) {
     // do nothing
   } else if (col_type.is_binary()) {
@@ -285,6 +295,7 @@ int ObDatumReshape::reshape_vector_value(const ObObjMeta &col_type,
               char *dest_str = nullptr;
               if (OB_ISNULL(dest_str = (char *)(allocator.alloc(binary_len)))) {
                 ret = OB_ALLOCATE_MEMORY_FAILED;
+                LOG_WARN("fail to alloc mem to binary", K(ret), K(binary_len));
               } else {
                 MEMCPY(dest_str, str, len);
                 MEMSET(dest_str + len, pad_char, binary_len - len);
@@ -319,6 +330,7 @@ int ObDatumReshape::reshape_vector_value(const ObObjMeta &col_type,
             char *dest_str = nullptr;
             if (OB_ISNULL(dest_str = (char *)(allocator.alloc(binary_len)))) {
               ret = OB_ALLOCATE_MEMORY_FAILED;
+              LOG_WARN("fail to alloc mem to binary", K(ret), K(binary_len));
             } else {
               MEMCPY(dest_str, str, len);
               MEMSET(dest_str + len, pad_char, binary_len - len);
@@ -345,6 +357,7 @@ int ObDatumReshape::reshape_vector_value(const ObObjMeta &col_type,
             char *dest_str = nullptr;
             if (OB_ISNULL(dest_str = (char *)(allocator.alloc(binary_len)))) {
               ret = OB_ALLOCATE_MEMORY_FAILED;
+              LOG_WARN("fail to alloc mem to binary", K(ret), K(binary_len));
             } else {
               MEMCPY(dest_str, str, len);
               MEMSET(dest_str + len, pad_char, binary_len - len);
@@ -368,6 +381,7 @@ int ObDatumReshape::reshape_vector_value(const ObObjMeta &col_type,
           char *dest_str = nullptr;
           if (OB_ISNULL(dest_str = (char *)(allocator.alloc(binary_len)))) {
             ret = OB_ALLOCATE_MEMORY_FAILED;
+            LOG_WARN("fail to alloc mem to binary", K(ret), K(binary_len));
           } else {
             MEMCPY(dest_str, str, len);
             MEMSET(dest_str + len, pad_char, binary_len - len);
@@ -379,6 +393,7 @@ int ObDatumReshape::reshape_vector_value(const ObObjMeta &col_type,
       }
       default:
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected binary vector format", KR(ret), K(format), K(col_type));
         break;
     }
   } else if (col_type.is_fixed_len_char_type()) {
@@ -502,6 +517,7 @@ int ObDatumReshape::reshape_vector_value(const ObObjMeta &col_type,
       }
       default:
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected fixed len char vector format", KR(ret), K(format), K(col_type));
         break;
     }
   }

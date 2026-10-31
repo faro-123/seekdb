@@ -141,7 +141,9 @@ private:
   {
   public:
     ValueAlloc()
-      : active_count_(0),
+      : session_allocator_(
+            lib::ObMemAttr("SQLSessionInfo"), common::get_cpu_count(), 4),
+        active_count_(0),
         alloc_total_count_(0),
         free_total_count_(0)
     {}
@@ -162,6 +164,7 @@ private:
       }
     }
   private:
+    common::ObFixedClassAllocator<ObSQLSessionInfo> session_allocator_;
     int64_t active_count_;
     volatile int64_t alloc_total_count_;
     volatile int64_t free_total_count_;

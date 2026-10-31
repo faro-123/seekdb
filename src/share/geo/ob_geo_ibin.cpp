@@ -297,6 +297,7 @@ int ObIWkbGeogCollection::do_visit(ObIGeoVisitor &visitor)
             }
             default : {
               ret = OB_INVALID_ARGUMENT;
+              LOG_WARN("invalid geo type", K(ret), K(sub_type));
               break;
             }
           }
@@ -452,6 +453,7 @@ int ObIWkbGeomCollection::do_visit(ObIGeoVisitor &visitor)
             }
             default : {
               ret = OB_INVALID_ARGUMENT;
+              LOG_WARN("invalid geo type", K(ret), K(sub_type));
               break;
             }
           }

@@ -118,6 +118,7 @@ int ObTableSchemaParam::convert(const ObTableSchema *schema)
   ObSEArray<int32_t, COMMON_COLUMN_NUM> tmp_cols_index;
   if (OB_ISNULL(schema)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("schema is NULL", K(ret), KP(schema));
   } else {
     table_id_ = schema->get_table_id();
     schema_version_ = schema->get_schema_version();
@@ -150,6 +151,7 @@ int ObTableSchemaParam::convert(const ObTableSchema *schema)
       } else if (OB_UNLIKELY(!ObDocIDUtils::is_docid_col_id_valid(docid_col_id)
                              || fulltext_col_id_ <= OB_APP_MIN_COLUMN_ID || OB_INVALID_ID == fulltext_col_id_)) {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("invalid doc id or fulltext column id", K(ret), K(docid_col_id), K(fulltext_col_id_));
       } else if (doc_id_type == ObDocIDType::TABLET_SEQUENCE && FALSE_IT(doc_id_col_id_ = docid_col_id)) {
       } else if (doc_id_type == ObDocIDType::HIDDEN_INC_PK && FALSE_IT(inc_pk_doc_id_col_id_ = docid_col_id)) {
       } else if (OB_FAIL(ob_write_string(allocator_, schema->get_parser_name_str(), fts_parser_name_))) {
@@ -160,6 +162,7 @@ int ObTableSchemaParam::convert(const ObTableSchema *schema)
         const ObColumnSchemaV2 *column_schema = schema->get_column_schema_by_idx(i);
         if (OB_ISNULL(column_schema)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("unexpected error, column schema is nullptr", K(ret), K(i), KPC(schema));
         } else if (column_schema->is_doc_id_column()) {
           doc_id_col_id_ = column_schema->get_column_id();
         } else if (column_schema->is_multivalue_generated_column()) {
@@ -181,6 +184,7 @@ int ObTableSchemaParam::convert(const ObTableSchema *schema)
                        *schema, vec_dim_))) {
         } else if (vec_dim_ == 0) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("get vector dim is zero, fail to calc", K(ret), K(vec_dim_), KPC(schema), K(schema->get_index_type()));
         }
       }
       for (int64_t i = 0; OB_SUCC(ret) && i < schema->get_column_count(); ++i) {
@@ -188,6 +192,7 @@ int ObTableSchemaParam::convert(const ObTableSchema *schema)
         uint64_t col_id = column_schema->get_column_id();
         if (OB_ISNULL(column_schema)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("unexpected error, column schema is nullptr", K(ret), K(i), KPC(schema));
         } else if (column_schema->is_vec_hnsw_vid_column()) {
           vec_id_col_id_ = col_id;
         } else if (column_schema->is_hybrid_embedded_vec_column()) {
@@ -208,6 +213,7 @@ int ObTableSchemaParam::convert(const ObTableSchema *schema)
               vec_id_col_id_ = col_id;
             } else {
               ret = OB_ERR_UNEXPECTED;
+              LOG_WARN("invalid vec id column id", K(ret), K(vec_id_col_id_), K(col_id));
             }
           }
         }
@@ -219,6 +225,7 @@ int ObTableSchemaParam::convert(const ObTableSchema *schema)
         const ObColumnSchemaV2 *column_schema = schema->get_column_schema_by_idx(i);
         if (OB_ISNULL(column_schema)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("unexpected error, column schema is nullptr", K(ret), K(i), KPC(schema));
         } else if (column_schema->is_doc_id_column()) {
           doc_id_col_id_ = column_schema->get_column_id();
         }
@@ -258,6 +265,7 @@ int ObTableSchemaParam::convert(const ObTableSchema *schema)
         col_index = -1;
     } else if (OB_ISNULL(column_schema = schema->get_column_schema(column_id))) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("The column is NULL", K(schema->get_table_id()), K(column_id), K(i));
     } else if(OB_FAIL(ObTableParam::convert_column_schema_to_param(*column_schema, *column))) {
     } else if (i < schema_rowkey_cnt) {
       col_index = i;
@@ -270,6 +278,7 @@ int ObTableSchemaParam::convert(const ObTableSchema *schema)
     }
 
     if (FAILEDx(tmp_cols.push_back(column))) {
+      LOG_WARN("store tmp column param failed", K(ret));
     } else if (OB_FAIL(tmp_col_descs.push_back(all_column_ids.at(i)))) {
     }
     if (OB_SUCC(ret)) {
@@ -302,6 +311,7 @@ int ObTableSchemaParam::is_rowkey_column(const uint64_t column_id, bool &is_rowk
   int ret = OB_SUCCESS;
   int32_t idx = -1;
   if (OB_FAIL(col_map_.get(column_id, idx)) && OB_HASH_NOT_EXIST != ret) {
+    LOG_WARN("get idx from column map fail", K(ret), K(column_id));
   } else {
     is_rowkey = (idx >= 0 && idx < read_info_.get_schema_rowkey_count());
   }
@@ -314,8 +324,10 @@ int ObTableSchemaParam::is_column_nullable_for_write(const uint64_t column_id,
   int ret = OB_SUCCESS;
   int32_t idx = -1;
   if (OB_FAIL(col_map_.get(column_id, idx)) && OB_HASH_NOT_EXIST != ret) {
+    LOG_WARN("get idx from column map fail", K(ret), K(column_id));
   } else if (idx < 0) {
     ret = OB_SCHEMA_ERROR;
+    LOG_WARN("column not exist", K(ret), K(column_id));
   } else {
     is_nullable_for_write = columns_.at(idx)->is_nullable_for_write();
   }
@@ -328,6 +340,7 @@ const ObColumnParam * ObTableSchemaParam::get_column(const uint64_t column_id) c
   const ObColumnParam * ptr = NULL;
   int32_t idx = -1;
   if (OB_FAIL(col_map_.get(column_id, idx)) && OB_HASH_NOT_EXIST != ret) {
+    LOG_WARN("get idx from column map fail", K(ret), K(column_id));
   } else if (idx < 0) {
     // do nothing
   } else {
@@ -374,12 +387,14 @@ int ObTableSchemaParam::get_rowkey_column_ids(ObIArray<ObColDesc> &column_ids) c
   int ret = OB_SUCCESS;
   if (!is_valid()) {
     ret = OB_NOT_INIT;
+    LOG_WARN("param not inited", K(ret), K(*this));
   } else {
     const ObColumnParam *param = NULL;
     ObColDesc col_desc;
     for (int64_t i = 0; OB_SUCC(ret) && i < read_info_.get_schema_rowkey_count(); ++i) {
       if (OB_ISNULL(param = columns_.at(i))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("column param is NULL", K(ret), K(i));
       } else {
         col_desc.col_id_ = static_cast<uint32_t>(param->get_column_id());
         col_desc.col_order_ = param->get_column_order();
@@ -398,11 +413,13 @@ int ObTableSchemaParam::get_rowkey_column_ids(ObIArray<uint64_t> &column_ids) co
   int ret = OB_SUCCESS;
   if (!is_valid()) {
     ret = OB_NOT_INIT;
+    LOG_WARN("param not inited", K(ret), K(*this));
   } else {
     const ObColumnParam *param = NULL;
     for (int64_t i = 0; OB_SUCC(ret) && i < read_info_.get_schema_rowkey_count(); ++i) {
       if (OB_ISNULL(param = columns_.at(i))) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("column param is NULL", K(ret), K(i));
       } else if (OB_FAIL(column_ids.push_back(param->get_column_id()))) {
       }
     }
@@ -415,6 +432,7 @@ int ObTableSchemaParam::get_index_name(common::ObString &index_name) const
   int ret = OB_SUCCESS;
   if (!is_index_table()) {
     ret = OB_SCHEMA_ERROR;
+    LOG_WARN("table is not index table", K(ret), K(table_id_), K(table_type_));
   } else {
     index_name.assign_ptr(index_name_.ptr(), index_name_.length());
   }
@@ -432,6 +450,7 @@ int ObTableSchemaParam::get_typed_doc_id_col_id(uint64_t &doc_id_col_id, ObDocID
   if ((doc_id_col_id_ != OB_INVALID_ID && inc_pk_doc_id_col_id_ != OB_INVALID_ID)
       || (doc_id_col_id_ == OB_INVALID_ID && inc_pk_doc_id_col_id_ == OB_INVALID_ID)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("One and only one id should be valid", K(ret), K(doc_id_col_id_), K(inc_pk_doc_id_col_id_));
   } else if (doc_id_col_id_ != OB_INVALID_ID) {
     doc_id_col_id = doc_id_col_id_;
     type = ObDocIDType::TABLET_SEQUENCE;
@@ -509,6 +528,7 @@ OB_DEF_SERIALIZE(ObTableSchemaParam)
   OB_UNIS_ENCODE(vec_dim_);
   OB_UNIS_ENCODE(vec_vector_col_id_);
   if (FAILEDx(fts_parser_properties_.serialize(buf, buf_len, pos))) {
+    LOG_WARN("fail to serialize fts parser properties", K(ret));
   }
   OB_UNIS_ENCODE(inc_pk_doc_id_col_id_);
   OB_UNIS_ENCODE(vec_chunk_col_id_);
@@ -540,6 +560,7 @@ OB_DEF_DESERIALIZE(ObTableSchemaParam)
     }
   }
   if (OB_SUCC(ret) && OB_FAIL(read_info_.deserialize(allocator_, buf, data_len, pos))) {
+    LOG_WARN("Fail to deserialize read_info", K(ret));
   }
   if (OB_SUCC(ret)) {
     ObString tmp_name;
@@ -582,8 +603,10 @@ OB_DEF_DESERIALIZE(ObTableSchemaParam)
   OB_UNIS_DECODE(vec_chunk_col_id_);
   OB_UNIS_DECODE(vec_embedded_col_id_);
   if (OB_SUCC(ret) && OB_FAIL(serialization::decode_bool(buf, data_len, pos, &has_async_index_))) {
+    LOG_WARN("fail to deserialize async index flag", K(ret), K(data_len), K(pos));
   } else if (OB_SUCC(ret) && OB_UNLIKELY(pos != data_len)) {
     ret = OB_VERSION_NOT_MATCH;
+    LOG_WARN("table schema param format mismatch", K(ret), K(data_len), K(pos));
   }
   return ret;
 }
@@ -642,6 +665,7 @@ int ObTableSchemaParam::has_udf_column(bool &has_udf) const
   for (int64_t i = 0; OB_SUCC(ret) && i < columns_.count() && !has_udf; ++i) {
     if (OB_ISNULL(param = columns_.at(i))) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("get column failed", K(ret), KP(param));
     } else {
       has_udf = param->is_gen_col_udf_expr();
     }
@@ -678,6 +702,7 @@ int ObTableDMLParam::convert(const ObTableSchema *table_schema,
   const ObTableSchema *schema = NULL;
   if (OB_ISNULL(table_schema) || OB_INVALID_VERSION == runtime_schema_version) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(runtime_schema_version), KP(table_schema));
   } else if (OB_FAIL(data_table_.convert(table_schema))) {
   } else if (OB_FAIL(prepare_storage_param(column_ids))) {
   } else {
@@ -705,6 +730,7 @@ OB_DEF_SERIALIZE(ObTableDMLParam)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(buf) || buf_len <= 0 || pos < 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arguments", K(ret), KP(buf), K(buf_len), K(pos));
   } else {
     LST_DO_CODE(OB_UNIS_ENCODE, runtime_schema_version_);
   }
@@ -722,6 +748,7 @@ OB_DEF_DESERIALIZE(ObTableDMLParam)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(buf) || data_len <= 0 || pos < 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arguments", K(ret), KP(buf), K(data_len), K(pos));
   } else {
     LST_DO_CODE(OB_UNIS_DECODE, runtime_schema_version_);
   }
@@ -755,6 +782,7 @@ int ObTableDMLParam::prepare_storage_param(const ObIArray<uint64_t> &column_ids)
   const int64_t col_cnt = column_ids.count();
   if (col_cnt <= 0 || col_cnt > UINT32_MAX) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid column_ids", K(ret), K(col_cnt));
   } else {
     const ObColumnParam *col_param = nullptr;
     uint64_t column_id = OB_INVALID_ID;
@@ -764,6 +792,7 @@ int ObTableDMLParam::prepare_storage_param(const ObIArray<uint64_t> &column_ids)
       column_id = column_ids.at(i);
       if (nullptr == (col_param = data_table_.get_column(column_id))) {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("get column param fail", K(ret), K(column_id), KP(col_param));
       } else {
         col_desc.col_id_ = static_cast<uint32_t>(column_id);
         col_desc.col_type_ = col_param->get_meta_type();
@@ -789,6 +818,7 @@ int ObTableDMLParam::set_data_table_rowkey_tags(share::schema::ObSchemaGetterGua
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(nullptr == guard || nullptr == index_schema)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid guard or index schema", K(ret), KP(guard), KP(index_schema));
   } else {
     const ObTableSchema *data_table_schema = index_schema;
     common::ObSEArray<uint64_t, 4> data_table_rowkey_cids;
@@ -797,6 +827,7 @@ int ObTableDMLParam::set_data_table_rowkey_tags(share::schema::ObSchemaGetterGua
       if (OB_FAIL(guard->get_table_schema( index_schema->get_data_table_id(), data_table_schema))) {
       } else if (OB_ISNULL(data_table_schema)) {
         ret = OB_SCHEMA_ERROR;
+        LOG_WARN("data table schema is NULL", K(ret), KP(data_table_schema), K(index_schema->get_data_table_id()));
       }
     }
     if (OB_SUCC(ret)) {
@@ -805,6 +836,7 @@ int ObTableDMLParam::set_data_table_rowkey_tags(share::schema::ObSchemaGetterGua
       for (int64_t i = 0; OB_SUCC(ret) && i < columns.count(); ++i) {
         if (OB_ISNULL(columns.at(i))) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("column param is null", K(ret), K(i), KP(columns.at(i)));
         } else {
           const uint64_t col_id = is_shadow_column(columns.at(i)->get_column_id()) ?
                                   columns.at(i)->get_column_id() - OB_MIN_SHADOW_COLUMN_ID :

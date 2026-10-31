@@ -46,6 +46,7 @@ int ObMdsMergeMultiVersionRowStore::init(const ObDataStoreDesc &data_store_desc,
   const int64_t row_column_cnt = data_store_desc.get_row_column_count();
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret));
   } else if (OB_FAIL(shadow_row_.init(row_column_cnt))) {
   } else if (OB_FAIL(row_queue_.init(row_column_cnt))) {
   } else {
@@ -61,8 +62,10 @@ int ObMdsMergeMultiVersionRowStore::finish()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not inited", K(ret));
   } else if (OB_UNLIKELY(row_queue_.is_empty())) {
     ret = OB_EMPTY_RESULT;
+    LOG_WARN("unexpected row queue is empty, which means no data come in", K(ret));
   } else if (OB_FAIL(dump_row_queue())) {
   } else {
   }
@@ -75,6 +78,7 @@ int ObMdsMergeMultiVersionRowStore::put_row_into_queue(const ObDatumRow &row)
 
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not inited", K(ret), K_(is_inited));
   } else if (row_queue_.is_empty()) {
     if (OB_FAIL(row_queue_.add_row(row, row_queue_allocator_))) {
     }
@@ -85,6 +89,7 @@ int ObMdsMergeMultiVersionRowStore::put_row_into_queue(const ObDatumRow &row)
     const ObDatumRow *last_row_in_qu = row_queue_.get_last();
     if (OB_ISNULL(last_row_in_qu)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected last row is nullptr", K(ret), K(row_queue_));
     } else if (OB_FAIL(last_key_.assign(last_row_in_qu->storage_datums_, data_store_desc_->get_schema_rowkey_col_cnt()))) {
     } else if (OB_FAIL(cur_key_.assign(row.storage_datums_, data_store_desc_->get_schema_rowkey_col_cnt()))) {
     } else if (OB_FAIL(cur_key_.compare(last_key_, data_store_desc_->get_datum_utils(), compare_result))) {
@@ -139,6 +144,7 @@ int ObMdsMergeMultiVersionRowStore::dump_row_queue()
     ObDatumRow * last_row_in_qu = row_queue_.get_last();
     if (OB_ISNULL(last_row_in_qu)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected last row is nullptr", K(ret), K(row_queue_));
     } else {
       last_row_in_qu->set_first_multi_version_row();
       last_row_in_qu->set_last_multi_version_row();
@@ -186,6 +192,7 @@ int ObMdsMergeMultiVersionRowStore::dump_shadow_row()
   ObDatumRow * first_row_in_qu = row_queue_.get_first();
   if (OB_ISNULL(first_row_in_qu)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected last row is nullptr", K(ret), K(row_queue_));
   } else if (OB_FAIL(shadow_row_.deep_copy((*first_row_in_qu), row_queue_allocator_))) {
   } else {
     shadow_row_.set_first_multi_version_row();
@@ -216,8 +223,10 @@ int ObMdsMiniMergeOperator::init(
 
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret), K_(is_inited));
   } else if (OB_UNLIKELY(!data_store_desc.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid data store desc", K(ret), K(data_store_desc));
   } else if (OB_FAIL(row_store_.init(data_store_desc, macro_writer))) {
   } else if (OB_FAIL(cur_row_.init(row_column_cnt))) {
   } else {
@@ -232,8 +241,10 @@ int ObTabletDumpMds2MiniOperator::operator()(const mds::MdsDumpKV &kv)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not inited", K(ret), K_(is_inited));
   } else if (OB_UNLIKELY(!kv.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("dump kv is invalid", K(ret), K(kv));
   } else {
     cur_row_.reuse();
     cur_allocator_.reuse();
@@ -253,8 +264,10 @@ int ObTabletDumpMediumMds2MiniOperator::operator()(const mds::MdsDumpKV &kv)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not inited", K(ret), K_(is_inited));
   } else if (OB_UNLIKELY(!kv.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("dump kv is invalid", K(ret), K(kv));
   } else {
     cur_row_.reuse();
     cur_allocator_.reuse();
@@ -310,8 +323,10 @@ int ObMdsTableMiniMerger::init(compaction::ObTabletMergeCtx &ctx, ObMdsMiniMerge
     if (OB_FAIL(ret)) {
     } else if (OB_ISNULL(storage_schema)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("storage schema is null", K(ret), KP(storage_schema));
     } else if (OB_UNLIKELY(!storage_schema->is_valid())) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("mds storage schema is invalid", K(ret), KP(storage_schema), KPC(storage_schema));
     } else if (OB_FAIL(data_desc_.init(false/*is ddl*/, *storage_schema, tablet_id,
         ctx.get_merge_type(), ctx.get_snapshot(), data_version, ctx.static_desc_.micro_index_clustered_,
         ctx.get_concurrent_cnt(), ctx.static_param_.scn_range_.end_scn_))) {
@@ -342,6 +357,7 @@ int ObMdsTableMiniMerger::generate_mds_mini_sstable(
   TIMEGUARD_INIT(STORAGE, 20_ms);
   if (OB_UNLIKELY(!is_inited_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not inited", K(ret), K_(is_inited));
   } else {
     SMART_VARS_2((ObSSTableMergeRes, res), (ObTabletCreateSSTableParam, param)) {
       if (OB_FAIL(macro_writer_.close())) {

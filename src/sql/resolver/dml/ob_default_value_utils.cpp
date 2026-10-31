@@ -32,6 +32,7 @@ int ObDefaultValueUtils::generate_insert_value(const ColumnItem *column, ObRawEx
       OB_ISNULL(params_->expr_factory_) ||
       OB_ISNULL(params_->session_info_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(column), K(params_), K(params_->expr_factory_), K(params_->session_info_));
   } else if (OB_FAIL(get_default_type_for_insert(column, op))) {
   } else {
     if (OB_NORMAL_DEFAULT_OP == op) {
@@ -45,6 +46,7 @@ int ObDefaultValueUtils::generate_insert_value(const ColumnItem *column, ObRawEx
       }
     } else {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("default_value_op is INVALID", K(op), K(ret));
     }
   }
   return ret;
@@ -67,6 +69,8 @@ int ObDefaultValueUtils::resolve_default_function_static(
          ObExprColumnConv::PARAMS_COUNT_WITH_COLUMN_INFO != fun_expr->get_param_count()
       && ObExprColumnConv::PARAMS_COUNT_WITHOUT_COLUMN_INFO != fun_expr->get_param_count())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(expr), K(fun_expr->get_expr_type()),
+                 K(fun_expr->get_param_count()));
   } else if (OB_UNLIKELY(fun_expr->get_param_expr(0)->get_expr_type() != T_REF_COLUMN)) {
     ret = OB_INVALID_ARGUMENT;
     LOG_WARN("invalid default function, the first child is not column_ref", K(expr));
@@ -75,8 +79,10 @@ int ObDefaultValueUtils::resolve_default_function_static(
                         static_cast<ObColumnRefRawExpr*>(fun_expr->get_param_expr(0));
     col_schema = table_schema->get_column_schema(column_expr->get_column_name());
     if (OB_ISNULL(col_schema)) {
+      LOG_WARN("get null column schema", K(ret));
     } else if (IS_DEFAULT_NOW_OBJ(col_schema->get_cur_default_value())) {
       ret = OB_ERR_ONLY_PURE_FUNC_CANBE_VIRTUAL_COLUMN_EXPRESSION;
+      LOG_WARN("only pure sys function can be indexed", K(ret));
     } else if (ObResolverUtils::DISABLE_CHECK == check_status) {
       if (OB_FAIL(build_type_expr_static(expr_factory, 
                                          session_info,
@@ -110,6 +116,8 @@ int ObDefaultValueUtils::resolve_default_function(ObRawExpr *&expr, ObStmtScope 
          ObExprColumnConv::PARAMS_COUNT_WITH_COLUMN_INFO != fun_expr->get_param_count()
       && ObExprColumnConv::PARAMS_COUNT_WITHOUT_COLUMN_INFO != fun_expr->get_param_count())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(expr), K(fun_expr->get_expr_type()),
+                 K(fun_expr->get_param_count()));
   } else if (OB_ISNULL(stmt_)) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("invalid stmt", K(stmt_));
@@ -120,8 +128,10 @@ int ObDefaultValueUtils::resolve_default_function(ObRawExpr *&expr, ObStmtScope 
       ObExecParamRawExpr* exec_param = static_cast<ObExecParamRawExpr*>(fun_expr->get_param_expr(0));
       if (OB_ISNULL(exec_param) || OB_ISNULL(exec_param->get_ref_expr())) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("exec_param is null", K(ret));
       } else if (OB_UNLIKELY(exec_param->get_ref_expr()->get_expr_type() != T_REF_COLUMN)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("ref expr of default is not column_ref", K(ret), K(*exec_param->get_ref_expr()));
       } else {
         column_expr = static_cast<ObColumnRefRawExpr*>(exec_param->get_ref_expr());
       }
@@ -136,11 +146,13 @@ int ObDefaultValueUtils::resolve_default_function(ObRawExpr *&expr, ObStmtScope 
     if (OB_SUCC(ret)) {
       if (OB_ISNULL(column_expr)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("column_expr is null", K(ret));
       } else {
         for (ObDMLResolver *cur_resolver = resolver_; OB_SUCC(ret) && cur_resolver != NULL;
              cur_resolver = cur_resolver->get_parent_namespace_resolver()) {
           if (OB_ISNULL(cur_resolver->get_stmt())) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("resolver get stmt is null", K(ret));
           } else {
             column_item = cur_resolver->get_stmt()->get_column_item_by_id(column_expr->get_table_id(),
                                                                         column_expr->get_column_id());
@@ -152,6 +164,7 @@ int ObDefaultValueUtils::resolve_default_function(ObRawExpr *&expr, ObStmtScope 
         if (OB_FAIL(ret)) {
         } else if (OB_ISNULL(column_item)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("fail to get column item", K(*column_expr), K(ret));
         }
       }
     }
@@ -178,6 +191,7 @@ int ObDefaultValueUtils::resolve_default_expr(const ColumnItem &column_item, ObR
   int ret = OB_SUCCESS;
   if (OB_ISNULL(column_item.get_expr()) || (scope != T_INSERT_SCOPE && scope != T_UPDATE_SCOPE)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid argument", K(scope), K(column_item.get_expr()));
   } else if (OB_ISNULL(stmt_) || OB_ISNULL(params_) || OB_ISNULL(params_->expr_factory_)) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("invalid stmt", K(stmt_), KP_(params));
@@ -194,8 +208,10 @@ int ObDefaultValueUtils::resolve_default_expr(const ColumnItem &column_item, ObR
     if (OB_FAIL(params_->expr_factory_->create_raw_expr(T_FUN_SYS_DEFAULT, default_func_expr))) {
     } else if (OB_ISNULL(default_func_expr)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("default func expr is null");
     } else if (OB_ISNULL(params_->session_info_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("params_.session_info_ is null", K(ret));
     } else {
       default_func_expr->set_func_name(ObString::make_string(N_DEFAULT));
       default_func_expr->set_result_type(*column_item.get_column_type());
@@ -249,6 +265,7 @@ int ObDefaultValueUtils::build_default_expr_strict_static(
       uint16_t subschema_id = 0;
       if (OB_UNLIKELY(column_schema->get_extended_type_info().count() < 1)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("invalid column_expr", KPC(column_schema), K(ret));
       } else if (OB_FAIL(ObRawExprUtils::get_subschema_id(column_schema->get_meta_type(),
                                                           column_schema->get_extended_type_info(),
                                                           session_info,
@@ -291,6 +308,7 @@ int ObDefaultValueUtils::build_default_expr_strict(const ColumnItem *column, ObR
     }
   } else if (OB_ISNULL(column->get_expr())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected error, column expr is nullptr", K(ret), KPC(column));
   } else if (column->is_auto_increment()) {
     if (OB_FAIL(resolver_->build_autoinc_nextval_expr(expr,
                                                       column->base_tid_,
@@ -302,6 +320,7 @@ int ObDefaultValueUtils::build_default_expr_strict(const ColumnItem *column, ObR
               static_cast<ObItemType>(column->default_value_.get_type()), c_expr))) {
   } else if (OB_ISNULL(column->get_column_type())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("column type is NULL", KPC(column), K(ret));
   } else {
     c_expr->set_accuracy(column->get_column_type()->get_accuracy());
     if (column->get_column_type()->is_enum()
@@ -310,6 +329,7 @@ int ObDefaultValueUtils::build_default_expr_strict(const ColumnItem *column, ObR
       const ObColumnRefRawExpr *column_expr = column->get_expr();
       if (OB_ISNULL(column_expr)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("column expr is NULL", KPC(column), K(ret));
       } else {
         const uint64_t ENUM_FIRST_VAL = 1;
         ObObj enum_val;
@@ -339,6 +359,7 @@ int ObDefaultValueUtils::build_default_expr_strict(const ColumnItem *column, ObR
         }
       }
       if (OB_SUCC(ret) && OB_FAIL(expr->formalize(params_->session_info_))) {
+        LOG_WARN("failed to extract info", K(ret));
       }
     }
   }
@@ -358,6 +379,7 @@ int ObDefaultValueUtils::build_now_expr(const ColumnItem *column, ObRawExpr *&ex
   } else if (OB_FAIL(params_->expr_factory_->create_raw_expr(T_FUN_SYS_CUR_TIMESTAMP, f_expr))) {
   } else if (OB_ISNULL(f_expr)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("timestamp expr is null");
   } else {
     f_expr->set_data_type(ObTimestampType);
     f_expr->set_accuracy(column->get_column_type()->get_accuracy());
@@ -396,6 +418,7 @@ int ObDefaultValueUtils::resolve_column_ref_in_insert(const ColumnItem *column, 
   ObDMLDefaultOp op = OB_INVALID_DEFAULT_OP;
   if (OB_ISNULL(column) || OB_ISNULL(expr)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(expr), K(column));
   } else if (OB_FAIL(get_default_type_for_column_expr(column, op))){
   } else {
     if (OB_NORMAL_DEFAULT_OP == op) {
@@ -415,6 +438,7 @@ int ObDefaultValueUtils::resolve_column_ref_in_insert(const ColumnItem *column, 
       }
     } else {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("default_value_op is INVALID", K(op), K(ret));
     }
   }
   if (OB_SUCC(ret)) {
@@ -428,11 +452,13 @@ int ObDefaultValueUtils::get_default_type_for_insert(const ColumnItem *column, O
   ObDelUpdStmt *del_upd_stmt = dynamic_cast<ObDelUpdStmt*>(stmt_);
   if (OB_ISNULL(del_upd_stmt)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("stmt_ is not insert statement", K(ret));
   } else if (OB_ISNULL(column)
       || OB_ISNULL(column->expr_)
       || OB_ISNULL(params_)
       || OB_ISNULL(params_->session_info_)      ) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", KPC(column), K(params_), K(ret));
   } else if (column->expr_->is_generated_column()) {
     op = OB_GENERATED_COLUMN_DEFAULT_OP;
   } else if (column->is_not_null_for_write()
@@ -443,6 +469,7 @@ int ObDefaultValueUtils::get_default_type_for_insert(const ColumnItem *column, O
       op = OB_NORMAL_DEFAULT_OP;
     } else if (OB_ISNULL(column->get_column_type())) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("column type is NULL", KPC(column), K(ret));
     } else if (column->default_value_.is_null()
                && column->get_column_type()->is_enum()) {
       op = OB_NORMAL_DEFAULT_OP;
@@ -455,6 +482,7 @@ int ObDefaultValueUtils::get_default_type_for_insert(const ColumnItem *column, O
         ObCStringHelper helper;
         LOG_USER_ERROR(OB_ERR_NO_DEFAULT_FOR_FIELD, helper.convert(column->column_name_));
         ret = OB_ERR_NO_DEFAULT_FOR_FIELD;
+        LOG_WARN("Column can not be null", K(column->column_name_), K(ret));
       } else {
         ObCStringHelper helper;
         LOG_USER_WARN(OB_ERR_NO_DEFAULT_FOR_FIELD, helper.convert(column->column_name_));
@@ -475,6 +503,7 @@ int ObDefaultValueUtils::get_default_type_for_default_function_static(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(column_schema)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid argument", K(column_schema));
   } else if (column_schema->is_autoincrement()) {
     op = OB_NOT_STRICT_DEFAULT_OP;
   } else if (column_schema->get_meta_type().is_timestamp()) {
@@ -506,6 +535,7 @@ int ObDefaultValueUtils::get_default_type_for_default_function(const ColumnItem 
   if (OB_ISNULL(column)
       || OB_ISNULL(column->get_column_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(column));
   } else if (column->is_auto_increment()) {
     op = OB_NOT_STRICT_DEFAULT_OP;
   } else if (column->get_column_type()->is_timestamp()) {
@@ -537,6 +567,7 @@ int ObDefaultValueUtils::get_default_type_for_default_expr(const ColumnItem *col
   if (OB_ISNULL(column)
       || OB_ISNULL(column->get_column_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(column));
   } else if (OB_ISNULL(params_) || OB_ISNULL(params_->session_info_)) {
     ret = OB_ERR_UNEXPECTED;
     LOG_WARN("invalid inner status", K(params_));
@@ -570,6 +601,7 @@ int ObDefaultValueUtils::build_default_expr_for_timestamp(const ColumnItem *colu
   if (OB_ISNULL(column) || OB_ISNULL(params_) || OB_ISNULL(expr_factory = params_->expr_factory_)
       || OB_UNLIKELY(!column->get_column_type()->is_timestamp())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(column), K_(params));
   } else if (OB_FAIL(params_->expr_factory_->create_raw_expr(T_INVALID, c_expr))) {
   } else if (OB_ISNULL(c_expr)) {
     ret = OB_ERR_UNEXPECTED;
@@ -602,6 +634,7 @@ int ObDefaultValueUtils::get_default_type_for_column_expr(const ColumnItem *colu
   int ret = OB_SUCCESS;
   if (OB_ISNULL(column)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(column));
   } else if (column->expr_->is_generated_column()) {
     op = OB_GENERATED_COLUMN_DEFAULT_OP;
   } else if (column->get_column_type()->is_timestamp()) {
@@ -627,6 +660,7 @@ int ObDefaultValueUtils::build_default_expr_not_strict_static(
   ObObj default_value;
   if (OB_ISNULL(column_schema)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(column_schema));
   } else if (!column_schema->get_cur_default_value().is_null()) {
     default_value = column_schema->get_cur_default_value();
   } else if (column_schema->is_nullable()) {
@@ -638,6 +672,7 @@ int ObDefaultValueUtils::build_default_expr_not_strict_static(
       uint16_t subschema_id = 0;
       if (OB_UNLIKELY(column_schema->get_extended_type_info().count() < 1)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("invalid column_expr", KPC(column_schema), K(ret));
       } else if (OB_FAIL(ObRawExprUtils::get_subschema_id(column_schema->get_meta_type(),
                                                           column_schema->get_extended_type_info(),
                                                           session_info,
@@ -681,6 +716,7 @@ int ObDefaultValueUtils::build_default_expr_not_strict(const ColumnItem *column,
   ObObj default_value;
   if (OB_ISNULL(column) || OB_ISNULL(params_) || OB_ISNULL(params_->expr_factory_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(column), KP_(params));
   } else if (!column->default_value_.is_null()) {
     default_value = column->default_value_;
   } else if (!column->is_not_null_for_write()) {
@@ -692,6 +728,7 @@ int ObDefaultValueUtils::build_default_expr_not_strict(const ColumnItem *column,
       const ObColumnRefRawExpr *column_expr = column->get_expr();
       if (OB_ISNULL(column_expr)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("column expr is NULL", KPC(column), K(ret));
       } else {
         default_value.set_subschema_id(column_expr->get_subschema_id());
         if (column_expr->is_enum_set_with_subschema()) {
@@ -752,6 +789,7 @@ int ObDefaultValueUtils::build_default_function_expr_static(
       }
     } else {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("default_value_op is INVALID", K(op), K(ret));
     }
   }
   return ret;
@@ -783,6 +821,7 @@ int ObDefaultValueUtils::build_default_function_expr(const ColumnItem *column,
       }
     } else {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("default_value_op is INVALID", K(op), K(ret));
     }
   }
   return ret;
@@ -811,6 +850,7 @@ int ObDefaultValueUtils::build_collation_expr(const ColumnItem *column, ObRawExp
   ObRawExprFactory *expr_factory = NULL;
   if (OB_ISNULL(column) || OB_UNLIKELY(column->is_invalid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("fail to build accuracy expr", K(ret), K(column));
   } else if (OB_ISNULL(params_) || OB_ISNULL(expr_factory = params_->expr_factory_)) {
     ret = OB_NOT_INIT;
     LOG_WARN("invalid allocator", KP_(params), KP(expr_factory));
@@ -830,6 +870,7 @@ int ObDefaultValueUtils::build_accuracy_expr(const ColumnItem *column, ObRawExpr
   ObRawExprFactory *expr_factory = NULL;
   if (OB_ISNULL(column) || OB_UNLIKELY(column->is_invalid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("fail to build accuracy expr", K(ret), K(column));
   } else if (OB_ISNULL(params_) || OB_ISNULL(expr_factory = params_->expr_factory_)) {
    ret = OB_NOT_INIT;
    LOG_WARN("invalid allocator", KP_(params), KP(expr_factory));
@@ -893,6 +934,7 @@ int ObDefaultValueUtils::build_type_expr(const ColumnItem *column, ObRawExpr *&e
   ObRawExprFactory *expr_factory = NULL;
   if (OB_ISNULL(column)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("fail to build accuracy expr", K(ret), K(column));
   } else if (OB_ISNULL(params_) || OB_ISNULL(expr_factory = params_->expr_factory_)) {
     ret = OB_NOT_INIT;
     LOG_WARN("invalid allocator", KP_(params), KP(expr_factory));
@@ -932,6 +974,7 @@ int ObDefaultValueUtils::build_nullable_expr(const ColumnItem *column, ObRawExpr
   ObRawExprFactory *expr_factory = NULL;
   if (OB_ISNULL(column) || OB_UNLIKELY(column->is_invalid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("fail to build accuracy expr", K(ret), K(column));
   } else if (OB_ISNULL(params_) || OB_ISNULL(expr_factory = params_->expr_factory_)) {
     ret = OB_NOT_INIT;
     LOG_WARN("invalid allocator", KP_(params), KP(expr_factory));
@@ -949,6 +992,7 @@ int ObDefaultValueUtils::build_default_expr_for_generated_column(const ColumnIte
   if (OB_ISNULL(column.expr_) || OB_ISNULL(stmt_) || OB_ISNULL(params_)
       || OB_ISNULL(params_->expr_factory_) || OB_ISNULL(column.expr_->get_dependant_expr())) {
     ret = OB_NOT_INIT;
+    LOG_WARN("column expr is null", K_(column.expr), K_(stmt));
   } else if (OB_FAIL(ObDMLResolver::copy_schema_expr(*params_->expr_factory_,
                                                      column.expr_->get_dependant_expr(),
                                                      expr))) {
@@ -961,6 +1005,7 @@ int ObDefaultValueUtils::build_default_expr_for_gc_column_ref(const ColumnItem &
   int ret = OB_SUCCESS;
   if (OB_ISNULL(column.expr_) || OB_ISNULL(stmt_) || OB_ISNULL(params_) || OB_ISNULL(params_->expr_factory_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("column expr is null", K_(column.expr), K_(stmt));
   } else if (OB_FAIL(ObRawExprUtils::build_null_expr(*params_->expr_factory_, expr))) {
   }
   return ret;

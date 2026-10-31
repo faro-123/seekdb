@@ -131,6 +131,8 @@ public:
 
   int64_t p_weight() const;
 
+  TO_STRING_KV(K_(min_offset), K_(max_offset), K_(payload));
+
 private:
   int min_offset_ = -1;
   int max_offset_ = -1;

@@ -44,6 +44,7 @@ int ObSRLookupIter::init(
   int ret = OB_SUCCESS;
   if (IS_INIT) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("double initialization", K(ret));
   } else {
     iter_allocator_ = &iter_allocator;
     iter_param_ = &iter_param;
@@ -51,6 +52,7 @@ int ObSRLookupIter::init(
     cache_capacity_ = cache_capacity;
     if (OB_UNLIKELY(cache_capacity_ < iter_param_->max_batch_size_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected cache capacity", K(ret), K_(cache_capacity), K_(iter_param_->max_batch_size));
     } else if (FALSE_IT(cached_domain_ids_.set_allocator(iter_allocator_))) {
     } else if (OB_FAIL(cached_domain_ids_.init(cache_capacity_))) {
     } else if (OB_FAIL(cached_domain_ids_.prepare_allocate(cache_capacity_))) {
@@ -96,10 +98,13 @@ int ObSRLookupIter::get_next_row()
   int ret = OB_SUCCESS;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not inited", K(ret));
   } else if (OB_UNLIKELY(1 != rangekey_size_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected rangekey size", K(ret), K_(rangekey_size));
   } else if (OB_FAIL(merge_iter_->get_next_row())) {
     if (OB_UNLIKELY(OB_ITER_END != ret)) {
+      LOG_WARN("failed to get next row from merge iter", K(ret));
     } else if (0 != output_row_cnt_) {
       // do nothing
     } else {
@@ -124,11 +129,14 @@ int ObSRLookupIter::get_next_rows(const int64_t capacity, int64_t &count)
   int ret = OB_SUCCESS;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not inited", K(ret));
   } else if (OB_UNLIKELY(0 == capacity)) {
     count = 0;
   } else if (0 == output_row_cnt_ && OB_FAIL(load_results())) {
+    LOG_WARN("failed to load results", K(ret), K(capacity), K(count));
   } else if (OB_FAIL(project_results(capacity, count))) {
     if (OB_ITER_END != ret) {
+      LOG_WARN("failed to project results", K(ret), K(capacity), K(count));
     }
   }
   return ret;
@@ -170,6 +178,7 @@ int ObSRSortedLookupIter::load_results()
     if (OB_FAIL(merge_iter_->get_next_rows(rangekey_size_ - cur_idx, sub_count))) {
       iter_end = true;
       if (OB_UNLIKELY(OB_ITER_END != ret)) {
+        LOG_WARN("failed to get next rows from merge iter", K(ret));
       } else if (sub_count > 0) {
         ret = OB_SUCCESS;
       }
@@ -181,6 +190,7 @@ int ObSRSortedLookupIter::load_results()
     for (int64_t i = 0; OB_SUCC(ret) && i < sub_count; ) {
       if (OB_UNLIKELY(cur_idx >= rangekey_size_)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected cur idx", K(ret), K(cur_idx), K_(rangekey_size));
       } else if (OB_FAIL(cmp_func_(
                      cached_domain_ids_[cur_idx].get_datum(),
                      *id_datums.at(i),
@@ -195,6 +205,7 @@ int ObSRSortedLookupIter::load_results()
         ++cur_idx;
       } else {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected comparison result", K(ret), K(cmp_result));
       }
     }
   }
@@ -239,12 +250,14 @@ int ObSRSortedLookupIter::set_hints(const common::ObIArray<std::pair<ObDocIdExt,
   rangekey_size_ = size;
   if (OB_UNLIKELY(rangekey_size_ > cache_capacity_)) {
     ret = OB_ERR_UNDEFINED;
+    LOG_WARN("unexpected rangekey size", K(ret), K_(rangekey_size), K_(cache_capacity));
   } else {
     for (int64_t i = 0; OB_SUCC(ret) && i < size; ++i) {
       cached_domain_ids_.at(i) = virtual_rangekeys.at(i).first;
       cached_relevances_.at(i) = 0.0;
       if (OB_UNLIKELY(virtual_rangekeys.at(i).second >= cache_capacity_)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected rangekey", K(ret), K(virtual_rangekeys.at(i).second), K_(cache_capacity));
       } else {
         reverse_hints_[virtual_rangekeys.at(i).second] = i;
       }
@@ -282,6 +295,7 @@ int ObSRHashLookupIter::load_results()
     if (OB_FAIL(merge_iter_->get_next_rows(rangekey_size_ - cur_idx, sub_count))) {
       iter_end = true;
       if (OB_UNLIKELY(OB_ITER_END != ret)) {
+        LOG_WARN("failed to get next rows from merge iter", K(ret));
       } else if (sub_count > 0) {
         ret = OB_SUCCESS;
       }
@@ -294,9 +308,11 @@ int ObSRHashLookupIter::load_results()
     for (int64_t i = 0; OB_SUCC(ret) && i < sub_count; ++i) {
       if (OB_UNLIKELY(cur_idx >= rangekey_size_)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected cur idx", K(ret), K(cur_idx), K_(rangekey_size));
       } else if (OB_FAIL(id.from_datum(*id_datums.at(i)))) {
       } else if (OB_UNLIKELY(OB_HASH_NOT_EXIST != (ret = hash_map_.get_refactored(id, relevance)))) {
         ret = COVER_SUCC(OB_ERR_UNEXPECTED);
+        LOG_WARN("unexpected repeated domain id", K(ret), K(id), K(relevance));
       } else if (OB_FAIL(hash_map_.set_refactored(id, relevance_datums.at(i)->get_double(), 0))) {
       }
     }
@@ -329,6 +345,7 @@ int ObSRHashLookupIter::project_results(const int64_t capacity, int64_t &count)
       if (OB_LIKELY(OB_HASH_NOT_EXIST == ret)) {
         ret = OB_SUCCESS;
       } else {
+        LOG_WARN("failed to get relevance from hash map", K(ret));
       }
     }
     if (OB_SUCC(ret)) {
@@ -352,11 +369,13 @@ int ObSRHashLookupIter::set_hints(const common::ObIArray<std::pair<ObDocIdExt, i
   rangekey_size_ = size;
   if (OB_UNLIKELY(rangekey_size_ > cache_capacity_)) {
     ret = OB_ERR_UNDEFINED;
+    LOG_WARN("unexpected rangekey size", K(ret), K_(rangekey_size), K_(cache_capacity));
   } else {
     hash_map_.clear();
     for (int64_t i = 0; OB_SUCC(ret) && i < size; ++i) {
       if (OB_UNLIKELY(virtual_rangekeys.at(i).second >= cache_capacity_)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected rangekey", K(ret), K(virtual_rangekeys.at(i).second), K_(cache_capacity));
       } else {
         cached_domain_ids_[virtual_rangekeys.at(i).second] = virtual_rangekeys.at(i).first;
       }

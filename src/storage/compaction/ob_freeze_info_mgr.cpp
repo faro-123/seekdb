@@ -15,8 +15,6 @@
  */
 
 #define USING_LOG_PREFIX STORAGE
-#include "config_bridge.h"
-#include "common/mysqlclient/ob_mysql_proxy.h"
 #include "ob_freeze_info_mgr.h"
 #include "share/rc/ob_server_runtime.h"
 #include "share/ob_merge_info.h"
@@ -25,7 +23,7 @@
 #include "storage/concurrency_control/ob_multi_version_garbage_collector.h"
 #include "storage/tx_storage/ob_ls_service.h"
 #include "storage/tx_storage/ob_memstore_freezer.h"
-#include "storage/meta_store/storage_meta_service.h"
+#include "storage/meta_store/ob_server_storage_meta_service.h"
 #include "storage/compaction/ob_compaction_schedule_util.h"
 #include "share/ob_tablet_local_checksum_operator.h"  // verify_column_checksum real user FreezeInfoMgr
 
@@ -321,7 +319,7 @@ int ObFreezeInfoMgr::get_multi_version_duration(int64_t &duration) const
 {
   int ret = OB_SUCCESS;
 
-  duration = config::undo_retention();
+  duration = GCONF.undo_retention;
 
   return ret;
 }
@@ -336,7 +334,7 @@ int64_t ObFreezeInfoMgr::get_min_reserved_snapshot_for_tx()
   bool is_gc_disabled = ::oceanbase::share::server_service<::oceanbase::concurrency_control::ObMultiVersionGarbageCollector>()->
     is_gc_disabled();
 
-  if (config::_mvcc_gc_using_min_txn_snapshot()
+  if (GCONF._mvcc_gc_using_min_txn_snapshot
       && !is_gc_disabled) {
     share::SCN snapshot_for_active_tx =
       ::oceanbase::share::server_service<::oceanbase::concurrency_control::ObMultiVersionGarbageCollector>()->
@@ -371,6 +369,7 @@ int ObFreezeInfoMgr::get_min_reserved_snapshot(
       freeze_info.frozen_scn_.set_min();
     } else if (OB_FAIL(get_freeze_info_compare_with_snapshot_version_(merged_version, share::ObFreezeInfoManager::CmpType::GREATER_THAN, freeze_info))) {
       if (OB_ENTRY_NOT_EXIST != ret) {
+        LOG_WARN("failed to get freeze info behind snapshot", K(ret), K(merged_version));
       } else {
         freeze_info.frozen_scn_.set_max();
         ret = OB_SUCCESS;
@@ -532,9 +531,9 @@ int ObFreezeInfoMgr::inner_update_info(
 void ObFreezeInfoMgr::ReloadTask::runTimerTask()
 {
   int tmp_ret = OB_SUCCESS;
-  if (!STORAGE_META_SERVICE.is_started()) {
+  if (!SERVER_STORAGE_META_SERVICE.is_started()) {
     if (REACH_TIME_INTERVAL(10 * 1000 * 1000 /* 10s */)) {
-      LOG_WARN_RET(tmp_ret, "local storage recovery hasn't finished, this task can't start");
+      LOG_WARN_RET(tmp_ret, "slog replay hasn't finished, this task can't start");
     }
   } else {
     if (OB_TMP_FAIL(refresh_merge_info())) {

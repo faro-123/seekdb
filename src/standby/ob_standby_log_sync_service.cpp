@@ -363,19 +363,22 @@ int ObStandbyLogSyncService::get_source_addr_(common::ObAddr &source_addr) const
   int ret = OB_SUCCESS;
   common::ObArenaAllocator allocator("StandbySource");
   common::ObString source;
-  ret = load_source_snapshot_(allocator, source, source_addr);
+  int64_t version = 0;
+  ret = load_source_snapshot_(allocator, source, version, source_addr);
   return ret;
 }
 
 int ObStandbyLogSyncService::load_source_snapshot_(
     common::ObIAllocator &allocator,
     common::ObString &source,
+    int64_t &version,
     common::ObAddr &source_addr) const
 {
   int ret = OB_SUCCESS;
   source.reset();
   source_addr.reset();
-  if (OB_FAIL(host_->load_log_restore_source(allocator, source))) {
+  version = 0;
+  if (OB_FAIL(host_->load_log_restore_source(allocator, source, version))) {
     LOG_WARN("failed to load standby log source", KR(ret));
   } else if (source.empty()) {
     ret = OB_ENTRY_NOT_EXIST;
@@ -508,6 +511,8 @@ int ObStandbyLogSyncService::validate_switch_to_primary_(const bool is_failover)
   common::ObString rechecked_source;
   common::ObAddr source_addr;
   common::ObAddr rechecked_addr;
+  int64_t source_version = 0;
+  int64_t rechecked_version = 0;
   StandbyPromotionBoundary boundary;
   StandbyPromotionBoundary rechecked_boundary;
   share::SCN target_scn;
@@ -530,7 +535,7 @@ int ObStandbyLogSyncService::validate_switch_to_primary_(const bool is_failover)
 
   if (OB_SUCC(ret) && !is_failover
       && OB_FAIL(load_source_snapshot_(
-          source_allocator, source, source_addr))) {
+          source_allocator, source, source_version, source_addr))) {
     LOG_WARN("lossless switchover requires a valid log source", KR(ret));
   } else if (OB_SUCC(ret) && !is_failover
              && OB_FAIL(query_source_promotion_boundary_(source_addr, boundary))) {
@@ -561,14 +566,16 @@ int ObStandbyLogSyncService::validate_switch_to_primary_(const bool is_failover)
       && OB_FAIL(load_source_snapshot_(
           recheck_allocator,
           rechecked_source,
+          rechecked_version,
           rechecked_addr))) {
     LOG_WARN("failed to recheck switchover source", KR(ret));
   } else if (OB_SUCC(ret) && !is_failover
-             && (source.compare(rechecked_source) != 0
+             && (source_version != rechecked_version
+                 || source.compare(rechecked_source) != 0
                  || source_addr != rechecked_addr)) {
     ret = OB_STATE_NOT_MATCH;
     LOG_WARN("standby source changed during switchover validation", KR(ret),
-        K(source), K(rechecked_source));
+        K(source_version), K(rechecked_version), K(source), K(rechecked_source));
   } else if (OB_SUCC(ret) && !is_failover
              && OB_FAIL(query_source_promotion_boundary_(
                  rechecked_addr, rechecked_boundary))) {
@@ -593,6 +600,8 @@ int ObStandbyLogSyncService::prepare_promotion_(
   common::ObString rechecked_source;
   common::ObAddr source_addr;
   common::ObAddr rechecked_addr;
+  int64_t source_version = 0;
+  int64_t rechecked_version = 0;
   StandbyPromotionBoundary boundary;
   StandbyPromotionBoundary rechecked_boundary;
   share::SCN local_end_scn;
@@ -616,7 +625,7 @@ int ObStandbyLogSyncService::prepare_promotion_(
 
   if (OB_SUCC(ret) && !is_failover
       && OB_FAIL(load_source_snapshot_(
-          source_allocator, source, source_addr))) {
+          source_allocator, source, source_version, source_addr))) {
     LOG_WARN("lossless switchover requires a valid log source", KR(ret));
   } else if (OB_SUCC(ret) && !is_failover
              && OB_FAIL(query_source_promotion_boundary_(source_addr, boundary))) {
@@ -649,14 +658,16 @@ int ObStandbyLogSyncService::prepare_promotion_(
                && OB_FAIL(load_source_snapshot_(
                    recheck_allocator,
                    rechecked_source,
+                   rechecked_version,
                    rechecked_addr))) {
       LOG_WARN("failed to recheck standby source before promotion", KR(ret));
     } else if (!is_failover
-               && (source.compare(rechecked_source) != 0
+               && (source_version != rechecked_version
+                   || source.compare(rechecked_source) != 0
                    || source_addr != rechecked_addr)) {
       ret = OB_STATE_NOT_MATCH;
       LOG_WARN("standby source changed before promotion commit", KR(ret),
-          K(source), K(rechecked_source));
+          K(source_version), K(rechecked_version), K(source), K(rechecked_source));
     } else if (!is_failover
                && OB_FAIL(query_source_promotion_boundary_(
                    rechecked_addr, rechecked_boundary))) {

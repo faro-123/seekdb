@@ -57,14 +57,20 @@ int ObPxTaskProcess::check_inner_stat()
   ObPhysicalPlanCtx *plan_ctx = NULL;
   if (arg_.is_invalid()) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("des phy plan is null", K(ret), K(arg_.des_phy_plan_),
+      K(arg_.op_spec_root_));
   } else if (OB_ISNULL(exec_ctx = arg_.exec_ctx_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("exec ctx is NULL", K(ret), K(exec_ctx));
   } else if (OB_ISNULL(session = exec_ctx->get_my_session())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("session is NULL", K(ret), K(exec_ctx));
   } else if (OB_ISNULL(plan_ctx = exec_ctx->get_physical_plan_ctx())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("phy plan ctx is NULL", K(ret), K(exec_ctx));
   } else if (OB_ISNULL(arg_.get_sqc_handler())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("sqc hanlder is null", K(ret));
   } else {
     // To quickly determine task timeout, the task timeout is set very short, around 10ms
     // This will cause any internal query initiated after process to time out very quickly at 10ms
@@ -110,6 +116,7 @@ int ObPxTaskProcess::process()
   ObPxSqcHandler *sqc_handler = arg_.sqc_handler_;
   if (OB_ISNULL(session)  || OB_ISNULL(sqc_handler)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("session or sqc_handler is NULL", K(ret));
   } else if (OB_FAIL(session->store_query_string(ObString::make_string("PX DFO EXECUTING")))) {
   } else {
     // Set diagnostic function environment
@@ -175,6 +182,7 @@ int ObPxTaskProcess::process()
 
     if (OB_ISNULL(arg_.sqc_task_ptr_)){
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("the sqc task ptr is null", K(ret));
     } else {
       arg_.sqc_task_ptr_->set_memstore_read_row_count(exec_record.get_memstore_read_row_count());
       arg_.sqc_task_ptr_->set_ssstore_read_row_count(exec_record.get_ssstore_read_row_count());
@@ -198,6 +206,7 @@ int ObPxTaskProcess::process()
       const ObPhysicalPlan *phy_plan = arg_.des_phy_plan_;
       if ( OB_ISNULL(phy_plan)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("invalid argument", K(ret), K(phy_plan));
       } else {
         audit_record.try_cnt_++;
         audit_record.seq_ = 0;  //don't use now
@@ -242,11 +251,17 @@ int ObPxTaskProcess::execute(const ObOpSpec &root_spec)
   ObOperatorKit *kit = ctx.get_operator_kit(root_spec.id_);
   if (OB_ISNULL(kit) || OB_ISNULL(kit->op_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("operator is NULL", K(ret), KP(kit));
   } else if (root_spec.type_ != kit->spec_->type_) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("is not subplan filter operator", K(ret),
+              "spec", kit->spec_,
+              "root operator type", root_spec.type_,
+              "kit root operator type", kit->spec_->type_);
   } else if (nullptr == kit->op_->get_eval_ctx().frames_
              || kit->op_->get_eval_ctx().frames_ != ctx.get_frames()) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("frames is null", K(ret));
   } else {
     ObOperator *root = kit->op_;
     int64_t batch_count = arg_.get_sqc_handler()->
@@ -290,8 +305,10 @@ int ObPxTaskProcess::execute(const ObOpSpec &root_spec)
     if (OB_FAIL(ret)) {
     } else if (OB_ISNULL(ctx.get_physical_plan_ctx())) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("phy plan ctx is null", K(ret));
     } else if (OB_ISNULL(arg_.sqc_task_ptr_)){
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("the sqc task ptr is null", K(ret));
     } else {
       // In pdml case, there will be affected rows after each task execution ends
       // Need to store the corresponding affected row into sqc task
@@ -313,6 +330,7 @@ int ObPxTaskProcess::execute(const ObOpSpec &root_spec)
       }
     }
     if (OB_SUCCESS != (close_ret = root->close())) {
+      LOG_WARN("fail close dfo op", K(ret), K(close_ret));
       ret = OB_SUCCESS == ret ? close_ret : ret;
     }
   }
@@ -334,6 +352,7 @@ int ObPxTaskProcess::do_process()
 
   if (OB_INVALID_ID == task_id) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("invalid task id from sqc", K(ret));
   } else if (OB_FAIL(check_inner_stat())) {
   } else {
     // 1. Build execution environment
@@ -356,6 +375,9 @@ int ObPxTaskProcess::do_process()
       ObSqlExecutorCtx *executor_ctx = NULL;
       if (OB_ISNULL(gctx_.schema_service_)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("NULL ptr", K(ret),
+                  KP(gctx_.schema_service_),
+                  KP(arg_.exec_ctx_));
       } else if (OB_FAIL(gctx_.schema_service_->get_runtime_schema_guard(
                   schema_guard_))) {
       } else {
@@ -365,6 +387,7 @@ int ObPxTaskProcess::do_process()
         exec_ctx.set_sql_proxy(gctx_.sql_proxy_);
         if (OB_ISNULL(executor_ctx = exec_ctx.get_sql_executor_ctx())) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("task executor ctx is NULL", K(ret));
         }
       }
     }
@@ -386,11 +409,13 @@ int ObPxTaskProcess::do_process()
         } else if (OB_FAIL(visitor.visit(*arg_.exec_ctx_, *arg_.op_spec_root_, setter))) {
         } else if (OB_ISNULL(op)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("unexpected status: op root is null", K(ret));
         } else {
           arg_.static_engine_root_ = op;
         }
       } else {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected status: op root is null", K(ret));
       }
     }
 
@@ -411,6 +436,7 @@ int ObPxTaskProcess::do_process()
         }
       } else {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected status: no root operator", K(ret));
       }
     }
   }
@@ -428,7 +454,7 @@ int ObPxTaskProcess::do_process()
   if (NULL != arg_.sqc_task_ptr_) {
     arg_.sqc_task_ptr_->set_result(ret);
     if (OB_NOT_NULL(arg_.exec_ctx_)) {
-      int das_retry_rc = DAS_CTX(*arg_.exec_ctx_).get_retry_error();
+      int das_retry_rc = DAS_CTX(*arg_.exec_ctx_).get_last_errno();
       arg_.sqc_task_ptr_->set_das_retry_rc(das_retry_rc);
     }
     if (OB_SUCC(ret)) {
@@ -552,15 +578,19 @@ int ObPxTaskProcess::OpPreparation::apply(ObExecContext &ctx,
   ObOperatorKit *kit = ctx.get_operator_kit(op.id_);
   if (OB_ISNULL(kit) || OB_ISNULL(kit->op_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("null ptr", K(ret), K(op.id_));
   } else if (task_id_ < 0) {
     ret = OB_NOT_INIT;
+    LOG_WARN("task id not init", K_(task_id), K(ret));
   } else if (IS_PX_TRANSMIT(op.type_) || IS_PX_RECEIVE(op.type_)) {
     if (OB_ISNULL(kit->input_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("operator is NULL", K(ret), KP(kit));
     } else {
       ObPxExchangeOpInput *input = static_cast<ObPxExchangeOpInput*>(kit->input_);
       if (OB_ISNULL(input)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("input not found for op", "op_id", op.id_, K(ret));
       } else {
         input->set_task_id(task_id_);
         input->set_sqc_id(sqc_id_);
@@ -570,14 +600,17 @@ int ObPxTaskProcess::OpPreparation::apply(ObExecContext &ctx,
   } else if (PHY_GRANULE_ITERATOR == op.type_) {
     if (OB_ISNULL(kit->input_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("operator is NULL", K(ret), KP(kit));
     } else if (PHY_GRANULE_ITERATOR != kit->spec_->type_) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("invalid type", K(ret), KP(kit->spec_->type_));
     } else {
       ObGIOpInput *input = static_cast<ObGIOpInput*>(kit->input_);
       ObGranuleIteratorSpec *gi = static_cast<ObGranuleIteratorSpec *>(
         const_cast<oceanbase::sql::ObOpSpec*>(kit->spec_));
       if (OB_ISNULL(input)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("input not found for op", "op_id", op.id_, K(ret));
       } else {
         input->set_worker_id(task_id_);
         input->set_px_sequence_id(task_->px_int_id_.px_interrupt_id_.first_);
@@ -592,6 +625,7 @@ int ObPxTaskProcess::OpPreparation::apply(ObExecContext &ctx,
   } else if (IS_PX_MODIFY(op.get_type())) {
     if (OB_ISNULL(kit->input_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("operator is NULL", K(ret), K(op.id_), KP(kit));
     } else {
       ObPxMultiPartModifyOpInput *input = static_cast<ObPxMultiPartModifyOpInput *>(kit->input_);
       input->set_task_id(task_id_);
@@ -602,6 +636,7 @@ int ObPxTaskProcess::OpPreparation::apply(ObExecContext &ctx,
     const ObJoinFilterSpec *filter_spec = reinterpret_cast<const ObJoinFilterSpec *>(&op);
     if (OB_ISNULL(kit->input_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("operator is NULL", K(ret), K(op.id_), KP(kit));
     } else {
       ObJoinFilterOpInput *input = static_cast<ObJoinFilterOpInput *>(kit->input_);
       if (!filter_spec->is_shared_join_filter()) {
@@ -612,8 +647,11 @@ int ObPxTaskProcess::OpPreparation::apply(ObExecContext &ctx,
     ObOperatorKit *kit = ctx.get_operator_kit(op.id_);
     if (OB_ISNULL(kit) || OB_ISNULL(kit->op_) || OB_ISNULL(kit->input_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("operator is NULL", K(ret), KP(kit));
     } else if (PHY_TEMP_TABLE_INSERT != kit->spec_->type_) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("is not temp table insert operator", K(ret),
+               "spec", kit->spec_);
     } else {
       ObTempTableInsertOp *insert_op = static_cast<ObTempTableInsertOp*>(kit->op_);
       insert_op->set_px_task(task_);
@@ -625,11 +663,13 @@ int ObPxTaskProcess::OpPreparation::apply(ObExecContext &ctx,
   } else if (PHY_HASH_JOIN == op.type_) {
     if (OB_ISNULL(kit->input_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("operator is NULL", K(ret), KP(kit));
     } else {
       const ObHashJoinSpec &hj_spec = static_cast<const ObHashJoinSpec&>(op);
       ObHashJoinInput *input = static_cast<ObHashJoinInput*>(kit->input_);
       if (OB_ISNULL(input)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("input not found for op", "op_id", op.id_, K(ret));
       } else if (hj_spec.is_shared_ht_) {
         input->set_task_id(task_id_);
       }
@@ -637,10 +677,12 @@ int ObPxTaskProcess::OpPreparation::apply(ObExecContext &ctx,
   } else if (PHY_SELECT_INTO == op.type_) {
     if (OB_ISNULL(kit->input_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("operator is NULL", K(ret), KP(kit));
     } else {
       ObSelectIntoOpInput *input = static_cast<ObSelectIntoOpInput*>(kit->input_);
       if (OB_ISNULL(input)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("input not found for op", "op_id", op.id_, K(ret));
       } else {
         input->set_task_id(task_id_);
         input->set_sqc_id(sqc_id_);
@@ -663,8 +705,10 @@ int ObPxTaskProcess::OpPreparation::reset(const ObOpSpec &op)
         ObOperatorKit *kit = ctx_->get_operator_kit(op.id_);
         if (OB_ISNULL(kit) || OB_ISNULL(kit->op_)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("operator is NULL", K(ret), KP(kit));
         } else if (PHY_GRANULE_ITERATOR != kit->spec_->type_) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("operator is NULL", K(ret), KP(kit->spec_->type_));
         }
       }
       pw_gi_spec_ = nullptr;
@@ -679,14 +723,17 @@ int ObPxTaskProcess::OpPostparation::apply(ObExecContext &ctx, const ObOpSpec &o
   ObOperatorKit *kit = ctx.get_operator_kit(op.id_);
   if (OB_ISNULL(kit) || OB_ISNULL(kit->op_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("null ptr", K(ret), K(op.id_));
   } else if (PHY_HASH_JOIN == op.type_) {
     if (OB_ISNULL(kit->input_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("operator is NULL", K(ret), KP(kit));
     } else {
       const ObHashJoinSpec &hj_spec = static_cast<const ObHashJoinSpec&>(op);
       ObHashJoinInput *input = static_cast<ObHashJoinInput*>(kit->input_);
       if (OB_ISNULL(input)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("input not found for op", "op_id", op.id_, K(ret));
       } else if (hj_spec.is_shared_ht_ && OB_SUCCESS != ret_) {
         // set error_code = OB_GOT_SIGNAL_ABORTING if this error code is used to interrupt other tasks.
         input->set_error_code(OB_GOT_SIGNAL_ABORTING);
@@ -696,11 +743,13 @@ int ObPxTaskProcess::OpPostparation::apply(ObExecContext &ctx, const ObOpSpec &o
   } else if (PHY_WINDOW_FUNCTION == op.type_) {
     if (OB_ISNULL(kit->input_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("operator is NULL", K(ret), KP(kit));
     } else {
       const ObWindowFunctionSpec &wf_spec = static_cast<const ObWindowFunctionSpec&>(op);
       ObWindowFunctionOpInput *input = static_cast<ObWindowFunctionOpInput*>(kit->input_);
       if (OB_ISNULL(input)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("input not found for op", "op_id", op.id_, K(ret));
       } else if (wf_spec.is_participator() && OB_SUCCESS != ret_) {
         input->set_error_code(OB_GOT_SIGNAL_ABORTING);
       } else {
@@ -709,10 +758,12 @@ int ObPxTaskProcess::OpPostparation::apply(ObExecContext &ctx, const ObOpSpec &o
   } else if (PHY_PX_MULTI_PART_INSERT == op.get_type()) {
     if (OB_ISNULL(kit->input_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("operator is NULL", K(ret), KP(kit));
     } else {
       ObPxMultiPartInsertOpInput *input = static_cast<ObPxMultiPartInsertOpInput *>(kit->input_);
       if (OB_ISNULL(input)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("input not found for op", "op_id", op.id_, K(ret));
       } else if (OB_SUCCESS != ret_) {
         input->set_error_code(ret_);
       } else {

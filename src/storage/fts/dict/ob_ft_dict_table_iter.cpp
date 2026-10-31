@@ -39,6 +39,7 @@ int ObFTDictTableIter::get_key(ObString &str)
   int ret = OB_SUCCESS;
   if (!IS_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("Not inited.", K(ret));
   } else if (OB_FAIL(res_.get_result()->get_varchar("word", str))) {
   }
   return ret;
@@ -55,8 +56,10 @@ int ObFTDictTableIter::next()
   int ret = OB_SUCCESS;
   if (!IS_INIT) {
     ret = OB_NOT_INIT;
+    LOG_WARN("Not inited.", K(ret));
   } else if (OB_FAIL(res_.get_result()->next())) {
     if (OB_ITER_END != ret) {
+      LOG_WARN("Failed to get next row", K(ret));
     }
   }
   return ret;
@@ -69,6 +72,7 @@ int ObFTDictTableIter::init(const ObString &table_name)
 
   if (IS_INIT) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("Inited twice.", K(ret));
   } else {
     SMART_VAR(ObSqlString, sql_string)
     {
@@ -83,8 +87,10 @@ int ObFTDictTableIter::init(const ObString &table_name)
       // already logged
     } else if (OB_ISNULL(res_.get_result())) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("Failed to get result", K(ret));
     } else if (OB_FAIL(res_.get_result()->next())) {
       if (OB_ITER_END != ret) {
+        LOG_WARN("Failed to get next row", K(ret));
       } else {
         is_inited_ = true;
       }

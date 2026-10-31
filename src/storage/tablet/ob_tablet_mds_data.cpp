@@ -118,6 +118,7 @@ int ObTabletMdsData::init_for_first_creation()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret), K_(is_inited));
   } else {
     auto_inc_seq_.addr_.set_none_addr();
     medium_info_list_.addr_.set_none_addr();
@@ -143,6 +144,7 @@ int ObTabletMdsData::init_for_mds_table_dump(
 
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret), K_(is_inited));
   } else {
     if (OB_FAIL(init_single_complex_addr(allocator, mds_table_data.tablet_status_.uncommitted_kv_, base_data.tablet_status_.uncommitted_kv_, tablet_status_.uncommitted_kv_))) {
     } else if (OB_FAIL(init_single_complex_addr(allocator, mds_table_data.tablet_status_.committed_kv_, base_data.tablet_status_.committed_kv_, tablet_status_.committed_kv_))) {
@@ -297,6 +299,7 @@ int ObTabletMdsData::init_for_evict_medium_info(
 
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret), K_(is_inited));
   } else {
     if (OB_FAIL(init_single_complex_addr(allocator, other.tablet_status_.uncommitted_kv_, tablet_status_.uncommitted_kv_))) {
     } else if (OB_FAIL(init_single_complex_addr(allocator, other.tablet_status_.committed_kv_, tablet_status_.committed_kv_))) {
@@ -441,6 +444,7 @@ int ObTabletMdsData::init_single_complex_addr_and_extra_info(
       }
     } else {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected branch", K(ret), K(src_addr), KPC(ptr), K(src_data));
     }
 
     if (OB_FAIL(ret)) {
@@ -517,6 +521,7 @@ int ObTabletMdsData::copy_medium_info_list(
 
       if (OB_ISNULL(info1) || OB_ISNULL(info2)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("medium info is null", K(ret), K(i), K(j), KP(info1), KP(info2));
       } else if (info1->medium_snapshot_ < info2->medium_snapshot_) {
         chosen_info = info1;
         ++i;
@@ -579,6 +584,7 @@ int ObTabletMdsData::load_mds_dump_kv(
 
   if (OB_UNLIKELY(!complex_addr.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid addr", K(ret), K(complex_addr));
   } else if (complex_addr.is_none_object()) {
     // do nothing
   } else if (OB_FAIL(ObTabletObjLoadHelper::alloc_and_new(allocator, ptr))) {
@@ -611,6 +617,7 @@ int ObTabletMdsData::load_mds_dump_kv(
     }
   } else {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected complex addr type", K(ret), K(complex_addr));
   }
 
   if (OB_FAIL(ret)) {
@@ -634,6 +641,7 @@ int ObTabletMdsData::load_array(
 
   if (OB_UNLIKELY(!complex_addr.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid addr", K(ret), K(complex_addr));
   } else if (complex_addr.is_none_object()) {
     // do nothing
   } else if (OB_FAIL(ObTabletObjLoadHelper::alloc_and_new(allocator, ptr))) {
@@ -658,6 +666,7 @@ int ObTabletMdsData::load_array(
     }
   } else {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected complex addr type", K(ret), K(complex_addr));
   }
 
   if (OB_FAIL(ret)) {
@@ -680,6 +689,7 @@ int ObTabletMdsData::load_auto_inc_seq(
 
   if (OB_UNLIKELY(!complex_addr.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid addr", K(ret), K(complex_addr));
   } else if (complex_addr.is_none_object()) {
     // do nothing
   } else if (OB_FAIL(ObTabletObjLoadHelper::alloc_and_new(allocator, ptr))) {
@@ -706,6 +716,7 @@ int ObTabletMdsData::load_auto_inc_seq(
     }
   } else {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected complex addr type", K(ret), K(complex_addr));
   }
 
   if (OB_FAIL(ret)) {
@@ -732,6 +743,7 @@ int ObTabletMdsData::read_items(
 
   if (OB_UNLIKELY(!addr.is_block() || nullptr == allocator)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("addr is not block addr", K(ret), K(addr), K(input_array_struct), K(allocator));
   } else if (OB_FAIL(iter.init(addr))) {
   } else {
     while (OB_SUCC(ret)) {
@@ -745,9 +757,11 @@ int ObTabletMdsData::read_items(
           ret = OB_SUCCESS;
           break;
         } else {
+          LOG_WARN("failed to get next item", K(ret));
         }
       } else if (OB_ISNULL(buf) || OB_UNLIKELY(0 == len)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected error, buf is null or len is 0", K(ret), KP(buf), K(len));
       } else if (OB_FAIL(ObTabletObjLoadHelper::alloc_and_new(*allocator, info))) {
       } else if (OB_FAIL(info->deserialize(*allocator, buf, len, pos))) {
       } else if (OB_FAIL(array.push_back(info))) {
@@ -810,8 +824,10 @@ int ObTabletMdsData::build_tablet_status(
   } else if (tx_data.is_in_tx()) {
     key = &uncommitted_kv.ptr_->k_;
     node = &uncommitted_kv.ptr_->v_;
-    {
-      OB_ASSERT(node != nullptr);
+    if (OB_ISNULL(node)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("node is null", K(ret), KP(node));
+    } else {
       key->mds_table_id_ = mds::GET_MDS_TABLE_ID<mds::NormalMdsTable>::value;
       key->mds_unit_id_ = mds::TupleTypeIdx<mds::NormalMdsTable, mds::MdsUnit<mds::DummyKey, ObTabletCreateDeleteMdsUserData>>::value;
       key->allocator_ = &allocator;
@@ -835,8 +851,10 @@ int ObTabletMdsData::build_tablet_status(
   } else {
     key = &committed_kv.ptr_->k_;
     node = &committed_kv.ptr_->v_;
-    {
-      OB_ASSERT(node != nullptr);
+    if (OB_ISNULL(node)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("node is null", K(ret), KP(node));
+    } else {
       key->mds_table_id_ = mds::GET_MDS_TABLE_ID<mds::NormalMdsTable>::value;
       key->mds_unit_id_ = mds::TupleTypeIdx<mds::NormalMdsTable, mds::MdsUnit<mds::DummyKey, ObTabletCreateDeleteMdsUserData>>::value;
       key->allocator_ = &allocator;
@@ -855,6 +873,7 @@ int ObTabletMdsData::build_tablet_status(
         node->status_.union_.field_.state_ = mds::TwoPhaseCommitState::ON_COMMIT;
       } else {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("invalid tablet status", K(ret), "tx_data", tx_data);
       }
 
       node->allocator_ = &allocator;
@@ -881,6 +900,7 @@ int ObTabletMdsData::build_tablet_status(
     char *buffer = nullptr;
     if (OB_ISNULL(buffer = static_cast<char*>(allocator.alloc(serialize_size)))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("allocate memory failed", K(ret), K(serialize_size));
     } else if (OB_FAIL(user_data.serialize(buffer, serialize_size, pos))) {
     } else {
       node->user_data_.assign(buffer, serialize_size);
@@ -918,8 +938,10 @@ int ObTabletMdsData::build_aux_tablet_info(
   } else if (tx_data.is_in_tx()) {
     key = &uncommitted_kv.ptr_->k_;
     node = &uncommitted_kv.ptr_->v_;
-    {
-      OB_ASSERT(node != nullptr);
+    if (OB_ISNULL(node)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("node is null", K(ret), KP(node));
+    } else {
       key->mds_table_id_ = mds::GET_MDS_TABLE_ID<mds::NormalMdsTable>::value;
       key->mds_unit_id_ = mds::TupleTypeIdx<mds::NormalMdsTable, mds::MdsUnit<mds::DummyKey, ObTabletBindingMdsUserData>>::value;
       key->allocator_ = &allocator;
@@ -944,8 +966,10 @@ int ObTabletMdsData::build_aux_tablet_info(
   } else {
     key = &committed_kv.ptr_->k_;
     node = &committed_kv.ptr_->v_;
-    {
-      OB_ASSERT(node != nullptr);
+    if (OB_ISNULL(node)) {
+      ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("node is null", K(ret), KP(node));
+    } else {
       key->mds_table_id_ = mds::GET_MDS_TABLE_ID<mds::NormalMdsTable>::value;
       key->mds_unit_id_ = mds::TupleTypeIdx<mds::NormalMdsTable, mds::MdsUnit<mds::DummyKey, ObTabletBindingMdsUserData>>::value;
       key->allocator_ = &allocator;
@@ -986,6 +1010,7 @@ int ObTabletMdsData::build_aux_tablet_info(
     char *buffer = nullptr;
     if (OB_ISNULL(buffer = static_cast<char*>(allocator.alloc(serialize_size)))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("allocate memory failed", K(ret), K(serialize_size));
     } else if (OB_FAIL(user_data.serialize(buffer, serialize_size, pos))) {
     } else {
       node->user_data_.assign(buffer, serialize_size);
@@ -1028,6 +1053,7 @@ int ObTabletMdsData::set_tablet_status(
   int64_t pos = 0;
   if (OB_ISNULL(buffer)) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("failed to alloc memory", K(ret), K(length));
   } else if (OB_FAIL(user_data.serialize(buffer, length, pos))) {
   } else if (OB_FAIL(tablet_status_cache_.assign(user_data))) {
   } else {
@@ -1051,6 +1077,7 @@ int ObTabletMdsData::deserialize(const char *buf, const int64_t data_len, int64_
 
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret), K_(is_inited));
   } else if (OB_FAIL(tablet_status_.deserialize(buf, data_len, pos))) {
   } else if (OB_FAIL(aux_tablet_info_.deserialize(buf, data_len, pos))) {
   } else if (OB_FAIL(extra_medium_info_.deserialize(buf, data_len, pos))) {

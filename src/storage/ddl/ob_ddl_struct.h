@@ -24,7 +24,7 @@
 #include "storage/blocksstable/ob_block_sstable_struct.h"
 #include "storage/blocksstable/ob_macro_block_meta.h"
 #include "storage/ob_i_table.h"
-#include "data_plane/ddl/ob_direct_load_type.h"
+#include "storage/ddl/ob_direct_load_type.h"
 namespace oceanbase
 {
 namespace storage
@@ -116,6 +116,7 @@ private:
 };
 
 class ObTablet;
+class ObTabletDirectLoadMgrHandle;
 class ObDDLKVPendingGuard final
 {
 public:
@@ -124,6 +125,7 @@ public:
     const ObDDLMacroBlock &macro_block,
     const int64_t snapshot_version,
     const uint64_t data_format_version,
+    ObTabletDirectLoadMgrHandle &direct_load_mgr_handle,
     const ObDirectLoadType direct_load_type);
 public:
   ObDDLKVPendingGuard(
@@ -132,6 +134,7 @@ public:
     const share::SCN &start_scn,
     const int64_t snapshot_version,
     const uint64_t data_format_version,
+    ObTabletDirectLoadMgrHandle &direct_load_mgr_handle,
     const ObDirectLoadType direct_load_type);
   ~ObDDLKVPendingGuard();
   int get_ret() const { return ret_; }
@@ -176,6 +179,37 @@ public:
   // for shared storage gc occupy info
   int64_t parallel_cnt_;
   int64_t merge_slice_idx_;
+};
+
+class ObBaseTabletDirectLoadMgr;
+class ObTabletDirectLoadMgr;
+class ObTabletFullDirectLoadMgr;
+class ObTabletDirectLoadMgrV3;
+class ObTabletDirectLoadMgrHandle final
+{
+public:
+  ObTabletDirectLoadMgrHandle();
+  ~ObTabletDirectLoadMgrHandle();
+  int set_obj(ObBaseTabletDirectLoadMgr *mgr);
+  int assign(const ObTabletDirectLoadMgrHandle &handle);
+  ObBaseTabletDirectLoadMgr *get_base_obj();
+  const ObBaseTabletDirectLoadMgr *get_base_obj() const;
+
+  ObTabletDirectLoadMgr *get_obj();
+  const ObTabletDirectLoadMgr *get_obj() const;
+  ObTabletFullDirectLoadMgr *get_full_obj() const;
+  void reset();
+  bool is_valid() const;
+  /*
+    forbide to copy and move,
+    since it would lead to invlaid count value and delete obj
+  */
+  ObTabletDirectLoadMgrHandle& operator=(const ObTabletDirectLoadMgrHandle&) = delete;
+  ObTabletDirectLoadMgrHandle& operator=(ObTabletDirectLoadMgrHandle&&) = delete;
+  TO_STRING_KV(KP_(tablet_mgr));
+private:
+  ObBaseTabletDirectLoadMgr *tablet_mgr_;
+  ObIAllocator *allocator;
 };
 
 class ObIDirectLoadRowIterator : public ObIStoreRowIterator

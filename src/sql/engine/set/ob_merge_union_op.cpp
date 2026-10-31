@@ -57,6 +57,7 @@ int ObMergeUnionOp::inner_open()
     if (MY_SPEC.is_distinct_) {
       if (OB_UNLIKELY(2 != get_child_cnt())) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected merge union distinct", K(ret), K(get_child_cnt()));
       } else {
         get_next_row_func_ = &ObMergeUnionOp::distinct_get_next_row;
         get_next_batch_func_ = &ObMergeUnionOp::distinct_get_next_batch;
@@ -120,6 +121,7 @@ int ObMergeUnionOp::get_first_row(const ObIArray<ObExpr*> *&output_row)
       clear_evaluated_flag();
       if (OB_FAIL(cur_child_op_->get_next_row())) {
         if (OB_ITER_END != ret) {
+          LOG_WARN("failed to get next row", K(ret));
         }
       } else {
         output_row = &cur_child_op_->get_spec().output_;
@@ -134,6 +136,7 @@ int ObMergeUnionOp::get_first_row(const ObIArray<ObExpr*> *&output_row)
       cur_child_op_ = left_;
       output_row = &left_->get_spec().output_;
     } else {
+      LOG_WARN("fail to get right operator's row", K(ret));
     }
   } else {
     candidate_child_op_ = cmp < 0 ? right_ : left_;
@@ -186,6 +189,7 @@ int ObMergeUnionOp::get_first_row_vectorize(const int64_t batch_size)
         curr_info_ = &left_info_;
         cur_child_op_ = left_;
       } else {
+        LOG_WARN("failed to do strict disticnt", K(ret));
       }
     } else {
       if (cmp <= 0) {
@@ -237,6 +241,7 @@ int ObMergeUnionOp::distinct_get_next_row()
     int candidate_child_err = OB_SUCCESS;
     if (OB_ISNULL(cur_child_op_) || OB_ISNULL(last_row_.store_row_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("cur_child_op is NULL or last row is null", K(ret));
     } else if (OB_UNLIKELY((OB_SUCCESS !=
                       (cur_child_err = do_strict_distinct(*cur_child_op_,
                                                           last_row_.store_row_,
@@ -254,12 +259,15 @@ int ObMergeUnionOp::distinct_get_next_row()
         }
       } else {
         ret = cur_child_err;
+        LOG_WARN("failed to do_strict_distinct", K(ret));
       }
     } else if (NULL == candidate_child_op_) {
       if (OB_FAIL(convert_row(*input_row, MY_SPEC.set_exprs_))) {
       }
     } else if (OB_UNLIKELY(NULL == input_row || NULL == candidate_output_row_)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("input row is NULL or candidate_output_row_ is NULL", K(input_row),
+                K(candidate_output_row_), K(ret));
     } else if (OB_FAIL(cmp_(
         *input_row, *candidate_output_row_, eval_ctx_, cmp))) {
     } else if (0 == cmp) {
@@ -277,6 +285,7 @@ int ObMergeUnionOp::distinct_get_next_row()
             candidate_output_row_ = NULL;
           } else {
             ret = candidate_child_err;
+            LOG_WARN("candidate child operator get next row failed", K(ret));
           }
         }
       }
@@ -305,6 +314,7 @@ int ObMergeUnionOp::distinct_get_next_row()
     first_got_row_ = false;
     if (OB_FAIL(get_first_row(child_row))) {
       if (OB_ITER_END != ret) {
+        LOG_WARN("get first row failed", K(ret));
       }
     }
     //second, storage current row
@@ -351,12 +361,14 @@ int ObMergeUnionOp::distinct_get_next_batch(const int64_t batch_size)
             candidate_info_ = nullptr;
           } else {
             ret = candidate_child_err;
+            LOG_WARN("candidate child operator get next row failed", K(ret));
           }
         }
       }
       if (OB_FAIL(ret)) {
       } else if (OB_ISNULL(cur_child_op_)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("cur_child_op is NULL is null", K(ret));
       } else if (OB_UNLIKELY(OB_SUCCESS !=
                               (cur_child_err = do_strict_distinct_vectorize(*cur_child_op_,
                                                                             last_row_.store_row_,
@@ -381,6 +393,7 @@ int ObMergeUnionOp::distinct_get_next_batch(const int64_t batch_size)
           }
         } else {
           ret = cur_child_err;
+          LOG_WARN("failed to do strict distinct", K(ret));
         }
       } else if (!found_valid_row) {
         //cur op iter at end of batch && have rows converted to output,
@@ -421,6 +434,7 @@ int ObMergeUnionOp::distinct_get_next_batch(const int64_t batch_size)
               candidate_info_ = nullptr;
             } else {
               ret = candidate_child_err;
+              LOG_WARN("candidate child operator get next row failed", K(ret));
             }
           } else if (!found_valid_row) {
             //we got 1 row inside a batch, record its idx and got from expr
@@ -462,6 +476,7 @@ int ObMergeUnionOp::distinct_get_next_batch(const int64_t batch_size)
       first_got_row_ = false;
       if (OB_FAIL(get_first_row_vectorize(batch_size))) {
         if (OB_ITER_END != ret) {
+          LOG_WARN("failed to get first row", K(ret));
         } else {
           brs_.end_ = true;
           brs_.size_ = 0;
@@ -514,11 +529,13 @@ int ObMergeUnionOp::all_get_next_row()
         LOG_WARN("get physical operator failed", K(MY_SPEC.id_));
       } else if (OB_FAIL(cur_child_op_->get_next_row())) {
         if (OB_ITER_END != ret) {
+          LOG_WARN("get next row failed", K(ret));
         }
       }
     }
   }
   if (OB_SUCC(ret) && OB_FAIL(convert_row(cur_child_op_->get_spec().output_, MY_SPEC.set_exprs_))) {
+    LOG_WARN("failed to convert row", K(ret));
   }
   return ret;
 }
@@ -564,6 +581,7 @@ int ObMergeUnionOp::inner_get_next_row()
     LOG_ERROR("get_next_row_func is NULL", K(ret));
   } else if (OB_FAIL((this->*get_next_row_func_)())) {
     if (OB_ITER_END != ret) {
+      LOG_WARN("get next row failed", K(ret));
     }
   }
   return ret;
@@ -609,9 +627,11 @@ int ObMergeUnionOp::do_strict_distinct_vectorize(ObOperator &child_op,
       if (OB_UNLIKELY(compare_idx < 0)
           && OB_FAIL(cmp_(*compare_row, child_op.get_spec().output_,
                            op_info.op_idx_, eval_ctx_, cmp))) {
+        LOG_WARN("strict compare with last row failed", K(ret));
       } else if (OB_LIKELY(compare_idx >= 0)
                 && OB_FAIL(cmp_(compare_expr, child_op.get_spec().output_,
                                 compare_idx, op_info.op_idx_, eval_ctx_, cmp))) {
+        LOG_WARN("strict compare with last expr failed", K(ret));
       } else if (0 != cmp) {
         found_valid_row = true;
         break;
@@ -635,9 +655,11 @@ int ObMergeUnionOp::do_strict_distinct_vectorize(ObOperator &child_op,
           if (OB_UNLIKELY(compare_idx < 0)
             && OB_FAIL(cmp_(*compare_row, child_op.get_spec().output_,
                             op_info.op_idx_, eval_ctx_, cmp))) {
+            LOG_WARN("strict compare with last row failed", K(ret));
           } else if (OB_LIKELY(compare_idx >= 0)
                      && OB_FAIL(cmp_(compare_expr, child_op.get_spec().output_,
                                      compare_idx, op_info.op_idx_, eval_ctx_, cmp))) {
+            LOG_WARN("strict compare with last row failed ", K(ret));
           } else if (0 != cmp) {
             found_valid_row = true;
             break;

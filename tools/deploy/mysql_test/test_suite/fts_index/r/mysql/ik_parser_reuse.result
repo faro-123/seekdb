@@ -1,0 +1,106 @@
+result_format: 4
+drop table if exists fts_ik_reuse;
+set names utf8mb4;
+create table fts_ik_reuse (
+  id int primary key,
+  smart_text text,
+  max_text text,
+  fulltext index ft_smart(smart_text) with parser ik parser_properties=(ik_mode='smart'),
+  fulltext index ft_max(max_text) with parser ik parser_properties=(ik_mode='max_word')
+) default charset=utf8mb4;
+insert into fts_ik_reuse values
+  (1, 'alpha alpha 123', 'alpha alpha 123'),
+  (2, 'bravo 456', 'bravo 456'),
+  (3, '!!!', '!!!'),
+  (4, 'charlie', 'charlie'),
+  (5, repeat('delta ', 300), repeat('delta ', 300)),
+  (6, 'echo', 'echo'),
+  (7, convert(0xe4b8ade59bbde4b8ade59bbd using utf8mb4), convert(0xe4b8ade59bbde4b8ade59bbd using utf8mb4)),
+  (8, convert(0xe4b8ade59bbd using utf8mb4), convert(0xe4b8ade59bbd using utf8mb4));
+select group_concat(id order by id) as ids from fts_ik_reuse where match(smart_text) against('alpha');
++------+
+| ids  |
++------+
+| 1    |
++------+
+select group_concat(id order by id) as ids from fts_ik_reuse where match(max_text) against('alpha');
++------+
+| ids  |
++------+
+| 1    |
++------+
+select group_concat(id order by id) as ids from fts_ik_reuse where match(smart_text) against('bravo');
++------+
+| ids  |
++------+
+| 2    |
++------+
+select group_concat(id order by id) as ids from fts_ik_reuse where match(max_text) against('bravo');
++------+
+| ids  |
++------+
+| 2    |
++------+
+select group_concat(id order by id) as ids from fts_ik_reuse where match(smart_text) against('delta');
++------+
+| ids  |
++------+
+| 5    |
++------+
+select group_concat(id order by id) as ids from fts_ik_reuse where match(max_text) against('echo');
++------+
+| ids  |
++------+
+| 6    |
++------+
+select group_concat(id order by id) as ids from fts_ik_reuse where match(smart_text) against(convert(0xe4b8ade59bbd using utf8mb4));
++------+
+| ids  |
++------+
+| 7,8  |
++------+
+select group_concat(id order by id) as ids from fts_ik_reuse where match(max_text) against(convert(0xe4b8ade59bbd using utf8mb4));
++------+
+| ids  |
++------+
+| 7,8  |
++------+
+update fts_ik_reuse set smart_text='foxtrot', max_text='foxtrot' where id=1;
+select count(*) as n from fts_ik_reuse where match(smart_text) against('alpha');
++------+
+| n    |
++------+
+|    0 |
++------+
+select count(*) as n from fts_ik_reuse where match(max_text) against('alpha');
++------+
+| n    |
++------+
+|    0 |
++------+
+select group_concat(id order by id) as ids from fts_ik_reuse where match(smart_text) against('foxtrot');
++------+
+| ids  |
++------+
+| 1    |
++------+
+select group_concat(id order by id) as ids from fts_ik_reuse where match(max_text) against('foxtrot');
++------+
+| ids  |
++------+
+| 1    |
++------+
+delete from fts_ik_reuse where id=5;
+select count(*) as n from fts_ik_reuse where match(smart_text) against('delta');
++------+
+| n    |
++------+
+|    0 |
++------+
+select count(*) as n from fts_ik_reuse where match(max_text) against('delta');
++------+
+| n    |
++------+
+|    0 |
++------+
+drop table fts_ik_reuse;

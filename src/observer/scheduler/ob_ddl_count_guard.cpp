@@ -35,6 +35,7 @@ int ObDDLCountGuard::try_inc_ddl_count(const int64_t cpu_quota_concurrency)
   omt::ObServerRuntimeController *runtime_controller = ::oceanbase::share::server_service<::oceanbase::omt::ObServerRuntimeController>();
   if (OB_ISNULL(runtime_controller)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("runtime controller is null", KR(ret));
   } else if (OB_FAIL(runtime_controller->inc_ddl_count(cpu_quota_concurrency))) {
   } else {
     had_inc_ddl_ = true;
@@ -49,6 +50,7 @@ ObDDLCountGuard::~ObDDLCountGuard()
     omt::ObServerRuntimeController *runtime_controller = ::oceanbase::share::server_service<::oceanbase::omt::ObServerRuntimeController>();
     if (OB_ISNULL(runtime_controller)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("runtime controller is null", KR(ret));
     } else if (OB_FAIL(runtime_controller->dec_ddl_count())) {
     }
   }

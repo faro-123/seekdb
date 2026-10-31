@@ -1,0 +1,82 @@
+# Build encoded-sort FTS indexes over existing rows across posting batches.
+--result_format 4
+--disable_query_log
+--disable_warnings
+drop table if exists fts_encoded_seed,fts_encoded_bin,fts_encoded_ci;
+--enable_warnings
+create table fts_encoded_seed(id int primary key,body varchar(1000) collate utf8mb4_bin,title varchar(1000) collate utf8mb4_bin);
+insert into fts_encoded_seed values(0,concat(convert(0xe4b8ade59bbd using utf8mb4),' alpha prefix prefixa prefixab'),'beta gamma');
+insert into fts_encoded_seed select id+1,body,title from fts_encoded_seed;
+insert into fts_encoded_seed select id+2,body,title from fts_encoded_seed;
+insert into fts_encoded_seed select id+4,body,title from fts_encoded_seed;
+insert into fts_encoded_seed select id+8,body,title from fts_encoded_seed;
+insert into fts_encoded_seed select id+16,body,title from fts_encoded_seed;
+insert into fts_encoded_seed select id+32,body,title from fts_encoded_seed;
+insert into fts_encoded_seed select id+64,body,title from fts_encoded_seed;
+insert into fts_encoded_seed select id+128,body,title from fts_encoded_seed;
+insert into fts_encoded_seed select id+256,body,title from fts_encoded_seed;
+insert into fts_encoded_seed select id+512,body,title from fts_encoded_seed;
+insert into fts_encoded_seed values(1024,'',''),(1025,null,null),(1026,concat('CASE case cafe ',convert(0x636166c3a9 using utf8mb4)),null),(1027,concat(repeat('z',160),' suffix'),''),(1028,'alpha alpha alpha alpha alpha alpha alpha',''),(1029,concat(convert(0x434146c38920636166c3a9 using utf8mb4),' Cafe cafe'),'');
+create table fts_encoded_bin(id int primary key,body varchar(1000) collate utf8mb4_bin,title varchar(1000) collate utf8mb4_bin) partition by hash(id) partitions 2;
+insert into fts_encoded_bin select * from fts_encoded_seed;
+create table fts_encoded_ci(tag int,body varchar(1000) collate utf8mb4_general_ci,title varchar(1000) collate utf8mb4_general_ci);
+insert into fts_encoded_ci select * from fts_encoded_seed;
+--echo populated partitioned table IK single and multiple columns
+create fulltext index ft_body on fts_encoded_bin(body) with parser ik;
+create fulltext index ft_all on fts_encoded_bin(body,title) with parser ik;
+select count(*)=1030 as ok from fts_encoded_bin;
+select count(*)=1025 as ok from fts_encoded_bin where match(body) against('alpha');
+select count(*)=1024 as ok from fts_encoded_bin where match(body) against('prefix prefixa prefixab');
+select count(*)=1024 as ok from fts_encoded_bin where match(body) against(convert(0xe4b8ade59bbd using utf8mb4));
+select count(*)=1024 as ok from fts_encoded_bin where match(body,title) against('gamma');
+select count(*)=1025 as ok from fts_encoded_bin where match(body,title) against('alpha gamma');
+--echo shared prefixes case accents empty values and long terms
+select count(*) from fts_encoded_bin where match(body) against('prefixa');
+select count(*) from fts_encoded_bin where match(body) against('CASE cafe');
+select count(*) from fts_encoded_bin where match(body) against(convert(0x636166c3a9 using utf8mb4));
+select count(*) from fts_encoded_bin where match(body) against(repeat('z',160));
+select count(*)=0 as ok from fts_encoded_bin where match(body) against('missingword');
+select id=1028 as ok from fts_encoded_bin where match(body) against('alpha') order by match(body) against('alpha') desc,id limit 1;
+select id=1028 as ok from fts_encoded_bin where match(body,title) against('alpha') order by match(body,title) against('alpha') desc,id limit 1;
+--echo populated hidden-primary-key table BENG general_ci
+create fulltext index ft_body on fts_encoded_ci(body) with parser beng;
+select count(*)=1025 as ok from fts_encoded_ci where match(body) against('alpha');
+select count(*)=1024 as ok from fts_encoded_ci where match(body) against('prefix prefixa prefixab');
+select count(*) from fts_encoded_ci where match(body) against('CASE cafe');
+select count(*) from fts_encoded_ci where match(body) against(convert(0x636166c3a9 using utf8mb4));
+select count(*) from fts_encoded_ci where match(body) against(repeat('z',160));
+select count(*)=0 as ok from fts_encoded_ci where match(body) against('missingword');
+select tag=1028 as ok from fts_encoded_ci where match(body) against('alpha') order by match(body) against('alpha') desc,tag limit 1;
+--echo existing-row index supports transaction own writes and rollback
+begin;
+update fts_encoded_bin set body='transactionword' where id=0;
+delete from fts_encoded_bin where id=1;
+insert into fts_encoded_bin values(1030,'alpha','gamma');
+select count(*)=1024 as ok from fts_encoded_bin where match(body) against('alpha');
+select count(*)=1 as ok from fts_encoded_bin where match(body) against('transactionword');
+select count(*)=1024 as ok from fts_encoded_bin where match(body,title) against('gamma');
+rollback;
+select count(*)=1025 as ok from fts_encoded_bin where match(body) against('alpha');
+begin;
+update fts_encoded_ci set body='transactionword' where tag=0;
+delete from fts_encoded_ci where tag=1;
+insert into fts_encoded_ci values(1030,'alpha','gamma');
+select count(*)=1024 as ok from fts_encoded_ci where match(body) against('alpha');
+select count(*)=1 as ok from fts_encoded_ci where match(body) against('transactionword');
+rollback;
+select count(*)=1025 as ok from fts_encoded_ci where match(body) against('alpha');
+--echo drop and rebuild all index kinds over populated tables
+drop index ft_body on fts_encoded_bin;
+drop index ft_all on fts_encoded_bin;
+drop index ft_body on fts_encoded_ci;
+create fulltext index ft_all on fts_encoded_bin(body,title) with parser ik;
+create fulltext index ft_body on fts_encoded_bin(body) with parser ik;
+create fulltext index ft_body on fts_encoded_ci(body) with parser beng;
+select count(*)=1025 as ok from fts_encoded_bin where match(body) against('alpha');
+select count(*)=1024 as ok from fts_encoded_bin where match(body,title) against('gamma');
+select count(*)=1024 as ok from fts_encoded_bin where match(body) against(convert(0xe4b8ade59bbd using utf8mb4));
+select count(*)=1025 as ok from fts_encoded_ci where match(body) against('alpha');
+select id=1028 as ok from fts_encoded_bin where match(body) against('alpha') order by match(body) against('alpha') desc,id limit 1;
+select tag=1028 as ok from fts_encoded_ci where match(body) against('alpha') order by match(body) against('alpha') desc,tag limit 1;
+drop table fts_encoded_seed,fts_encoded_bin,fts_encoded_ci;
+--enable_query_log

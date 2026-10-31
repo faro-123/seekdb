@@ -85,6 +85,7 @@ int ObExprRand::assign(const ObExprOperator &other)
   const ObExprRand *tmp_other = dynamic_cast<const ObExprRand*>(&other);
   if (OB_UNLIKELY(NULL == tmp_other)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument. wrong type for other", K(ret), K(other));
   } else if (OB_LIKELY(this != tmp_other)) {
     if (OB_FAIL(ObExprOperator::assign(other))) {
     } else {
@@ -101,7 +102,9 @@ int ObExprRand::calc_random_expr_const_seed(const ObExpr &expr, ObEvalCtx &ctx,
   ObDatum *seed_datum = NULL;
   if (OB_UNLIKELY(0 != expr.arg_cnt_ && 1 != expr.arg_cnt_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected arg_cnt", K(ret), K(expr.arg_cnt_));
   } else if (1 == expr.arg_cnt_ && OB_FAIL(expr.eval_param_value(ctx, seed_datum))) {
+    LOG_WARN("expr.eval_param_value failed", K(ret));
   } else {
     uint64_t op_id = expr.expr_ctx_id_;
     ObExecContext &exec_ctx = ctx.exec_ctx_;
@@ -125,6 +128,7 @@ int ObExprRand::calc_random_expr_const_seed(const ObExpr &expr, ObEvalCtx &ctx,
 		if (OB_SUCC(ret)) {
       if (OB_ISNULL(random_ctx)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("random ctx is NULL", K(ret));
       } else {
         double rand_res = 0.0;
         random_ctx->get_next_random(rand_res);
@@ -142,6 +146,7 @@ int ObExprRand::calc_random_expr_nonconst_seed(const ObExpr &expr, ObEvalCtx &ct
   ObDatum *seed_datum = NULL;
   if (OB_UNLIKELY(1 != expr.arg_cnt_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected arg_cnt", K(ret), K(expr.arg_cnt_));
   } else if (OB_FAIL(expr.eval_param_value(ctx, seed_datum))) {
   } else {
     uint64_t op_id = expr.expr_ctx_id_;
@@ -155,6 +160,7 @@ int ObExprRand::calc_random_expr_nonconst_seed(const ObExpr &expr, ObEvalCtx &ct
 		if (OB_SUCC(ret)) {
       if (OB_ISNULL(random_ctx)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("random ctx is NULL", K(ret));
       } else {
 				uint32_t seed = 0;
 				if(!seed_datum->is_null()) {

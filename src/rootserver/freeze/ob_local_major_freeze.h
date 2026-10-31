@@ -50,6 +50,7 @@ public:
   virtual ~ObLocalMajorFreeze();
   int init(const bool is_primary_service,
            common::ObMySQLProxy &sql_proxy,
+           common::ObServerConfig &config,
            share::schema::ObMultiVersionSchemaService &schema_service);
 
   int start(const bool append_mode);

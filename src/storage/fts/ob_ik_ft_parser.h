@@ -18,9 +18,9 @@
 #define _OCEANBASE_STORAGE_FTS_OB_IK_FT_PARSER_H_
 
 #include "lib/allocator/ob_allocator.h"
-#include "storage/fts/dict/ob_ft_cache_container.h"
+#include "lib/allocator/page_arena.h"
 #include "storage/fts/dict/ob_ft_dict.h"
-#include "storage/fts/dict/ob_ft_dict_def.h"
+#include "storage/fts/ik/ob_ik_arbitrator.h"
 #include "storage/fts/ik/ob_ik_processor.h"
 #include "data_plane/fts/ob_fts_parser.h"
 
@@ -36,14 +36,12 @@ class ObIKFTParser final : public ObITokenIterator
 public:
   ObIKFTParser(ObIAllocator &allocator, ObFTDictHub *hub)
       : allocator_(allocator),
+        runtime_allocator_(lib::ObMemAttr("FTIKParser")),
         is_inited_(false),
         coll_type_(ObCollationType::CS_TYPE_INVALID),
         ctx_(nullptr),
         hub_(hub),
-        segmenters_(allocator_),
-        cache_main_(allocator),
-        cache_quan_(allocator),
-        cache_stop_(allocator),
+        segmenters_(runtime_allocator_),
         dict_main_(nullptr),
         dict_quan_(nullptr),
         dict_stop_(nullptr)
@@ -58,6 +56,10 @@ public:
                      int64_t &word_len,
                      int64_t &char_cnt,
                      int64_t &word_freq) override;
+
+  bool is_reusable() const override { return true; }
+
+  int reuse(const ObFTParserParam &param) override;
 
   VIRTUAL_TO_STRING_KV(K(is_inited_));
 
@@ -74,34 +76,25 @@ private:
 private:
   int init_dict(const ObFTParserParam &param);
 
-  int init_single_dict(ObFTDictDesc desc, ObFTCacheRangeContainer &container);
-
   int init_segmenter(const ObFTParserParam &param);
 
   int init_ctx(const ObFTParserParam &param);
 
+  void reset_runtime();
+
   void reset();
-
-  bool should_read_newest_table() const;
-
-  int build_dict_from_cache(const ObFTDictDesc &desc,
-                            ObFTCacheRangeContainer &container,
-                            ObIFTDict *&dict);
 
 private:
   static constexpr int SEGMENT_LIMIT = 1000;
   ObIAllocator &allocator_;
+  ObArenaAllocator runtime_allocator_;
+  ObIKArbitrator arbitrator_;
   bool is_inited_;
 
   ObCollationType coll_type_;
   TokenizeContext *ctx_;
   ObFTDictHub *hub_;
   ObList<ObIIKProcessor *, ObIAllocator> segmenters_;
-
-  // For now there's no change of dict in one query, so we can pin dict this level.
-  ObFTCacheRangeContainer cache_main_;
-  ObFTCacheRangeContainer cache_quan_;
-  ObFTCacheRangeContainer cache_stop_;
 
   ObIFTDict *dict_main_;
   ObIFTDict *dict_quan_;

@@ -81,6 +81,7 @@ int ObGeometryTypeCastUtil::check_longitude(double val_radian,
     } else if (OB_FAIL(srs->longtitude_convert_from_radians(M_PI, max_long_val))) {
     } else {
       ret = OB_ERR_LONGITUDE_OUT_OF_RANGE;
+      LOG_WARN("longitude value is out of range", K(ret), K(val), K(val_radian));
     }
   }
 
@@ -100,6 +101,7 @@ int ObGeometryTypeCastUtil::check_latitude(double val_radian,
     } else if (OB_FAIL(srs->latitude_convert_from_radians(M_PI_2, max_lat_val))) {
     } else {
       ret = OB_ERR_LATITUDE_OUT_OF_RANGE;
+      LOG_WARN("latitude value is out of range", K(ret), K(val), K(val_radian)); 
     }
   }
 
@@ -139,7 +141,9 @@ int ObGeometryTypeCastUtil::check_polygon_direction(ObIAllocator &allocator,
 
   if (OB_ISNULL(geo_tree)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("geo_tree is null", K(ret));
   } else if (OB_FAIL(ObGeoTypeUtil::correct_polygon(allocator, srs, true, *geo_tree))) {
+    LOG_WARN("fail to check correct in functor", K(ret), K(geo_tree->get_srid()));
     ret = OB_ERR_GIS_INVALID_DATA;
   }
 
@@ -184,6 +188,7 @@ int ObGeometryTypeCastFactory::alloc(ObIAllocator &alloc,
     case ObGeoType::POINT: {
       if (OB_ISNULL(buf = alloc.alloc(sizeof(ObPointTypeCast)))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for ObPointTypeCast", K(ret));
       } else {
         geo_cast = new (buf) ObPointTypeCast();
       }
@@ -193,6 +198,7 @@ int ObGeometryTypeCastFactory::alloc(ObIAllocator &alloc,
     case ObGeoType::LINESTRING: {
       if (OB_ISNULL(buf = alloc.alloc(sizeof(ObLineStringTypeCast)))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for ObLineStringTypeCast", K(ret));
       } else {
         geo_cast = new (buf) ObLineStringTypeCast();
       }
@@ -202,6 +208,7 @@ int ObGeometryTypeCastFactory::alloc(ObIAllocator &alloc,
     case ObGeoType::POLYGON: {
       if (OB_ISNULL(buf = alloc.alloc(sizeof(ObPolygonTypeCast)))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for ObPolygonTypeCast", K(ret));
       } else {
         geo_cast = new (buf) ObPolygonTypeCast();
       }
@@ -211,6 +218,7 @@ int ObGeometryTypeCastFactory::alloc(ObIAllocator &alloc,
     case ObGeoType::MULTIPOINT: {
       if (OB_ISNULL(buf = alloc.alloc(sizeof(ObMultiPointTypeCast)))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for ObMultiPointTypeCast", K(ret));
       } else {
         geo_cast = new (buf) ObMultiPointTypeCast();
       }
@@ -220,6 +228,7 @@ int ObGeometryTypeCastFactory::alloc(ObIAllocator &alloc,
     case ObGeoType::MULTILINESTRING: {
       if (OB_ISNULL(buf = alloc.alloc(sizeof(ObMultiLineStringTypeCast)))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for ObMultiLineStringTypeCast", K(ret));
       } else {
         geo_cast = new (buf) ObMultiLineStringTypeCast();
       }
@@ -229,6 +238,7 @@ int ObGeometryTypeCastFactory::alloc(ObIAllocator &alloc,
     case ObGeoType::MULTIPOLYGON: {
       if (OB_ISNULL(buf = alloc.alloc(sizeof(ObMultiPolygonTypeCast)))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for ObMultiPolygonTypeCast", K(ret));
       } else {
         geo_cast = new (buf) ObMultiPolygonTypeCast();
       }
@@ -238,6 +248,7 @@ int ObGeometryTypeCastFactory::alloc(ObIAllocator &alloc,
     case ObGeoType::GEOMETRYCOLLECTION: {
       if (OB_ISNULL(buf = alloc.alloc(sizeof(ObGeomcollectionTypeCast)))) {
         ret = OB_ALLOCATE_MEMORY_FAILED;
+        LOG_WARN("fail to alloc memory for ObGeomcollectionTypeCast", K(ret));
       } else {
         geo_cast = new (buf) ObGeomcollectionTypeCast();
       }
@@ -246,6 +257,7 @@ int ObGeometryTypeCastFactory::alloc(ObIAllocator &alloc,
     
     default: {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("invalid geometry type for cast", K(ret), K(geo_type));
       break;
     }
   }
@@ -268,6 +280,7 @@ int ObPointTypeCast::cast(const ObGeometry &src,
       ObGeoType::MULTIPOINT != wkb_type &&
       ObGeoType::GEOMETRYCOLLECTION != wkb_type) {
     ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+    LOG_WARN("unexpected type", K(ret), K(wkb_type));
   } else {
     switch (wkb_type) {
       // POINT -> POINT
@@ -279,6 +292,7 @@ int ObPointTypeCast::cast(const ObGeometry &src,
           res.y(po.y());
         } else if (OB_ISNULL(srs)) {
           ret = OB_ERR_NULL_VALUE;
+          LOG_WARN("srs is null", K(ret));
         } else {
           double x = po.x();
           double y = po.y();
@@ -305,6 +319,7 @@ int ObPointTypeCast::cast(const ObGeometry &src,
         const MPT &mp = *static_cast<const MPT *>(&src);
         if (mp.size() != 1) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+          LOG_WARN("unexpected size", K(ret), K(mp.size()));
         } else {
           res.set_data(mp.front());
         }
@@ -316,6 +331,7 @@ int ObPointTypeCast::cast(const ObGeometry &src,
         const GC &gc = *static_cast<const GC *>(&src);
         if (gc.size() != 1) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+          LOG_WARN("unexpected size", K(ret), K(gc.size()));
         } else if (ObGeoType::POINT != gc.front().type()) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
           LOG_WARN("unexpected type", K(ret), K(gc.front().type()));
@@ -328,6 +344,7 @@ int ObPointTypeCast::cast(const ObGeometry &src,
 
       default: {
         ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+        LOG_WARN("unexpected type", K(ret), K(wkb_type));
         break;
       }
     }
@@ -354,6 +371,7 @@ int ObLineStringTypeCast::cast(const ObGeometry &src,
       ObGeoType::MULTILINESTRING != wkb_type &&
       ObGeoType::GEOMETRYCOLLECTION != wkb_type) {
     ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+    LOG_WARN("unexpected type", K(ret), K(wkb_type));
   } else {
     switch (wkb_type) {
       // LINESTRING -> LINESTRING
@@ -368,6 +386,7 @@ int ObLineStringTypeCast::cast(const ObGeometry &src,
         const PL &poly = *static_cast<const PL *>(&src);
         if (poly.size() != 1) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+          LOG_WARN("unexpected size", K(ret), K(poly.size()));
         } else if (poly.exterior_ring().empty()) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
           LOG_WARN("ring is empty", K(ret), K(poly.exterior_ring().empty()));
@@ -385,6 +404,7 @@ int ObLineStringTypeCast::cast(const ObGeometry &src,
         const MPT &mp = *static_cast<const MPT *>(&src);
         if (mp.size() < 2) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+          LOG_WARN("unexpected size", K(ret), K(mp.size()));
         } else {
           typename MPT::const_iterator iter = mp.begin();
           for (; OB_SUCC(ret) && iter != mp.end(); ++iter) {
@@ -400,6 +420,7 @@ int ObLineStringTypeCast::cast(const ObGeometry &src,
         const ML &ml = *static_cast<const ML *>(&src);
         if (ml.size() != 1) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+          LOG_WARN("unexpected size", K(ret), K(ml.size()));
         } else {
           res = ml.front();
         }
@@ -411,6 +432,7 @@ int ObLineStringTypeCast::cast(const ObGeometry &src,
         const GC &gc = *static_cast<const GC *>(&src);
         if (gc.size() != 1) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+          LOG_WARN("unexpected size or type", K(ret), K(gc.size()));
         } else if (ObGeoType::LINESTRING != gc.front().type()) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
           LOG_WARN("unexpected type", K(ret), K(gc.front().type()));
@@ -422,6 +444,7 @@ int ObLineStringTypeCast::cast(const ObGeometry &src,
 
       default: {
         ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+        LOG_WARN("unexpected type", K(ret), K(wkb_type));
         break;
       }
     }
@@ -444,12 +467,14 @@ int ObPolygonTypeCast::cast(const ObGeometry &src,
 
   if (OB_ISNULL(allocator)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("allocator is null", K(ret), K(wkb_type));
   } else if (ObGeoType::LINESTRING != wkb_type &&
              ObGeoType::POLYGON != wkb_type &&
              ObGeoType::MULTILINESTRING != wkb_type &&
              ObGeoType::MULTIPOLYGON != wkb_type &&
              ObGeoType::GEOMETRYCOLLECTION != wkb_type) {
     ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+    LOG_WARN("unexpected type", K(ret), K(wkb_type));
   } else {
     switch (wkb_type) {
       // LINESTRING -> POLYGON
@@ -458,6 +483,7 @@ int ObPolygonTypeCast::cast(const ObGeometry &src,
         // If the back and front of the linestring are not the same point, this cannot be a linear ring.
         if (line.size() < 4 || !ObGeometryTypeCastUtil::is_line_can_ring(line)) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+          LOG_WARN("unexpected size", K(ret), K(line.size()));
         } else {
           typename L::const_iterator iter = line.begin();
           for (; OB_SUCC(ret) && iter != line.end(); ++iter) {
@@ -472,6 +498,7 @@ int ObPolygonTypeCast::cast(const ObGeometry &src,
               for (int32_t i = 0; OB_SUCC(ret) && i < line.size(); i++) {
                 if (!ObGeometryTypeCastUtil::is_point_equal(line[i], new_poly->exterior_ring()[i])) {
                   ret = OB_ERR_INVALID_CAST_POLYGON_RING_DIRECTION;
+                  LOG_WARN("invalid ring direction", K(ret));
                 }
               }
             }
@@ -496,8 +523,10 @@ int ObPolygonTypeCast::cast(const ObGeometry &src,
           // If the back and front of the linestring are not the same point, this cannot be a linear ring.
           if (line.size() < 4 || !ObGeometryTypeCastUtil::is_line_can_ring(line)) {
             ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+            LOG_WARN("unexpected size", K(ret), K(line.size()));
           } else if (OB_ISNULL(buf = allocator->alloc(sizeof(LR)))) {
             ret = OB_ALLOCATE_MEMORY_FAILED;
+            LOG_WARN("fail to alloc memory", K(ret), K(sizeof(LR)));
           } else {
             LR *lr = new (buf) LR (src.get_srid(), *allocator);
             typename L::const_iterator l_iter = line.begin();
@@ -506,6 +535,7 @@ int ObPolygonTypeCast::cast(const ObGeometry &src,
               }
             }
             if (OB_SUCC(ret) && OB_FAIL(res.push_back(*lr))) {
+              LOG_WARN("fail to push back linearring", K(ret));
             }
             // Flip polygon rings and compare order of points with original
             // linestring, to check whether input linestring was valid
@@ -518,6 +548,7 @@ int ObPolygonTypeCast::cast(const ObGeometry &src,
                 for (int32_t i = 0; OB_SUCC(ret) && i < line.size(); i++) {
                   if (!ObGeometryTypeCastUtil::is_point_equal(line[i], (*tmp_lr)[i])) {
                     ret = OB_ERR_INVALID_CAST_POLYGON_RING_DIRECTION;
+                    LOG_WARN("invalid ring direction", K(ret));
                   }
                 }
               }
@@ -532,6 +563,7 @@ int ObPolygonTypeCast::cast(const ObGeometry &src,
         const MPL &mpoly = *static_cast<const MPL *>(&src);
         if (mpoly.size() != 1) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+          LOG_WARN("unexpected size", K(ret), K(mpoly.size()));
         } else {
           res = mpoly.front();
         }
@@ -543,6 +575,7 @@ int ObPolygonTypeCast::cast(const ObGeometry &src,
         const GC &gc = *static_cast<const GC *>(&src);
         if (gc.size() != 1) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+          LOG_WARN("unexpected size", K(ret), K(gc.size()));
         } else if (ObGeoType::POLYGON != gc.front().type()) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
           LOG_WARN("unexpected type", K(ret), K(gc.front().type()));
@@ -554,6 +587,7 @@ int ObPolygonTypeCast::cast(const ObGeometry &src,
 
       default: {
         ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+        LOG_WARN("invalid type", K(ret), K(wkb_type));
         break;
       }
     }
@@ -579,6 +613,7 @@ int ObMultiPointTypeCast::cast(const ObGeometry &src,
       ObGeoType::MULTIPOINT != wkb_type &&
       ObGeoType::GEOMETRYCOLLECTION != wkb_type) {
     ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+    LOG_WARN("unexpected type", K(ret), K(wkb_type));
   } else {
     switch (wkb_type) {
       // POINT -> MULTIPOINT
@@ -616,11 +651,13 @@ int ObMultiPointTypeCast::cast(const ObGeometry &src,
         const GC &gc = *static_cast<const GC *>(&src);
         if (gc.is_empty()) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+          LOG_WARN("gc is empty", K(ret), K(gc.is_empty()));
         } else {
           typename GC::const_iterator iter = gc.begin();
           for (; OB_SUCC(ret) && iter != gc.end(); ++iter) {
             if (ObGeoType::POINT != (*iter)->type()) {
               ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+              LOG_WARN("invalid type", K(ret), K((*iter)->type()));
             } else {
               const P &po = *static_cast<const P *>(*iter);
               if (OB_FAIL(res.push_back(po.data()))) {
@@ -633,6 +670,7 @@ int ObMultiPointTypeCast::cast(const ObGeometry &src,
 
       default: {
         ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+        LOG_WARN("invalid type", K(ret), K(wkb_type));
         break;
       }
     }
@@ -655,12 +693,14 @@ int ObMultiLineStringTypeCast::cast(const ObGeometry &src,
 
   if (OB_ISNULL(allocator)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("allocator is null", K(ret), K(wkb_type));
   } else if (ObGeoType::LINESTRING != wkb_type &&
              ObGeoType::POLYGON != wkb_type &&
              ObGeoType::MULTILINESTRING != wkb_type &&
              ObGeoType::MULTIPOLYGON != wkb_type &&
              ObGeoType::GEOMETRYCOLLECTION != wkb_type) {
     ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+    LOG_WARN("unexpected type", K(ret), K(wkb_type));
   } else {
     switch (wkb_type) {
       // LINESTRING -> MULTILINESTRING
@@ -684,6 +724,7 @@ int ObMultiLineStringTypeCast::cast(const ObGeometry &src,
           }
           if (OB_ISNULL(buf = allocator->alloc(sizeof(L)))) {
             ret = OB_ALLOCATE_MEMORY_FAILED;
+            LOG_WARN("fail to alloc memory", K(ret), K(sizeof(L)));
           } else {
             L *line = new (buf) L (src.get_srid(), *allocator);
             for (int32_t j = 0; OB_SUCC(ret) && j < lr->size(); j++) {
@@ -691,6 +732,7 @@ int ObMultiLineStringTypeCast::cast(const ObGeometry &src,
               }
             }
             if (OB_SUCC(ret) && OB_FAIL(res.push_back(*line))) {
+              LOG_WARN("fail to push back linestring", K(ret), K(i));
             }
           }
         }
@@ -713,10 +755,12 @@ int ObMultiLineStringTypeCast::cast(const ObGeometry &src,
         for (int32_t i = 0; OB_SUCC(ret) && i < mpoly.size(); i++) {
           if (mpoly[i].size() != 1) {
             ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+            LOG_WARN("unexpected size", K(ret), K(mpoly[i].size()));
           } else {
             void *buf = NULL;
             if (OB_ISNULL(buf = allocator->alloc(sizeof(L)))) {
               ret = OB_ALLOCATE_MEMORY_FAILED;
+              LOG_WARN("fail to alloc memory", K(ret), K(sizeof(L)));
             } else {
               L *line = new (buf) L (src.get_srid(), *allocator);
               for (int32_t j = 0; OB_SUCC(ret) && j < mpoly[i].exterior_ring().size(); j++) {
@@ -724,6 +768,7 @@ int ObMultiLineStringTypeCast::cast(const ObGeometry &src,
                 }
               }
               if (OB_SUCC(ret) && OB_FAIL(res.push_back(*line))) {
+                LOG_WARN("fail to push back linestring", K(ret), K(i));
               }
             }
           }
@@ -736,11 +781,13 @@ int ObMultiLineStringTypeCast::cast(const ObGeometry &src,
         const GC &gc = *static_cast<const GC *>(&src);
         if (gc.is_empty()) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+          LOG_WARN("gc is empty", K(ret), K(gc.is_empty()));
         } else {
           typename GC::const_iterator iter = gc.begin();
           for (; OB_SUCC(ret) && iter != gc.end(); ++iter) {
             if (ObGeoType::LINESTRING != (*iter)->type()) {
               ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+              LOG_WARN("invalid type", K(ret), K((*iter)->type()));
             } else {
               const L &line = *static_cast<const L *>(*iter);
               if (OB_FAIL(res.push_back(line))) {
@@ -753,6 +800,7 @@ int ObMultiLineStringTypeCast::cast(const ObGeometry &src,
 
       default: {
         ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+        LOG_WARN("invalid type", K(ret), K(wkb_type));
         break;
       }
     }
@@ -775,11 +823,13 @@ int ObMultiPolygonTypeCast::cast(const ObGeometry &src,
 
   if (OB_ISNULL(allocator)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("allocator is null", K(ret), K(wkb_type));
   } else if (ObGeoType::POLYGON != wkb_type &&
              ObGeoType::MULTILINESTRING != wkb_type &&
              ObGeoType::MULTIPOLYGON != wkb_type &&
              ObGeoType::GEOMETRYCOLLECTION != wkb_type) {
     ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+    LOG_WARN("unexpected type", K(ret), K(wkb_type));
   } else {
     switch (wkb_type) {
       // POLYGON -> MULTIPOLYGON
@@ -800,10 +850,13 @@ int ObMultiPolygonTypeCast::cast(const ObGeometry &src,
           // If the back and front of the linestring are not the same point, this cannot be a linear ring.
           if (line.size() < 4 || !ObGeometryTypeCastUtil::is_line_can_ring(line)) {
             ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+            LOG_WARN("unexpected size", K(ret), K(line.size()));
           } else if (OB_ISNULL(la_buf = allocator->alloc(sizeof(LR)))) {
             ret = OB_ALLOCATE_MEMORY_FAILED;
+            LOG_WARN("fail to alloc memory", K(ret), K(sizeof(LR)));
           } else if (OB_ISNULL(poly_buf = allocator->alloc(sizeof(PL)))) {
             ret = OB_ALLOCATE_MEMORY_FAILED;
+            LOG_WARN("fail to alloc memory", K(ret), K(sizeof(PL)));
           } else {
             LR *lr = new (la_buf) LR (src.get_srid(), *allocator);
             PL *poly = new (poly_buf) PL (src.get_srid(), *allocator);
@@ -813,6 +866,7 @@ int ObMultiPolygonTypeCast::cast(const ObGeometry &src,
               }
             }
             if (OB_SUCC(ret) && OB_FAIL(poly->push_back(*lr))) {
+              LOG_WARN("fail to push back linearring", K(ret));
             }
 
             // Flip polygon rings and compare order of points with original
@@ -827,9 +881,11 @@ int ObMultiPolygonTypeCast::cast(const ObGeometry &src,
                 for (int32_t j = 0; OB_SUCC(ret) && j < line.size(); j++) {
                   if (!ObGeometryTypeCastUtil::is_point_equal(line[j], new_poly->exterior_ring()[j])) {
                     ret = OB_ERR_INVALID_CAST_POLYGON_RING_DIRECTION;
+                    LOG_WARN("invalid ring direction", K(ret));
                   }
                 }
                 if (OB_SUCC(ret) && OB_FAIL(res.push_back(*new_poly))) {
+                  LOG_WARN("fail to push back polygon", K(ret), K(i));
                 }
               }
             }
@@ -853,11 +909,13 @@ int ObMultiPolygonTypeCast::cast(const ObGeometry &src,
         const GC &gc = *static_cast<const GC *>(&src);
         if (gc.is_empty()) {
           ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+          LOG_WARN("gc is empty", K(ret), K(gc.is_empty()));
         } else {
           typename GC::const_iterator iter = gc.begin();
           for (; OB_SUCC(ret) && iter != gc.end(); ++iter) {
             if (ObGeoType::POLYGON != (*iter)->type()) {
               ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+              LOG_WARN("invalid type", K(ret), K((*iter)->type()));
             } else {
               const PL &poly = *static_cast<const PL *>(*iter);
               if (OB_FAIL(res.push_back(poly))) {
@@ -870,6 +928,7 @@ int ObMultiPolygonTypeCast::cast(const ObGeometry &src,
 
       default: {
         ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+        LOG_WARN("invalid type", K(ret), K(wkb_type));
         break;
       }
     }
@@ -892,6 +951,7 @@ int ObGeomcollectionTypeCast::cast(const ObGeometry &src,
 
   if (OB_ISNULL(allocator)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("allocator is null", K(ret), K(wkb_type));
   } else {
     switch (wkb_type) {
       // POINT/LINESTRING/POLYGON -> GEOMETRYCOLLECTION
@@ -911,6 +971,7 @@ int ObGeomcollectionTypeCast::cast(const ObGeometry &src,
           void *buf = NULL;
           if (OB_ISNULL(buf = allocator->alloc(sizeof(P)))) {
             ret = OB_ALLOCATE_MEMORY_FAILED;
+            LOG_WARN("fail to alloc memory", K(ret), K(sizeof(P)));
           } else {
             double x = iter->template get<0>();
             double y = iter->template get<1>();
@@ -957,6 +1018,7 @@ int ObGeomcollectionTypeCast::cast(const ObGeometry &src,
 
       default: {
         ret = OB_ERR_INVALID_CAST_TO_GEOMETRY;
+        LOG_WARN("invalid type", K(ret), K(wkb_type));
         break;
       }
     }

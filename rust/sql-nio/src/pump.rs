@@ -15,9 +15,10 @@
 use crate::*;
 
 use crate::capability::session_client_capabilities;
+use crate::ffi_check::checked_out_range;
 
 pub(crate) fn deliver_to_cpp(
-    handler: Handler,
+    cb: NioCallbacks,
     sess: *mut c_void,
     body: *mut c_char,
     body_len: usize,
@@ -29,9 +30,9 @@ pub(crate) fn deliver_to_cpp(
     if (packet_kind == NIO_PACKET_COMMAND) != command_view.is_some() {
         return false;
     }
-    unsafe {
-        ob_sql_sock_handler_on_readable(
-            handler.0,
+    if let Some(on_readable) = cb.on_readable {
+        on_readable(
+            cb.ctx,
             sess,
             body,
             body_len as i64,
@@ -40,6 +41,8 @@ pub(crate) fn deliver_to_cpp(
             command_view.map_or(std::ptr::null(), |view| view as *const _),
             generation,
         ) == 0
+    } else {
+        false
     }
 }
 
@@ -171,17 +174,7 @@ pub(crate) fn send_greeting(conn: &Arc<Conn>, greeting: &NioGreetingInfo) -> boo
         match g.sock.write(&out[pos..]) {
             Ok(0) => return false,
             Ok(k) => pos += k,
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // Admission registers writable interest for this pending tail.
-                // Waiting here would prevent the reactor from serving other
-                // clients or processing shutdown on a bounded transport.
-                if g.outbuf.try_reserve(out.len() - pos).is_err() {
-                    return false;
-                }
-                g.outbuf.extend_from_slice(&out[pos..]);
-                g.want_write = true;
-                break;
-            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
             Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(_) => return false,
         }
@@ -189,7 +182,7 @@ pub(crate) fn send_greeting(conn: &Arc<Conn>, greeting: &NioGreetingInfo) -> boo
     true
 }
 
-pub(crate) fn pump(conn: &Arc<Conn>, handler: Handler) -> bool {
+pub(crate) fn pump(conn: &Arc<Conn>, cb: NioCallbacks) -> bool {
     if conn.request_is_busy() {
         return true;
     }
@@ -203,15 +196,15 @@ pub(crate) fn pump(conn: &Arc<Conn>, handler: Handler) -> bool {
     }
     let read_state = conn.mu.lock().unwrap().read_state;
     let handled = match read_state {
-        ReadState::Command => decode_pump(conn, handler),
-        ReadState::Login => connect_pump(conn, handler),
-        ReadState::ChangeUserAuth { expected_seq } => auth_switch_pump(conn, handler, expected_seq),
+        ReadState::Command => decode_pump(conn, cb),
+        ReadState::Login => connect_pump(conn, cb),
+        ReadState::ChangeUserAuth { expected_seq } => auth_switch_pump(conn, cb, expected_seq),
     };
     discharge_tls_arm(conn);
     handled
 }
 
-pub(crate) fn auth_switch_pump(conn: &Arc<Conn>, handler: Handler, expected_seq: u8) -> bool {
+pub(crate) fn auth_switch_pump(conn: &Arc<Conn>, cb: NioCallbacks, expected_seq: u8) -> bool {
     let peer_closed_before = conn.peer_closed.load(Ordering::Acquire);
     let protocol = WireProtocol::negotiated(conn);
     let parsed = {
@@ -236,7 +229,7 @@ pub(crate) fn auth_switch_pump(conn: &Arc<Conn>, handler: Handler, expected_seq:
     };
     deliver_decoded_packet(
         conn,
-        handler,
+        cb,
         packet,
         NIO_PACKET_AUTH_SWITCH_RESPONSE,
         None,
@@ -252,6 +245,9 @@ pub unsafe extern "C" fn nio_get_login_view(
     generation: u64,
     out: *mut NioLoginView,
 ) -> c_int {
+    if checked_out_range(out).is_none() {
+        return -1;
+    }
     let conn = match conn_of(sess) {
         Some(c) => c,
         None => return -1,
@@ -259,9 +255,10 @@ pub unsafe extern "C" fn nio_get_login_view(
     let g = conn.mu.lock().unwrap();
     if !valid_request_generation(&conn, generation)
         || !g.response.is_active(generation)
-        || g.active_request_body
+        || !g
+            .active_request_body
             .as_ref()
-            .is_none_or(|body| body.generation != generation)
+            .is_some_and(|body| body.generation == generation)
     {
         return -1;
     }
@@ -303,6 +300,9 @@ pub unsafe extern "C" fn nio_get_tls_session_info(
     generation: u64,
     out: *mut NioTlsSessionInfo,
 ) -> c_int {
+    if checked_out_range(out).is_none() {
+        return -1;
+    }
     let conn = match conn_of(sess) {
         Some(c) => c,
         None => return -1,
@@ -310,9 +310,10 @@ pub unsafe extern "C" fn nio_get_tls_session_info(
     let mut g = conn.mu.lock().unwrap();
     if !valid_request_generation(&conn, generation)
         || !g.response.is_active(generation)
-        || g.active_request_body
+        || !g
+            .active_request_body
             .as_ref()
-            .is_none_or(|body| body.generation != generation)
+            .is_some_and(|body| body.generation == generation)
     {
         return -1;
     }
@@ -390,7 +391,7 @@ fn tls_string_view(value: &[u8]) -> NioTlsStringView {
     }
 }
 
-pub(crate) fn connect_pump(conn: &Arc<Conn>, handler: Handler) -> bool {
+pub(crate) fn connect_pump(conn: &Arc<Conn>, cb: NioCallbacks) -> bool {
     let peer_closed_before = conn.peer_closed.load(Ordering::Acquire);
     let (parsed, tls_active) = {
         let mut g = conn.mu.lock().unwrap();
@@ -433,7 +434,7 @@ pub(crate) fn connect_pump(conn: &Arc<Conn>, handler: Handler) -> bool {
     conn.transport_caps
         .store(parsed_login.transport_caps, Ordering::Release);
     conn.mu.lock().unwrap().login = Some(parsed_login);
-    deliver_decoded_packet(conn, handler, packet, NIO_PACKET_LOGIN, None, current_peer_eof)
+    deliver_decoded_packet(conn, cb, packet, NIO_PACKET_LOGIN, None, current_peer_eof)
 }
 
 pub(crate) fn refuse_login(conn: &Arc<Conn>, msg: &[u8]) -> bool {
@@ -452,7 +453,7 @@ pub(crate) fn refuse_login(conn: &Arc<Conn>, msg: &[u8]) -> bool {
     true
 }
 
-pub(crate) fn decode_pump(conn: &Arc<Conn>, handler: Handler) -> bool {
+pub(crate) fn decode_pump(conn: &Arc<Conn>, cb: NioCallbacks) -> bool {
     let protocol = WireProtocol::negotiated(conn);
     let peer_closed_before = conn.peer_closed.load(Ordering::Acquire);
     let parsed = {
@@ -485,7 +486,7 @@ pub(crate) fn decode_pump(conn: &Arc<Conn>, handler: Handler) -> bool {
     };
     deliver_decoded_packet(
         conn,
-        handler,
+        cb,
         packet,
         NIO_PACKET_COMMAND,
         Some(command_view),
@@ -493,7 +494,7 @@ pub(crate) fn decode_pump(conn: &Arc<Conn>, handler: Handler) -> bool {
     )
 }
 
-#[cfg(all(unix, feature = "native-network"))]
+#[cfg(unix)]
 fn read_raw_fd(inbuf: &mut Vec<u8>, fd: c_int, read_len: usize) -> std::io::Result<usize> {
     if inbuf.spare_capacity_mut().is_empty() {
         inbuf
@@ -514,13 +515,13 @@ fn read_raw_fd(inbuf: &mut Vec<u8>, fd: c_int, read_len: usize) -> std::io::Resu
     }
 }
 
-#[cfg(all(unix, feature = "native-network"))]
+#[cfg(unix)]
 pub(crate) fn read_raw_input(g: &mut ConnInner, read_len: usize) -> std::io::Result<usize> {
     let fd = raw_fd(&g.sock);
     read_raw_fd(&mut g.inbuf, fd, read_len)
 }
 
-#[cfg(any(not(unix), feature = "memory-transport"))]
+#[cfg(not(unix))]
 pub(crate) fn read_raw_input(g: &mut ConnInner, read_len: usize) -> std::io::Result<usize> {
     let mut tmp = [0u8; 16 * 1024];
     let n = g.sock.read(&mut tmp[..read_len])?;

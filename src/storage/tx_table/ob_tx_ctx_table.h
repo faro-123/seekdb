@@ -26,7 +26,6 @@ namespace oceanbase
 namespace transaction
 {
   class ObLSTxCtxMgr;
-  class TxCtxCache;
 }
 namespace storage
 {
@@ -34,8 +33,7 @@ namespace storage
 class ObTxCtxTableRecoverHelper
 {
 public:
-  ObTxCtxTableRecoverHelper()
-      : allocator_(), buf_(allocator_), tx_ctx_cache_(nullptr) { reset(); }
+  ObTxCtxTableRecoverHelper() : allocator_(), buf_(allocator_) { reset(); }
   ~ObTxCtxTableRecoverHelper() { destroy(); }
   void reset();
   void destroy();
@@ -63,7 +61,6 @@ private:
   ObTxLocalBuffer buf_;
   int64_t prev_end_pos_;
   ObTxCtxTableInfo ctx_info_;
-  transaction::TxCtxCache *tx_ctx_cache_;
 };
 
 //
@@ -115,7 +112,6 @@ public:
 
   // We use the method to recover the tx_ctx_table for reboot.
   int recover(const blocksstable::ObDatumRow &row, ObTxDataTable &tx_data_table);
-  void finish_recover() { recover_helper_.reset(); }
 
   int check_with_tx_data(const transaction::ObTransID tx_id, ObITxDataCheckFunctor &fn);
 

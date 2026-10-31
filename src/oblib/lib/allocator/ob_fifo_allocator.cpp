@@ -55,8 +55,11 @@ int ObFIFOAllocator::init(ObIAllocator *allocator,
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret));
   } else if (OB_UNLIKELY(page_size <= 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arg", K(ret),
+                  KP(allocator), K(page_size));
   }
   // For simplicity, here we let max_size not less than one page
   else if (init_size < 0 ||
@@ -64,6 +67,8 @@ int ObFIFOAllocator::init(ObIAllocator *allocator,
            max_size < page_size ||
            init_size > max_size) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arg", K(ret),
+                  K(init_size), K(idle_size), K(max_size), K(page_size));
   } else {
     if (NULL == allocator) {
       allocator_ = &malloc_allocator_;
@@ -97,7 +102,9 @@ int ObFIFOAllocator::set_idle(const int64_t idle_size, const bool sync)
   ObLockGuard<ObSpinLock> guard(lock_);
   if (OB_UNLIKELY(!is_inited_) || OB_UNLIKELY(nullptr == allocator_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ObFIFOAllocator not init", K(is_inited_), KP(allocator_), KCSTRING(lbt()));
   } else if (idle_size < 0) {
+    LOG_WARN("invalid arg", K(idle_size));
   } else {
     idle_size_ = idle_size;
     if (sync) {
@@ -156,8 +163,10 @@ int ObFIFOAllocator::set_max(const int64_t max_size, const bool sync)
   ObLockGuard<ObSpinLock> guard(lock_);
   if (OB_UNLIKELY(!is_inited_) || OB_UNLIKELY(nullptr == allocator_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("ObFIFOAllocator not init", K(is_inited_), KP(allocator_), KCSTRING(lbt()));
   } else if (max_size < page_size_) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arg", K(max_size), K(page_size_));
   } else {
     if (sync) {
       if (total() > max_size) {

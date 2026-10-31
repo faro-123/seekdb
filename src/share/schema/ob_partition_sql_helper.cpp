@@ -123,6 +123,7 @@ int ObPartSqlHelper::init(const ObPartitionSchema *table)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!tables_.empty())) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", KR(ret), K(tables_));
   } else if (OB_FAIL(tables_.push_back(table))) {
   }
   return ret;
@@ -133,6 +134,7 @@ int ObPartSqlHelper::init(ObIArray<const ObPartitionSchema *> &tables)
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!tables_.empty())) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", KR(ret), K(tables_));
   } else if (OB_FAIL(tables_.assign(tables))) {
   }
   return ret;
@@ -147,6 +149,7 @@ int ObPartSqlHelper::write_batch_sql_(const bool only_history, BatchInsertCtx &c
     if (OB_FAIL(sql_client_.write(ctx.sql_.ptr(), affected_rows))) {
     } else if (affected_rows != ctx.count_) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("affected_rows is unexpected", K(ret), K(ctx), K(affected_rows));
     }
   }
   if (OB_SUCC(ret) && !ctx.history_sql_.empty()) {
@@ -154,6 +157,7 @@ int ObPartSqlHelper::write_batch_sql_(const bool only_history, BatchInsertCtx &c
     if (OB_FAIL(sql_client_.write(ctx.history_sql_.ptr(), affected_rows))) {
     } else if (affected_rows != ctx.count_) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("history affected_rows is unexpected", K(ret), K(ctx), K(affected_rows));
     }
   }
   ctx.reset();
@@ -190,9 +194,11 @@ int ObPartSqlHelper::generate_and_batch_write_sqls_(
     }
   }
   if (FAILEDx(dml.add_column("is_deleted", is_deleted() ? 1 : 0))) {
+    LOG_WARN("add column failed", K(ret));
   } else if (OB_FAIL(generate_batch_sql_(dml, history_table_name, ctx.history_sql_))) {
   } else if (FALSE_IT(ctx.count_++)) {
   } else if (ctx.count_ >= MAX_DML_NUM && OB_FAIL(write_batch_sql_(only_history, ctx))) {
+    LOG_WARN("failed to write batch sql", KR(ret), K(only_history), K(ctx));
   }
   return ret;
 }
@@ -203,6 +209,7 @@ int ObPartSqlHelper::iterate_all_part_(const bool only_history, const ObPartitio
   int ret = OB_SUCCESS;
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (table->is_user_partition_table()) {
     
     
@@ -215,6 +222,7 @@ int ObPartSqlHelper::iterate_all_part_(const bool only_history, const ObPartitio
     int64_t total_part_num = part_num + hidden_part_num; 
     if (OB_ISNULL(part_array)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("part array is null", K(ret), KP(part_array));
     }
     for (int64_t i = 0; OB_SUCC(ret) && i < total_part_num; i++) {
       dml.reset();
@@ -223,14 +231,17 @@ int ObPartSqlHelper::iterate_all_part_(const bool only_history, const ObPartitio
         part = part_array[i];
       } else if (OB_ISNULL(hidden_part_array)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("hidden part array is null", K(ret), KP(hidden_part_array)); 
       } else {
         part = hidden_part_array[i - part_num];
       }
       if (OB_FAIL(ret)) {
       } else if (OB_ISNULL(part)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("part is null", K(ret), K(i), K(part_num), K(hidden_part_num));
       }
       if (FAILEDx(add_part_dml_column(table, *part, dml))) {
+        LOG_WARN("add dml column failed", K(ret), K(*part));
       } else if (OB_FAIL(generate_and_batch_write_sqls_(dml, only_history, OB_ALL_PART_TNAME,
               OB_ALL_PART_HISTORY_TNAME, ctx))) {
       }
@@ -246,6 +257,7 @@ int ObPartSqlHelper::iterate_all_sub_part_(const bool only_history,
   UNUSED(include_hidden);
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (table->is_user_subpartition_table()) {
     
     
@@ -259,12 +271,14 @@ int ObPartSqlHelper::iterate_all_sub_part_(const bool only_history,
       int64_t part_id = -1;
       if (OB_ISNULL(part_array) || OB_ISNULL(part_array[i])) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("subpart_array is invalid", KR(ret));
       } else {
         subpart_array = part_array[i]->get_subpart_array();
         sub_part_num = part_array[i]->get_subpartition_num();
         part_id = part_array[i]->get_part_id();
         if (part_id < 0 || sub_part_num < 0) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("part_id or sub_part_num is invalid", K(ret), K(part_id), K(sub_part_num));
         }
       }
       for (int64_t j = 0; OB_SUCC(ret) && j < sub_part_num; j++) {
@@ -272,11 +286,13 @@ int ObPartSqlHelper::iterate_all_sub_part_(const bool only_history,
         int64_t sub_part_id = -1;
         if (OB_ISNULL(subpart_array) || OB_ISNULL(subpart_array[j])) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("subpart_array is invalid", KR(ret));
         } else {
           subpart = subpart_array[j];
           sub_part_id = subpart->get_sub_part_id();
           if (sub_part_id < 0) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("sub_part_id or is invalid", K(ret), K(sub_part_id));
           } else if (OB_FAIL(add_subpart_dml_column(table, part_id, sub_part_id, *subpart, dml))) {
           } else if (OB_FAIL(generate_and_batch_write_sqls_(dml, only_history,
                   OB_ALL_SUB_PART_TNAME, OB_ALL_SUB_PART_HISTORY_TNAME, ctx))) {
@@ -295,6 +311,7 @@ int ObPartSqlHelper::iterate_all_def_sub_part_(const bool only_history,
   UNUSED(include_hidden);
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (table->is_user_subpartition_table()
              && table->has_sub_part_template_def()) {
     
@@ -306,6 +323,7 @@ int ObPartSqlHelper::iterate_all_def_sub_part_(const bool only_history,
       dml.reset();
       if (OB_ISNULL(def_subpart_array) || OB_ISNULL(def_subpart_array[j])) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("def_subpart is null", KR(ret), KP(def_subpart_array), K(j));
       } else if (OB_FAIL(add_def_subpart_dml_column(
                  table, j, *(def_subpart_array[j]), dml))) {
       } else if (OB_FAIL(generate_and_batch_write_sqls_(dml, only_history,
@@ -323,6 +341,7 @@ int ObPartSqlHelper::iterate_part_info_(const bool only_history,
   UNUSED(include_hidden);
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (table->is_user_partition_table()) {
     ObDMLSqlSplicer dml;
     
@@ -377,6 +396,7 @@ int ObAddPartInfoHelper::add_part_info_dml_column(const ObPartitionSchema *table
    int ret = OB_SUCCESS;
    if (OB_ISNULL(table)) {
      ret = OB_ERR_UNEXPECTED;
+     LOG_WARN("table is null", K(ret));
    } else {
      const ObPartitionOption &part_option = table->get_part_option();
      const ObSubPartitionOption &subpart_option = table->get_sub_part_option();
@@ -390,6 +410,7 @@ int ObAddPartInfoHelper::add_part_info_dml_column(const ObPartitionSchema *table
        || OB_FAIL(dml.add_column("def_sub_part_num", subpart_option.get_part_num()))
        || OB_FAIL(dml.add_pk_column("schema_version", table->get_schema_version()))
        || OB_FAIL(dml.add_column("sub_part_expr", subpart_option.get_part_func_expr()))) {
+       LOG_WARN("add column failed", K(ret));
      }
    }
    return ret;
@@ -402,8 +423,10 @@ int ObAddPartInfoHelper::add_part_dml_column(const ObPartitionSchema *table,
   int ret = OB_SUCCESS;
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (part.get_part_idx() < 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("part_idx is invalid", KR(ret), K(part));
   } else {
     int64_t sub_part_num = 0;
     if (PARTITION_LEVEL_TWO == table->get_part_level()) {
@@ -428,6 +451,7 @@ int ObAddPartInfoHelper::add_part_dml_column(const ObPartitionSchema *table,
         || OB_FAIL(dml.add_column("partition_type", partition_type))
         || OB_FAIL(dml.add_column("tablet_id", part.get_tablet_id().id()))
         || OB_FAIL(dml.add_column("part_name", ObHexEscapeSqlStr(part.get_part_name())))) {
+      LOG_WARN("dml add part info failed", K(ret));
     } else if (OB_FAIL(add_part_high_bound_val_column(table, part, dml))) {
     } else if (OB_FAIL(add_part_list_val_column(table, part, dml))) {
     }
@@ -446,8 +470,10 @@ int ObAddPartInfoHelper::add_subpart_dml_column(const ObPartitionSchema *table,
   int ret = OB_SUCCESS;
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (subpart.get_sub_part_idx() < 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("subpart_idx is invalid", KR(ret), K(subpart));
   } else {
     PartitionType partition_type = subpart.get_partition_type();
     if (OB_FAIL(dml.add_pk_column("table_id", ObSchemaUtils::get_extract_schema_id(
@@ -466,6 +492,7 @@ int ObAddPartInfoHelper::add_subpart_dml_column(const ObPartitionSchema *table,
                                                    subpart.get_tablespace_id())))
         || OB_FAIL(dml.add_column("tablet_id", subpart.get_tablet_id().id()))
         || OB_FAIL(dml.add_column("sub_part_name", ObHexEscapeSqlStr(subpart.get_part_name())))) {
+        LOG_WARN("dml add part info failed", K(ret));
     } else if (OB_FAIL(add_subpart_high_bound_val_column(table, subpart, dml))) {
     } else if (OB_FAIL(add_subpart_list_val_column(table, subpart, dml))) {
     }
@@ -483,6 +510,7 @@ int ObAddPartInfoHelper::add_def_subpart_dml_column(const ObPartitionSchema *tab
   int ret = OB_SUCCESS;
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else {
     // For def subpartition, sub_part_idx and sub_part_id should be equal
     if (OB_FAIL(dml.add_pk_column("table_id", ObSchemaUtils::get_extract_schema_id(
@@ -497,6 +525,7 @@ int ObAddPartInfoHelper::add_def_subpart_dml_column(const ObPartitionSchema *tab
         || OB_FAIL(dml.add_column("tablespace_id", ObSchemaUtils::get_extract_schema_id(
                                                    subpart.get_tablespace_id())))
         || OB_FAIL(dml.add_column("sub_part_name", ObHexEscapeSqlStr(subpart.get_part_name())))) {
+        LOG_WARN("dml add part info failed", K(ret));
     } else if (OB_FAIL(add_subpart_high_bound_val_column(table, subpart, dml))) {
     } else if (OB_FAIL(add_subpart_list_val_column(table, subpart, dml))) {
     }
@@ -512,6 +541,7 @@ int ObAddPartInfoHelper::add_part_high_bound_val_column(const ObPartitionSchema 
   int ret = OB_SUCCESS;
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (table->is_range_part()) {
     if (OB_FAIL(add_high_bound_val_column(table, part, dml))) {
     }
@@ -528,6 +558,7 @@ int ObAddPartInfoHelper::add_part_list_val_column(const ObPartitionSchema *table
   int ret = OB_SUCCESS;
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (table->is_list_part()) {
     if (OB_FAIL(add_list_val_column(table, part, dml))) {
     }
@@ -544,6 +575,7 @@ int ObAddPartInfoHelper::add_subpart_high_bound_val_column(const ObPartitionSche
   int ret = OB_SUCCESS;
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (table->is_range_subpart()) {
     if (OB_FAIL(add_high_bound_val_column(table, part, dml))) {
     }
@@ -560,6 +592,7 @@ int ObAddPartInfoHelper::add_subpart_list_val_column(const ObPartitionSchema *ta
   int ret = OB_SUCCESS;
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (table->is_list_subpart()) {
     if (OB_FAIL(add_list_val_column(table, part, dml))) {
     }
@@ -580,6 +613,7 @@ int ObAddPartInfoHelper::add_high_bound_val_column(
     high_bound_val_ = static_cast<char *>(allocator_.alloc(OB_MAX_B_HIGH_BOUND_VAL_LENGTH));
     if (OB_ISNULL(high_bound_val_)) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("high_bound_val is null", K(ret), K(high_bound_val_));
     }
   }
   // determine if it is a list partition
@@ -591,6 +625,7 @@ int ObAddPartInfoHelper::add_high_bound_val_column(
     tz_info.set_offset(0);
     if (OB_ISNULL(table)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("table ptr is null", KR(ret));
     } else if (OB_FAIL(OTTZ_MGR.get_timezone_map(tz_info.get_tz_map_wrap()))) {
     } else if (OB_FAIL(ObPartitionUtils::convert_rowkey_to_sql_literal(
                part_option.get_high_bound_val(), high_bound_val_,
@@ -620,6 +655,7 @@ int ObAddPartInfoHelper::add_list_val_column(
     list_val_ = static_cast<char *>(allocator_.alloc(OB_MAX_B_PARTITION_EXPR_LENGTH));
     if (OB_ISNULL(list_val_)) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("list_val is null", K(ret), K(list_val_));
     }
   }
   // determine if it is a list partition, if it is a list partition
@@ -631,6 +667,7 @@ int ObAddPartInfoHelper::add_list_val_column(
     tz_info.set_offset(0);
     if (OB_ISNULL(table)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("table ptr is null", KR(ret));
     } else if (OB_FAIL(OTTZ_MGR.get_timezone_map(tz_info.get_tz_map_wrap()))) {
     } else if (OB_FAIL(ObPartitionUtils::convert_rows_to_sql_literal(
                part_option.get_list_row_values(), list_val_,
@@ -666,9 +703,11 @@ int ObDropPartInfoHelper::add_part_info_dml_column(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (OB_FAIL(dml.add_pk_column("table_id", ObSchemaUtils::get_extract_schema_id(
                                                       table->get_table_id())))
              || OB_FAIL(dml.add_pk_column("schema_version", table->get_schema_version()))) {
+    LOG_WARN("dml add part info failed", K(ret));
   }
   return ret;
 }
@@ -680,10 +719,12 @@ int ObDropPartInfoHelper::add_part_dml_column(const ObPartitionSchema *table,
   int ret = OB_SUCCESS;
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (OB_FAIL(dml.add_pk_column("table_id", ObSchemaUtils::get_extract_schema_id(
                                                       table->get_table_id())))
              || OB_FAIL(dml.add_pk_column("part_id", part.get_part_id()))
              || OB_FAIL(dml.add_pk_column("schema_version", table->get_schema_version()))) {
+    LOG_WARN("dml add part info failed", K(ret));
   }
   return ret;
 }
@@ -698,11 +739,13 @@ int ObDropPartInfoHelper::add_subpart_dml_column(const ObPartitionSchema *table,
   UNUSED(subpart);
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (OB_FAIL(dml.add_pk_column("table_id", ObSchemaUtils::get_extract_schema_id(
                                                       table->get_table_id())))
              || OB_FAIL(dml.add_pk_column("part_id", part_id))
              || OB_FAIL(dml.add_pk_column("sub_part_id", subpart_id))
              || OB_FAIL(dml.add_pk_column("schema_version", table->get_schema_version()))) {
+    LOG_WARN("dml add part info failed", K(ret));
   }
   return ret;
 }
@@ -716,10 +759,12 @@ int ObDropPartInfoHelper::add_def_subpart_dml_column(const ObPartitionSchema *ta
   UNUSED(subpart);
   if (OB_ISNULL(table)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (OB_FAIL(dml.add_pk_column("table_id", ObSchemaUtils::get_extract_schema_id(
                                                table->get_table_id())))
       || OB_FAIL(dml.add_pk_column("sub_part_id", subpart_idx))
       || OB_FAIL(dml.add_pk_column("schema_version", table->get_schema_version()))) {
+    LOG_WARN("dml add part info failed", K(ret));
   }
   return ret;
 }
@@ -733,6 +778,7 @@ int ObAddIncSubPartDMLGenerator::convert_to_dml(const PartInfo &part_info, ObDML
   int64_t subpart_idx = part_info.sub_part_idx_;
   if (subpart_idx < 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("subpart_idx is invalid", KR(ret), K(part_info));
   } else if (OB_FAIL(dml.add_pk_column("table_id", ObSchemaUtils::get_extract_schema_id(
                                                part_info.table_id_)))
       || OB_FAIL(dml.add_pk_column("part_id", part_info.part_id_))
@@ -753,6 +799,7 @@ int ObAddIncSubPartDMLGenerator::convert_to_dml(const PartInfo &part_info, ObDML
       || OB_FAIL(dml.add_column("b_list_val", part_info.b_list_val_))
       || OB_FAIL(dml.add_column("partition_type", partition_type))
       || OB_FAIL(dml.add_column("tablet_id", part_info.tablet_id_.id()))) {
+    LOG_WARN("dml add part info failed", K(ret));
   }
   if (OB_FAIL(ret)) {
     //nothing todo
@@ -766,8 +813,10 @@ int ObAddIncSubPartDMLGenerator::extract_part_info(PartInfo &part_info)
 
   if (OB_ISNULL(ori_table_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (part_idx_ < 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid part_idx", K(part_idx_), K(ret));
   } else {
     
     part_info.table_id_ = ori_table_->get_table_id();
@@ -808,6 +857,7 @@ int ObAddIncPartDMLGenerator::convert_to_dml(const PartInfo &part_info, ObDMLSql
   int64_t part_idx = part_info.part_idx_;
   if (part_idx < 0) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("part_idx is invalid", KR(ret), K(part_info));
   } else if (OB_FAIL(dml.add_pk_column("table_id", ObSchemaUtils::get_extract_schema_id(
                                                part_info.table_id_)))
       || OB_FAIL(dml.add_pk_column("part_id", part_info.part_id_))
@@ -830,6 +880,7 @@ int ObAddIncPartDMLGenerator::convert_to_dml(const PartInfo &part_info, ObDMLSql
       || OB_FAIL(dml.add_column("b_list_val", part_info.b_list_val_))
       || OB_FAIL(dml.add_column("partition_type", partition_type))
       || OB_FAIL(dml.add_column("tablet_id", part_info.tablet_id_.id()))) {
+    LOG_WARN("dml add part info failed", K(ret));
   }
   if (OB_FAIL(ret)) {
     //nothing todo
@@ -843,6 +894,7 @@ int ObAddIncPartDMLGenerator::extract_part_info(PartInfo &part_info)
 
   if (OB_ISNULL(ori_table_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else {
     int64_t sub_part_num = 0;
     if (PARTITION_LEVEL_TWO == ori_table_->get_part_level()) {
@@ -890,6 +942,7 @@ int ObDropIncSubPartDMLGenerator::convert_to_dml(const PartInfo &part_info, ObDM
       || OB_FAIL(dml.add_pk_column("sub_part_id", part_info.sub_part_id_))
       || OB_FAIL(dml.add_column("is_deleted", deleted))
       || OB_FAIL(dml.add_column("schema_version", part_info.schema_version_))) {
+    LOG_WARN("dml drop part info failed", K(ret));
   }
   return ret;
 }
@@ -916,6 +969,7 @@ int ObDropIncPartDMLGenerator::convert_to_dml(const PartInfo &part_info, ObDMLSq
                                                part_info.table_id_)))
       || OB_FAIL(dml.add_pk_column("part_id", part_info.part_id_))
       || OB_FAIL(dml.add_column("schema_version", part_info.schema_version_))) {
+    LOG_WARN("dml drop part info failed", K(ret));
   }
   return ret;
 }
@@ -938,8 +992,10 @@ int ObUpdatePartHelper::update_partition_info()
 
   if (OB_ISNULL(ori_table_) || OB_ISNULL(upd_table_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (!ori_table_->is_user_partition_table()) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("attempt to update partition informations of non-partitioned table", KR(ret), KPC(ori_table_));
   } else {
     
     
@@ -954,6 +1010,7 @@ int ObUpdatePartHelper::update_partition_info()
 
     if (OB_ISNULL(part_array) && OB_ISNULL(hidden_part_array)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("part array is null", K(ret), K(upd_table_));
     }
     for (int64_t i = 0; OB_SUCC(ret) && i < all_part_num; ++i) {
       ObPartition *part = nullptr;
@@ -964,6 +1021,7 @@ int ObUpdatePartHelper::update_partition_info()
       }
       if (OB_ISNULL(part)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("part array is null", K(ret), K(i), K(part_num), K(hidden_part_num), KPC(upd_table_));
       } else {
         HEAP_VAR(ObAddIncPartDMLGenerator, update_dml_gen,
                  ori_table_, *part, all_part_num, i, schema_version_) {
@@ -980,9 +1038,11 @@ int ObUpdatePartHelper::update_partition_info()
           // skip
         } else if (OB_ISNULL(part->get_subpart_array())) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("subpart array is null", K(ret));
         } else {
           // TODO: need to implement code to update subpartition
           ret = OB_NOT_SUPPORTED;
+          LOG_WARN("not support to update subpartition info", K(ret));
         }
       }
     }
@@ -995,6 +1055,7 @@ int ObUpdatePartHelper::update_partition_info()
       } else if (OB_FAIL(sql_client_.write(part_history_sql.ptr(), affected_rows))) {
       } else if (affected_rows != all_part_num) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("history affected_rows is unexpected", K(ret), K(affected_rows), K(part_num), K(hidden_part_num), K(part_history_sql));
       }
     }
 
@@ -1005,6 +1066,7 @@ int ObUpdatePartHelper::update_partition_info()
       } else if (OB_FAIL(sql_client_.write(part_sql.ptr(), affected_rows))) {
       } else if (affected_rows != 2 * all_part_num) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("affected_rows is unexpected", K(ret), K(affected_rows), K(part_num), K(hidden_part_num), K(part_sql));
       }
     }
   }
@@ -1017,6 +1079,7 @@ int ObAddIncPartHelper::add_partition_info()
   int ret = OB_SUCCESS;
   if (OB_ISNULL(ori_table_) || OB_ISNULL(inc_table_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (ori_table_->is_user_partition_table()) {
     
     
@@ -1030,11 +1093,13 @@ int ObAddIncPartHelper::add_partition_info()
     const int64_t deleted = false;
     if (OB_ISNULL(part_array)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("part array is null", K(ret), K(inc_table_));
     }
     for (int64_t i = 0; OB_SUCC(ret) && i < inc_part_num; ++i) {
       ObPartition *part = part_array[i];
       if (OB_ISNULL(part)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("part array is null", K(ret), K(i), K(inc_table_));
       } else {
         HEAP_VAR(ObAddIncPartDMLGenerator, part_dml_gen,
                  ori_table_, *part, inc_part_num, i, schema_version_) {
@@ -1053,6 +1118,7 @@ int ObAddIncPartHelper::add_partition_info()
           // skip
         } else if (OB_ISNULL(part->get_subpart_array())) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("subpart array is null", K(ret));
         } else {
           for (int64_t j = 0; OB_SUCC(ret) && j < part->get_subpartition_num(); j++) {
             inc_sub_part_num++;
@@ -1081,6 +1147,7 @@ int ObAddIncPartHelper::add_partition_info()
       } else if (OB_FAIL(sql_client_.write(part_history_sql.ptr(), affected_rows))) {
       } else if (affected_rows != inc_part_num) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("history affected_rows is unexpected", K(ret), K(inc_part_num), K(affected_rows));
       }
     }
 
@@ -1091,6 +1158,7 @@ int ObAddIncPartHelper::add_partition_info()
       } else if (OB_FAIL(sql_client_.write(part_sql.ptr(), affected_rows))) {
       } else if (affected_rows != inc_part_num) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("affected_rows is unexpected", K(ret), K(inc_part_num), K(affected_rows));
       }
     }
 
@@ -1102,6 +1170,7 @@ int ObAddIncPartHelper::add_partition_info()
       } else if (OB_FAIL(sql_client_.write(part_history_sql.ptr(), affected_rows))) {
       } else if (affected_rows != inc_sub_part_num) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("history affected_rows is unexpected", K(ret), K(inc_part_num), K(affected_rows));
       }
     }
 
@@ -1112,6 +1181,7 @@ int ObAddIncPartHelper::add_partition_info()
       } else if (OB_FAIL(sql_client_.write(part_sql.ptr(), affected_rows))) {
       } else if (affected_rows != inc_sub_part_num) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("affected_rows is unexpected", K(ret), K(inc_part_num), K(affected_rows));
       }
     }
   }
@@ -1123,6 +1193,7 @@ int ObAddIncSubPartHelper::add_subpartition_info(const bool is_subpart_idx_speci
   int ret = OB_SUCCESS;
   if (OB_ISNULL(ori_table_) || OB_ISNULL(inc_table_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else {
     
     
@@ -1136,14 +1207,17 @@ int ObAddIncSubPartHelper::add_subpartition_info(const bool is_subpart_idx_speci
     const int64_t deleted = false;
     if (OB_ISNULL(part_array)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("part array is null", K(ret), K(inc_table_));
     }
     for (int64_t i = 0; OB_SUCC(ret) && i < inc_part_num; ++i) {
       ObPartition *part = part_array[i];
       if (OB_ISNULL(part)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("part array is null", K(ret), K(i), K(inc_table_));
       } else {
         if (OB_ISNULL(part->get_subpart_array())) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("subpart array is null", K(ret));
         } else {
           for (int64_t j = 0; OB_SUCC(ret) && j < part->get_subpartition_num(); j++) {
             inc_sub_part_num++;
@@ -1151,6 +1225,7 @@ int ObAddIncSubPartHelper::add_subpartition_info(const bool is_subpart_idx_speci
             int64_t subpart_idx = j;
             if (OB_ISNULL(sub_part)) {
               ret = OB_ERR_UNEXPECTED;
+              LOG_WARN("unexpected null sub part", KR(ret), KP(part->get_subpart_array()[j]), K(j));
             } else if (is_subpart_idx_specified) {
               subpart_idx = sub_part->get_sub_part_idx();
             }
@@ -1180,6 +1255,7 @@ int ObAddIncSubPartHelper::add_subpartition_info(const bool is_subpart_idx_speci
       } else if (OB_FAIL(sql_client_.write(part_history_sql.ptr(), affected_rows))) {
       } else if (affected_rows != inc_sub_part_num) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("history affected_rows is unexpected", K(ret), K(inc_part_num), K(affected_rows));
       }
     }
 
@@ -1190,6 +1266,7 @@ int ObAddIncSubPartHelper::add_subpartition_info(const bool is_subpart_idx_speci
       } else if (OB_FAIL(sql_client_.write(part_sql.ptr(), affected_rows))) {
       } else if (affected_rows != inc_sub_part_num) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("affected_rows is unexpected", K(ret), K(inc_part_num), K(affected_rows));
       }
     }
   }
@@ -1201,6 +1278,7 @@ int ObDropIncPartHelper::drop_partition_info()
   int ret = OB_SUCCESS;
   if (OB_ISNULL(ori_table_) || OB_ISNULL(inc_table_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (ori_table_->is_user_partition_table()) {
     
     
@@ -1219,6 +1297,7 @@ int ObDropIncPartHelper::drop_partition_info()
       HEAP_VAR(ObDropIncPartDMLGenerator, part_dml_gen, *part, schema_version_) {
         if (OB_ISNULL(part)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("part is null", KR(ret), KP(part));
         } else if (OB_FAIL(part_dml_gen.gen_dml(dml))) {
         } else {
           const int64_t deleted = true;
@@ -1259,6 +1338,7 @@ int ObDropIncPartHelper::drop_partition_info()
       if (OB_FAIL(sql_client_.write(part_history_sql.ptr(), affected_rows))) {
       } else if (affected_rows != inc_part_num) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("history affected_rows is unexpected", K(ret), K(inc_part_num), K(affected_rows));
       }
     }
     if (OB_SUCC(ret) && inc_sub_part_num > 0) {
@@ -1266,6 +1346,7 @@ int ObDropIncPartHelper::drop_partition_info()
       if (OB_FAIL(sql_client_.write(sub_part_history_sql.ptr(), affected_rows))) {
       } else if (affected_rows != inc_sub_part_num) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("history affected_rows is unexpected", K(ret), K(inc_part_num), K(affected_rows));
       }
     }
   }
@@ -1277,6 +1358,7 @@ int ObDropIncSubPartHelper::drop_subpartition_info()
   int ret = OB_SUCCESS;
   if (OB_ISNULL(ori_table_) || OB_ISNULL(inc_table_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", K(ret));
   } else if (ori_table_->is_user_partition_table()) {
     
     
@@ -1292,6 +1374,7 @@ int ObDropIncSubPartHelper::drop_subpartition_info()
       ObPartition *part = part_array[i];
       if (OB_ISNULL(part)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("part_array[i] is null", K(ret), K(i));
       } else {
         int64_t subpart_num = part->get_subpartition_num();
         ObSubPartition **subpart_array = part->get_subpart_array();
@@ -1319,6 +1402,7 @@ int ObDropIncSubPartHelper::drop_subpartition_info()
       if (OB_FAIL(sql_client_.write(sub_part_history_sql.ptr(), affected_rows))) {
       } else if (affected_rows != inc_sub_part_num) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("history affected_rows is unexpected", K(ret), K(inc_part_num), K(affected_rows));
       }
     }
   }
@@ -1330,8 +1414,10 @@ int ObRenameIncPartHelper::rename_partition_info(const bool update_part_idx)
   int ret = OB_SUCCESS;
   if (OB_ISNULL(ori_table_) || OB_ISNULL(inc_table_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", KR(ret), KP(ori_table_), KP(inc_table_));
   } else if (!ori_table_->is_user_partition_table()) {
     ret = OB_NOT_SUPPORTED;
+    LOG_WARN("unsupport behavior on not user partition table", KR(ret), KPC(ori_table_));
   } else {
     
     const uint64_t table_id = ori_table_->get_table_id();
@@ -1344,19 +1430,25 @@ int ObRenameIncPartHelper::rename_partition_info(const bool update_part_idx)
     int64_t affected_rows = 0;
     if (OB_ISNULL(part_array)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("inc table part_array is null", KR(ret), KP(inc_table_));
     } else if (OB_UNLIKELY(1 != inc_part_num)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("inc part num should be 1", KR(ret), K(inc_part_num));
     } else if (OB_ISNULL(inc_part = part_array[0])) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("inc_part is null", KR(ret));
     } else if (OB_FAIL(dml.add_pk_column("table_id", ObSchemaUtils::get_extract_schema_id(table_id)))
           || OB_FAIL(dml.add_pk_column("part_id", inc_part->get_part_id()))
           || OB_FAIL(dml.add_column("schema_version", schema_version_))
           || OB_FAIL(dml.add_column("part_name", inc_part->get_part_name().ptr()))) {
+      LOG_WARN("dml add column failed", KR(ret));
     } else if (update_part_idx && OB_FAIL(dml.add_column("part_idx", inc_part->get_part_idx()))) {
+      LOG_WARN("dml add column failed", KR(ret));
     } else if (OB_FAIL(dml.splice_update_sql(share::OB_ALL_PART_TNAME, part_sql))) {
     } else if (OB_FAIL(sql_client_.write(part_sql.ptr(), affected_rows))) {
     } else if (OB_UNLIKELY(inc_part_num != affected_rows)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected affected rows", KR(ret), K(inc_part_num), K(affected_rows));
     } else {
       ObDMLSqlSplicer history_dml;
       ObSqlString part_history_sql;
@@ -1370,6 +1462,7 @@ int ObRenameIncPartHelper::rename_partition_info(const bool update_part_idx)
         } else if (OB_FAIL(sql_client_.write(part_history_sql.ptr(), affected_rows))) {
         } else if (OB_UNLIKELY(inc_part_num != affected_rows)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("history affected_rows is unexpected", KR(ret), K(inc_part_num), K(affected_rows));
         }
       }
     }
@@ -1382,8 +1475,10 @@ int ObRenameIncSubpartHelper::rename_subpartition_info()
   int ret = OB_SUCCESS;
   if (OB_ISNULL(ori_table_) || OB_ISNULL(inc_table_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("table is null", KR(ret), KP(ori_table_), KP(inc_table_));
   } else if (!ori_table_->is_user_subpartition_table()) {
     ret = OB_NOT_SUPPORTED;
+    LOG_WARN("unsupport behavior on not user subpartition table", KR(ret), KPC(ori_table_));
   } else {
     
     const uint64_t table_id = ori_table_->get_table_id();
@@ -1395,10 +1490,13 @@ int ObRenameIncSubpartHelper::rename_subpartition_info()
     const int64_t inc_part_num = inc_table_->get_partition_num();
     if (OB_ISNULL(part_array)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("partition array is null", KR(ret), KP(inc_table_));
     } else if (OB_UNLIKELY(1 != inc_part_num)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("inc part num should be 1", KR(ret), K(inc_part_num));
     } else if (OB_ISNULL(inc_part = part_array[0])) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("inc part is null", KR(ret));
     } else {
       ObSubPartition **subpart_array = inc_part->get_subpart_array();
       ObSubPartition *inc_subpart = nullptr;
@@ -1406,19 +1504,24 @@ int ObRenameIncSubpartHelper::rename_subpartition_info()
       int64_t affected_rows = 0;
       if (OB_ISNULL(subpart_array)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("subpart_array is null", KR(ret));
       } else if (OB_UNLIKELY(1 != inc_subpart_num)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("inc subpart num should be 1", KR(ret), K(inc_subpart_num));
       } else if (OB_ISNULL(inc_subpart = subpart_array[0])) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("inc_subpart is null", KR(ret));
       } else if (OB_FAIL(dml.add_pk_column("table_id", ObSchemaUtils::get_extract_schema_id(table_id)))
               ||OB_FAIL(dml.add_pk_column("part_id", inc_part->get_part_id()))
               ||OB_FAIL(dml.add_pk_column("sub_part_id", inc_subpart->get_sub_part_id()))
               ||OB_FAIL(dml.add_column("schema_version", schema_version_))
               ||OB_FAIL(dml.add_column("sub_part_name", inc_subpart->get_part_name().ptr()))) {
+        LOG_WARN("dml add column failed", KR(ret));
       } else if (OB_FAIL(dml.splice_update_sql(share::OB_ALL_SUB_PART_TNAME, subpart_sql))) {
       } else if (OB_FAIL(sql_client_.write(subpart_sql.ptr(), affected_rows))) {
       } else if (OB_UNLIKELY(inc_subpart_num != affected_rows)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("unexpected affected rows", KR(ret), K(inc_subpart_num), K(affected_rows));
       } else {
         ObDMLSqlSplicer history_sub_dml;
         ObSqlString subpart_history_sql;
@@ -1433,6 +1536,7 @@ int ObRenameIncSubpartHelper::rename_subpartition_info()
           } else if (OB_FAIL(sql_client_.write(subpart_history_sql.ptr(), affected_rows))) {
           } else if (OB_UNLIKELY(inc_subpart_num != affected_rows)) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("history affected_rows is unexpected", KR(ret), K(inc_part_num), K(affected_rows));
           }
         }
       }

@@ -130,6 +130,7 @@ private:
     support_cross_join = false;
     if (OB_ISNULL(stmt) || OB_ISNULL(stmt->get_query_ctx())) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("unexpected null", K(ret));
     } else {
       support_cross_join = true;
     }

@@ -46,6 +46,7 @@ int ObMergeIntersectOp::inner_open()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(nullptr == left_ || nullptr == right_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected status: left or right is null", K(ret));
   } else if (OB_FAIL(ObMergeSetOp::inner_open())) {
   } else {
     need_skip_init_row_ = true;
@@ -100,6 +101,7 @@ int ObMergeIntersectOp::inner_get_next_row()
             if (OB_ITER_END == ret) {
               right_iter_end_ = true;
             } else {
+              LOG_WARN("fail to get right operator row", K(ret));
             }
           }
         }
@@ -110,6 +112,7 @@ int ObMergeIntersectOp::inner_get_next_row()
           if (OB_ITER_END == ret) {
             right_iter_end_ = true;
           } else {
+            LOG_WARN("fail to get right operator row", K(ret));
           }
         }
       }
@@ -167,6 +170,7 @@ int ObMergeIntersectOp::inner_get_next_batch(const int64_t max_row_cnt)
               if (OB_ITER_END == ret) {
                 right_iter_end_ = true;
               } else {
+                LOG_WARN("failed to locate next right", K(ret));
               }
             }
             break;
@@ -181,6 +185,7 @@ int ObMergeIntersectOp::inner_get_next_batch(const int64_t max_row_cnt)
               if (OB_ITER_END == ret) {
                 right_iter_end_ = true;
               } else {
+                LOG_WARN("failed to locate next right", K(ret));
               }
             }
           }
@@ -191,6 +196,7 @@ int ObMergeIntersectOp::inner_get_next_batch(const int64_t max_row_cnt)
             if (OB_ITER_END == ret) {
               right_iter_end_ = true;
             } else {
+              LOG_WARN("failed to locate next right", K(ret));
             }
           }
         }
@@ -209,6 +215,7 @@ int ObMergeIntersectOp::inner_get_next_batch(const int64_t max_row_cnt)
       // empty batch
     } else if (OB_UNLIKELY(left_brs->skip_->at(last_left_idx))) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("get wrong last row", K(last_left_idx), K(curr_left_idx), K(ret));
     } else {
       ObEvalCtx::BatchInfoScopeGuard batch_info_guard(eval_ctx_);
       batch_info_guard.set_batch_idx(last_left_idx);
@@ -218,6 +225,7 @@ int ObMergeIntersectOp::inner_get_next_batch(const int64_t max_row_cnt)
       }
     }
   } else {
+    LOG_WARN("error occured", K(ret));
   }
   return ret;
 }

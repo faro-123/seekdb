@@ -39,6 +39,7 @@ int ObMacroDataSeq::serialize(
 
   if (OB_ISNULL(buf) || OB_UNLIKELY(buf_len < 0)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid arguments", K(ret), K(buf_len));
   } else if (OB_FAIL(serialization::encode_vi64(buf, buf_len, pos, macro_data_seq_))) {
   }
   return ret;
@@ -53,6 +54,7 @@ int ObMacroDataSeq::deserialize(
 
   if (OB_ISNULL(buf) || OB_UNLIKELY(data_len < 0 || data_len < pos)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret));
   } else if (OB_FAIL(serialization::decode_vi64(buf, data_len, pos, &macro_data_seq_))) {
   }
   return ret;

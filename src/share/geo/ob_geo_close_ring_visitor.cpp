@@ -31,6 +31,7 @@ int ObGeoCloseRingVisitor::visit_poly(PolyTree *geo)
   }
   if (OB_SUCC(ret) && geo->size() < 4) {
     ret = OB_ERR_GIS_INVALID_DATA;
+    LOG_WARN("invalid geometry polygon", K(ret), K(geo->size()));
   }
   return ret;
 }

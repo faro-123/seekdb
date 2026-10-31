@@ -82,6 +82,151 @@
 ################################################################################
 
 ################################################################################
+# SQLite Table Definitions
+# These tables are stored in SQLite and do not have table_id (they are not
+# OceanBase system tables). They are defined here for code generation purposes.
+# SQLite tables are defined before OceanBase system tables to ensure they are
+# available when virtual tables reference them.
+################################################################################
+
+# __all_merge_info: SQLite table for global merge info
+gen_sqlite_table_def(
+  table_name = '__all_merge_info',
+  columns = [
+      ('id', 'INTEGER', 'NOT NULL DEFAULT 0', None),
+      ('frozen_scn', 'INTEGER', 'NOT NULL', None),
+      ('global_broadcast_scn', 'INTEGER', 'NOT NULL', None),
+      ('is_merge_error', 'INTEGER', 'NOT NULL', None),
+      ('last_merged_scn', 'INTEGER', 'NOT NULL', None),
+      ('merge_status', 'INTEGER', 'NOT NULL', None),
+      ('error_type', 'INTEGER', 'NOT NULL', None),
+      ('suspend_merging', 'INTEGER', 'NOT NULL', None),
+      ('merge_start_time', 'INTEGER', 'NOT NULL', None),
+      ('last_merged_time', 'INTEGER', 'NOT NULL', None)
+  ],
+  primary_key = ['id']
+  )
+
+# __all_zone_merge_info: SQLite table for zone merge info
+
+# __all_reserved_snapshot: SQLite table for reserved snapshot
+
+# __all_server_event_history: SQLite table for server event history
+
+# __all_column_checksum_error_info: SQLite table for column checksum error info
+gen_sqlite_table_def(
+  table_name = '__all_column_checksum_error_info',
+  columns = [
+      ('frozen_scn', 'INTEGER', 'NOT NULL', None),
+      ('index_type', 'INTEGER', 'NOT NULL', None),
+      ('data_table_id', 'INTEGER', 'NOT NULL', None),
+      ('index_table_id', 'INTEGER', 'NOT NULL', None),
+      ('data_tablet_id', 'INTEGER', 'NOT NULL', None),
+      ('index_tablet_id', 'INTEGER', 'NOT NULL', None),
+      ('column_id', 'INTEGER', 'NOT NULL', None),
+      ('data_column_checksum', 'INTEGER', 'NOT NULL', None),
+      ('index_column_checksum', 'INTEGER', 'NOT NULL', None)
+  ],
+  primary_key = ['frozen_scn', 'index_type', 'data_table_id', 'index_table_id', 'data_tablet_id', 'index_tablet_id']
+  )
+
+# __all_deadlock_event_history: SQLite table for deadlock event history
+gen_sqlite_table_def(
+  table_name = '__all_deadlock_event_history',
+  columns = [
+      ('event_id', 'INTEGER', 'NOT NULL', None),
+      ('detector_id', 'INTEGER', 'NOT NULL', None),
+      ('report_time', 'INTEGER', 'NOT NULL', None),
+      ('cycle_idx', 'INTEGER', 'NOT NULL', None),
+      ('cycle_size', 'INTEGER', 'NOT NULL', None),
+      ('role', 'TEXT', 'NULL', None),
+      ('priority_level', 'TEXT', 'NULL', None),
+      ('priority', 'INTEGER', 'NOT NULL', None),
+      ('create_time', 'INTEGER', 'NOT NULL', None),
+      ('start_delay', 'INTEGER', 'NOT NULL', None),
+      ('module', 'TEXT', 'NULL', None),
+      ('visitor', 'TEXT', 'NULL', None),
+      ('object', 'TEXT', 'NULL', None),
+      ('extra_name1', 'TEXT', 'NULL', None),
+      ('extra_value1', 'TEXT', 'NULL', None),
+      ('extra_name2', 'TEXT', 'NULL', None),
+      ('extra_value2', 'TEXT', 'NULL', None),
+      ('extra_name3', 'TEXT', 'NULL', None),
+      ('extra_value3', 'TEXT', 'NULL', None)
+  ],
+  primary_key = ['event_id', 'detector_id']
+  )
+
+# __all_tablet_meta_table: SQLite table for tablet meta
+gen_sqlite_table_def(
+  table_name = '__all_tablet_meta_table',
+  columns = [
+      ('gmt_create', 'INTEGER', 'NULL', None),
+      ('gmt_modified', 'INTEGER', 'NULL', None),
+      ('tablet_id', 'INTEGER', 'NOT NULL', None),
+      ('compaction_scn', 'INTEGER', 'NOT NULL', None),
+      ('data_size', 'INTEGER', 'NOT NULL', None),
+      ('required_size', 'INTEGER', 'NOT NULL', '0'),
+      ('report_scn', 'INTEGER', 'NOT NULL', '0'),
+      ('status', 'INTEGER', 'NOT NULL', '0')
+  ],
+  primary_key = ['tablet_id']
+  )
+
+# __all_tablet_local_checksum: SQLite table for tablet replica checksum
+gen_sqlite_table_def(
+  table_name = '__all_tablet_local_checksum',
+  columns = [
+      ('tablet_id', 'INTEGER', 'NOT NULL', None),
+      ('compaction_scn', 'INTEGER', 'NOT NULL', None),
+      ('row_count', 'INTEGER', 'NOT NULL', None),
+      ('data_checksum', 'INTEGER', 'NOT NULL', None),
+      ('column_checksums', 'TEXT', 'NULL', None),
+      ('b_column_checksums', 'BLOB', 'NULL', None),
+      ('data_checksum_type', 'INTEGER', 'NOT NULL', '0')
+  ],
+  primary_key = ['tablet_id']
+  )
+
+# __all_sys_parameter: SQLite table for sys parameter
+gen_sqlite_table_def(
+  table_name = '__all_sys_parameter',
+  columns = [
+      ('gmt_create', 'INTEGER', 'NULL', None),
+      ('gmt_modified', 'INTEGER', 'NULL', None),
+      ('name', 'TEXT', 'NOT NULL', None),
+      ('data_type', 'TEXT', 'NULL', None),
+      ('value', 'TEXT', 'NOT NULL', None),
+      ('value_strict', 'TEXT', 'NULL', None),
+      ('info', 'TEXT', 'NULL', None),
+      ('need_reboot', 'INTEGER', 'NULL', None),
+      ('section', 'TEXT', 'NULL', None),
+      ('visible_level', 'TEXT', 'NULL', None),
+      ('config_version', 'INTEGER', 'NOT NULL', None),
+      ('scope', 'TEXT', 'NULL', None),
+      ('source', 'TEXT', 'NULL', None),
+      ('edit_level', 'TEXT', 'NULL', None)
+  ],
+  primary_key = ['name']
+  )
+
+
+gen_sqlite_table_def(
+    table_name = '__all_rootservice_job',
+    columns = [
+        ('job_id', 'INTEGER', 'NOT NULL', '0'),
+        ('gmt_create', 'INTEGER', 'NULL', None),
+        ('gmt_modified', 'INTEGER', 'NULL', None),
+        ('job_type', 'TEXT', 'NOT NULL', "''"),
+        ('job_status', 'TEXT', 'NOT NULL', "''"),
+        ('result_code', 'INTEGER', 'NULL', None)
+  ],
+    primary_key = ['job_id']
+  )
+
+# __all_kv_table: SQLite KV table for simple information storage (tenant info, etc.)
+
+################################################################################
 # OceanBase System Table Definitions
 ################################################################################
 
@@ -117,6 +262,7 @@ fields = [
     'is_cluster_private',
     'is_real_virtual_table',
     'owner',
+    'vtable_route_policy', # value: only_rs, distributed, local(default)
     'tablet_id',
     'micro_index_clustered'
 ]
@@ -153,6 +299,7 @@ default_filed_values = {
     'is_cluster_private': False,
     'is_real_virtual_table': False,
     'owner' : '',
+    'vtable_route_policy' : 'local',
     'tablet_id' : '0',
     'micro_index_clustered' : 'false'
 }
@@ -1000,7 +1147,8 @@ def_table_schema(**gen_history_table_def(1009, all_database_privilege_def))
 
 # 116: __all_zone (abandoned)
 # 117: __all_server (abandoned)
-# 118: __all_sys_parameter # replaced by the in-memory configuration catalog
+# 118: __all_sys_parameter # migrated to SQLite, see gen_sqlite_table_def above
+# Placeholder - original definition removed, using SQLite version
 
 # 119: __tenant_parameter (abandoned)
 
@@ -1132,9 +1280,11 @@ def_table_schema(
 
 
 
-# 154: __all_server_event_history # removed
+# 154: __all_server_event_history # migrated to SQLite, see gen_sqlite_table_def above
+# Placeholder - original definition removed, using SQLite version
 
-# 155: __all_rootservice_job # represented by a local table below
+# 155: __all_rootservice_job # migrated to SQLite, see gen_sqlite_table_def above
+# Placeholder - original definition removed, using SQLite version
 
 # 156: __all_unit_load_history # abandoned in 4.0.
 
@@ -1644,7 +1794,8 @@ def_table_schema(
 
 # 320: (abandoned)
 
-# 322: __all_deadlock_event_history # represented by a local table below
+# 322: __all_deadlock_event_history # migrated to SQLite, see gen_sqlite_table_def above
+# Placeholder - original definition removed, using SQLite version
 
 all_column_usage_def = dict(
     owner = 'yibo.tyf',
@@ -1830,7 +1981,8 @@ def_table_schema(
   ]
   )
 
-# 344: __all_tablet_meta_table # represented by a local table below
+# 344: __all_tablet_meta_table # migrated to SQLite, see gen_sqlite_table_def above
+# Placeholder - original definition removed, using SQLite version
 
 # 345: legacy ls status table (abandoned)
 # 346: __all_zone_v2 # abandoned in 4.0
@@ -1862,7 +2014,8 @@ def_table_schema(
 
 # 370: legacy ls recovery stat table (abandoned)
 
-# 372: __all_tablet_local_checksum # represented by a local table below
+# 372: __all_tablet_local_checksum # migrated to SQLite, see gen_sqlite_table_def above
+# Placeholder - original definition removed, using SQLite version
 
 # do checksum(user tenant) between primary cluster and standby cluster
 # differ from __all_tablet_local_checksum, it is tablet level
@@ -2003,8 +2156,8 @@ def_table_schema(
 # 383: __all_global_context_value (abandoned)
 # 385: legacy ls election reference info table (abandoned)
 
-# 392: __all_zone_merge_info # abandoned, migrated to local storage
-# 393: __all_merge_info # abandoned, migrated to local storage
+# 392: __all_zone_merge_info # abandoned, migrated to SQLite
+# 393: __all_merge_info # abandoned, migrated to SQLite
 
 def_table_schema(
   owner = 'donglou.zl',
@@ -2100,7 +2253,8 @@ def_table_schema(
 # 414 : __all_tenant_datafile
 # 415 : __all_tenant_datafile_history
 
-# 416: __all_column_checksum_error_info # represented by a local table below
+# 416: __all_column_checksum_error_info # migrated to SQLite, see gen_sqlite_table_def above
+# Placeholder - original definition removed, using SQLite version
 
 # 417 : abandoned
 # 418 : abandoned
@@ -2114,9 +2268,10 @@ def_table_schema(
 # 432 reserved
 
 
-# 444: __all_reserved_snapshot # removed
+# 444: __all_reserved_snapshot # migrated to SQLite, see gen_sqlite_table_def above
+# Placeholder - original definition removed, using SQLite version
 
-# 445: __all_cluster_event_history # removed
+# 445: __all_cluster_event_history # migrated to SQLite, see gen_sqlite_table_def above
 
 # 450: __all_external_table_file # abandoned in seekdb
 
@@ -2702,7 +2857,8 @@ def_table_schema(
   ('total_cpu_time', 'double', 'false'),
   ('top_info', 'varchar:MAX_COLUMN_VARCHAR_LENGTH', 'true'),
   ('memory_usage', 'bigint', 'true')
-                   ],  )
+                   ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'bin.lb',
@@ -2733,7 +2889,8 @@ def_table_schema(
   normal_columns = [
   ('db', 'varchar:OB_MAX_DATABASE_NAME_LENGTH'),
   ('read_only', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+)
 
 
 # 10013: __tenant_virtual_interm_result # abandoned in 4.0
@@ -2816,7 +2973,8 @@ def_table_schema(
     ('plan_num', 'int'),
     ('mem_limit', 'int'),
     ('hash_bucket', 'int')
-                   ],  )
+                   ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
     owner = 'xiaoyi.xy',
@@ -2894,7 +3052,7 @@ def_table_schema(
       ('first_get_plan_time', 'int'),
       ('first_exe_usec', 'int')
                    ],
-  )
+  vtable_route_policy = 'local',)
 
 
 # 11007: __all_virtual_latch # removed
@@ -2918,7 +3076,7 @@ def_table_schema(
   ('total_hit_cnt', 'int', 'false'),
   ('total_miss_cnt', 'int', 'false')
   ],
-  )
+  vtable_route_policy = 'local',)
 
 def_table_schema(
   owner = 'nijia.nj',
@@ -2977,7 +3135,8 @@ def_table_schema(
   ('freeze_cnt', 'int'),
   ('memstore_used', 'int'),
   ('memstore_limit', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'fengshuo.fs',
@@ -2996,7 +3155,8 @@ def_table_schema(
   ('type_size', 'int'),
   ('chunk_count', 'int'),
   ('chunk_byte_size', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 11020: __all_virtual_sesstat # removed
 
@@ -3022,7 +3182,8 @@ def_table_schema(
   ('is_disk_valid', 'int', 'false'),
   ('disk_error_begin_ts', 'int', 'false'),
   ('allocated_size', 'int', 'false')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'jingyan.kfy',
@@ -3052,7 +3213,8 @@ def_table_schema(
   ('freeze_state', 'varchar:OB_MAX_CHAR_LENGTH'),
   ('freeze_time_dist', 'varchar:OB_MAX_CHAR_LENGTH'),
   ('compaction_info_list', 'varchar:OB_COMPACTION_INFO_LENGTH')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 11026: __all_virtual_upgrade_inspection (abandoned)
 
@@ -3088,7 +3250,8 @@ def_table_schema(
   ('replay_complete', 'int'),
   ('serial_log_final_scn', 'int'),
   ('callback_list_stats', 'longtext')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'chensen.cs',
@@ -3106,7 +3269,8 @@ def_table_schema(
   ('block_all', 'int'),
   ('total_trans_ctx_count', 'int'),
   ('mgr_addr', 'bigint:20')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'wuyuefei.wyf',
@@ -3135,7 +3299,8 @@ def_table_schema(
   ('savepoints_total_cnt', 'int'),
   ('internal_abort_cause', 'int'),
   ('can_early_lock_release', 'bool')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 11031: __all_virtual_sql_audit # removed
 
@@ -3164,7 +3329,8 @@ def_table_schema(
   ('hold', 'int'),
   ('used', 'int'),
   ('count', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
     owner = 'fyy280124',
@@ -3191,33 +3357,16 @@ def_table_schema(
       ('default_value', 'varchar:OB_MAX_CONFIG_VALUE_LEN'),
       ('isdefault', 'int')
                    ],
-
+  vtable_route_policy = 'local',
 )
 
 # 11040: __all_virtual_partition_replay_status # abandoned in 4.0
 
-# 11041: __all_virtual_sys_parameter reads the in-memory configuration catalog
-def_config_virtual_table(
+# 11041: __all_virtual_sys_parameter # migrated to SQLite
+def_table_schema(**gen_sqlite_virtual_table_def(
   table_id = '11041',
   table_name = '__all_virtual_sys_parameter',
-  columns = [
-    ('gmt_create', 'int', 'true'),
-    ('gmt_modified', 'int', 'true'),
-    ('name', 'varchar:256', 'false'),
-    ('data_type', 'varchar:256', 'true'),
-    ('value', 'varchar:256', 'false'),
-    ('value_strict', 'varchar:256', 'true'),
-    ('info', 'varchar:256', 'true'),
-    ('need_reboot', 'int', 'true'),
-    ('section', 'varchar:256', 'true'),
-    ('visible_level', 'varchar:256', 'true'),
-    ('config_version', 'uint', 'false'),
-    ('scope', 'varchar:256', 'true'),
-    ('source', 'varchar:256', 'true'),
-    ('edit_level', 'varchar:256', 'true'),
-  ],
-  primary_key = ['name'],
-)
+  keywords = all_def_keywords['__all_sys_parameter']))
 
 def_table_schema(
   owner = 'nijia.nj',
@@ -3260,7 +3409,8 @@ def_table_schema(
     ('property', 'varchar:OB_MAX_OPERATOR_PROPERTY_LENGTH'),
     ('plan_depth', 'int'),
     ('plan_line_id', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 11049: __all_virtual_obrpc_stat (abandoned)
 # 11051: abandoned
@@ -3321,7 +3471,8 @@ def_table_schema(
       ('macro_block_type', 'varchar:MAX_VALUE_LENGTH'),
       ('compressor_name', 'varchar:OB_MAX_COMPRESSOR_NAME_LENGTH'),
       ('row_store_type', 'varchar:OB_MAX_COMPRESSOR_NAME_LENGTH')
-  ],    )
+  ],    vtable_route_policy = 'local'
+  )
 
 # 11057: __all_virtual_proxy_partition_info (abandoned in seekdb)
 
@@ -3353,7 +3504,8 @@ def_table_schema(
   ('task_id', 'varchar:OB_TRACE_STAT_BUFFER_SIZE'),
   ('comment', 'varchar:OB_MAX_TASK_COMMENT_LENGTH', 'false', ''),
   ('is_cancel', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'yongle.xh',
@@ -3380,7 +3532,8 @@ def_table_schema(
   ('last_end_time', 'timestamp'),
   ('mark_finished', 'bool'),
   ('comment', 'varchar:MAX_TABLE_COMMENT_LENGTH', 'false', '')
-                   ],  )
+                   ],  vtable_route_policy = 'local'
+  )
 
 # 11074: __all_virtual_rootservice_stat # abandoned in 4.0.
 
@@ -3403,7 +3556,8 @@ def_table_schema(
       ('sys_io_low_watermark_in_mb', 'int'),
       ('sys_io_high_watermark_in_mb', 'int'),
       ('io_bench_result', 'varchar:OB_MAX_IO_BENCH_RESULT_LENGTH')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 
 def_table_schema(
@@ -3428,6 +3582,7 @@ def_table_schema(
       ('message', 'varchar:MAX_LONG_OPS_MESSAGE_LENGTH'),
       ('trace_id', 'varchar:OB_MAX_TRACE_ID_BUFFER_SIZE')
   ],
+  vtable_route_policy = 'local'
   )
 
 
@@ -3454,7 +3609,8 @@ def_table_schema(
       ('last_miss_ts', 'int'),
       ('last_miss_return_ts', 'int'),
       ('next', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'shanyan.g',
@@ -3474,7 +3630,8 @@ def_table_schema(
   ('expired_time', 'timestamp', 'true'),
   ('time_after_recv', 'int'),
   ('row_lock_addr', 'uint', 'true')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 
 # 11090: __all_virtual_trans_result_info_stat # abandoned in 4.0
@@ -3507,7 +3664,7 @@ def_table_schema(
       ('default_value', 'varchar:OB_MAX_CONFIG_VALUE_LEN'),
       ('isdefault', 'int')
                    ],
-
+  vtable_route_policy = 'local',
 )
 
 def_table_schema(
@@ -3523,7 +3680,8 @@ def_table_schema(
     ("refreshed_schema_version", 'int'),
     ("received_schema_version", 'int'),
     ("schema_count", 'int')
-                   ],  )
+                   ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'nijia.nj',
@@ -3544,7 +3702,8 @@ def_table_schema(
     ('arena_used', 'bigint:20'),
     ('create_time', 'timestamp'),
     ('location', 'varchar:512')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'nijia.nj',
@@ -3569,7 +3728,8 @@ def_table_schema(
     ('queue_3_size', 'bigint:20'),
     ('queue_4_size', 'bigint:20'),
     ('queue_5_size', 'bigint:20')
-                   ],  )
+                   ],  vtable_route_policy = 'local'
+  )
 
 # 11096 abandoned in lite version
 
@@ -3591,7 +3751,8 @@ def_table_schema(
       ('gmt_modified', 'timestamp'),
       ('retry_cnt', 'int'),
       ('warning_info', 'varchar:OB_DAG_WARNING_INFO_LENGTH')
-  ],    )
+  ],    vtable_route_policy = 'local'
+  )
 
 
 
@@ -3613,7 +3774,8 @@ def_table_schema(
       ('start_time', 'timestamp'),
       ('indegree', 'int'),
       ('comment', 'varchar:OB_DAG_COMMET_LENGTH')
-  ],    )
+  ],    vtable_route_policy = 'local'
+  )
 
 def_table_schema(
     owner = 'lixia.yq',
@@ -3627,7 +3789,8 @@ def_table_schema(
       ('value_type', 'varchar:OB_SYS_TASK_TYPE_LENGTH'),
       ('key', 'varchar:OB_DAG_KEY_LENGTH'),
       ('value', 'int')
-  ],    )
+  ],    vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'lixia.yq',
@@ -3648,7 +3811,8 @@ def_table_schema(
     ('start_time', 'timestamp'),
     ('estimated_finish_time', 'timestamp'),
     ('comments', 'varchar:OB_COMPACTION_EVENT_STR_LENGTH')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'lixia.yq',
@@ -3669,7 +3833,8 @@ def_table_schema(
     ('create_time', 'timestamp'),
     ('start_time', 'timestamp'),
     ('estimated_finish_time', 'timestamp')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'lixia.yq',
@@ -3684,7 +3849,8 @@ def_table_schema(
     ('status', 'varchar:OB_MERGE_STATUS_STR_LENGTH'),
     ('create_time', 'timestamp'),
     ('diagnose_info', 'varchar:OB_DIAGNOSE_INFO_LENGTH')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'lixia.yq',
@@ -3699,7 +3865,8 @@ def_table_schema(
     ('start_time', 'timestamp'),
     ('finish_time', 'timestamp'),
     ('suggestion', 'varchar:OB_DIAGNOSE_INFO_LENGTH')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'xiaochu.yh',
@@ -3729,7 +3896,8 @@ def_table_schema(
   ('trans_state', 'varchar:OB_MAX_TRANS_STATE_LENGTH', 'true'),
   ('user_client_port', 'int', 'false', '0'),
   ('total_cpu_time', 'double', 'false')
-                   ],  )
+                   ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
     owner = 'lixia.yq',
@@ -3770,7 +3938,8 @@ def_table_schema(
       ('base_major_status', 'varchar:OB_MERGE_TYPE_STR_LENGTH'),
       ('mds_filter_info', 'varchar:OB_COMPACTION_COMMENT_STR_LENGTH'),
       ('execute_time', 'int')
-                     ],  )
+                     ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
     owner             = 'jianyun.sjy',
@@ -3784,7 +3953,8 @@ def_table_schema(
       ('status',        'varchar:256'),
       ('start_time',    'timestamp'),
       ('finish_time',   'timestamp')
-  ],    )
+  ],    vtable_route_policy = 'local'
+  )
 
 def_table_schema(
     owner             = 'jianyun.sjy',
@@ -3800,7 +3970,8 @@ def_table_schema(
       ('iops',          'int'),
       ('mbps',          'int'),
       ('latency',       'int')
-  ],    )
+  ],    vtable_route_policy = 'local'
+  )
 
 
 def_table_schema(
@@ -3823,7 +3994,8 @@ def_table_schema(
       ('schedule_us',   'int'),
       ('io_delay_us',   'int'),
       ('total_us',      'int')
-    ],    )
+    ],    vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'lixia.yq',
@@ -3838,7 +4010,8 @@ def_table_schema(
     ('event_timestamp', 'timestamp'),
     ('event', 'varchar:OB_COMPACTION_EVENT_STR_LENGTH'),
     ('role', 'varchar:OB_MERGE_ROLE_STR_LENGTH')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
     owner = 'fengjingkun.fjk',
@@ -3860,7 +4033,8 @@ def_table_schema(
       ('insert_row_cnt', 'int'),
       ('update_row_cnt', 'int'),
       ('delete_row_cnt', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'jianyun.sjy',
@@ -3875,6 +4049,7 @@ def_table_schema(
     ('sim_point_description', 'varchar:OB_MAX_CHAR_LENGTH'),
     ('sim_point_action', 'varchar:OB_MAX_CHAR_LENGTH')
   ],
+  vtable_route_policy = 'local'
   )
 
 def_table_schema(
@@ -3888,7 +4063,8 @@ def_table_schema(
     ('ddl_task_id', 'int'),
     ('sim_point_id', 'int'),
     ('trigger_count', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 11120: __all_virtual_res_mgr_sysstat # removed
 
@@ -4075,11 +4251,13 @@ def_table_schema(
   ('trans_id', 'int'),
   ('holder_trans_id', 'int'),
   ('holder_session_id', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12014: __all_virtual_partition_item # abandoned in 4.0
 
 # 12015: abandoned in 4.0
+# 12016: __all_virtual_partition_location # abandoned in 4.0
 
 # 12030: proc  # abandoned in 4.2.5.1, replaced by 21628
 
@@ -4138,7 +4316,8 @@ def_table_schema(
   ('mt_protection_clock', 'int'),
   ('address', 'varchar:OB_MAX_POINTER_ADDR_LEN'),
   ('ref_count', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
     owner = 'baichangmin.bcm',
@@ -4165,7 +4344,8 @@ def_table_schema(
       ('nested_size', 'int'),
       ('data_checksum', 'int'),
       ('table_flag', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12036: __all_virtual_freeze_info # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -4188,7 +4368,8 @@ def_table_schema(
   ('error_type', 'int'),
   ('error_msg', 'varchar:OB_MAX_ERROR_MSG_LEN'),
   ('check_time', 'timestamp')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'xiaochu.yh',
@@ -4207,7 +4388,8 @@ def_table_schema(
   ('dfo_id', 'int'),
   ('start_time', 'timestamp'),
   ('thread_id', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12042: __all_virtual_weak_read_stat # abandoned in 4.0
 
@@ -4269,7 +4451,8 @@ def_table_schema(
     ('index_block_cache_miss_count', 'int'),
     ('logical_read_count', 'int'),
     ('physical_read_count', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # Because of implementation problems, tenant schema's ddl operations can't be found in __all_virtual_ddl_operation.
 # 12059: __all_virtual_ddl_operation # removed (single-tenant: iterate VT mechanism deleted)
@@ -4376,7 +4559,8 @@ def_table_schema(
       ('alias_name', 'varchar:MAX_PATH_SIZE'),
       ('status', 'varchar:OB_STATUS_LENGTH'),
       ('percent', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12122: __all_virtual_server_log_meta # abandoned in 4.0
 
@@ -4415,7 +4599,8 @@ def_table_schema(
       ('peer_ip', 'varchar:MAX_IP_ADDR_LENGTH'),
       ('peer_port', 'int'),
       ('eof', 'bool')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
     owner = 'longzhong.wlz',
@@ -4439,7 +4624,8 @@ def_table_schema(
       ('total_memory_size', 'int'),
       ('real_alloc_cnt', 'int'),
       ('real_free_cnt', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12125: abandoned
 
@@ -4508,7 +4694,8 @@ def_table_schema(
     ('hit_count', 'int'),
     ('access_count', 'int'),
     ('mem_hold', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'xiaoyi.xy',
@@ -4530,7 +4717,8 @@ def_table_schema(
     ('stmt_type', 'int'),
     ('checksum', 'int'),
     ('expired', 'bool')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 
 def_table_schema(
@@ -4559,7 +4747,8 @@ def_table_schema(
       ('last_tempseg_size', 'int'),
       ('policy', 'varchar:10'),
       ('db_id', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'longzhong.wlz',
@@ -4584,7 +4773,8 @@ def_table_schema(
       ('tempseg_size', 'int'),
       ('policy', 'varchar:6'),
       ('db_id', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'longzhong.wlz',
@@ -4601,7 +4791,7 @@ def_table_schema(
       ('multipasses_executions', 'int'),
       ('total_executions', 'int'),
   ],
-
+  vtable_route_policy = 'local',
 )
 
 def_table_schema(
@@ -4622,7 +4812,7 @@ def_table_schema(
       ('workarea_count', 'int'),
       ('manual_calc_count', 'int'),
   ],
-
+  vtable_route_policy = 'local',
 )
 
 # 12163: __all_virtual_sysauth # removed (single-tenant: iterate VT mechanism deleted)
@@ -4655,7 +4845,8 @@ def_table_schema(
     ('latest_log_scn', 'uint'),
     ('pre_allocated_range', 'int'),
     ('submit_log_ts', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12177: REFERENTIAL_CONSTRAINTS # abandoned in 4.0
 # 12179: __all_virtual_table_modifications # abandoned in 4.0
@@ -4682,7 +4873,8 @@ def_table_schema(
     ('CURSOR_TYPE', 'varchar:30'),
     ('CHILD_ADDRESS', 'varchar:30'),
     ('CON_ID', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 
 # 12190: __all_virtual_time_zone # removed (single-tenant: iterate VT mechanism deleted)
@@ -4760,37 +4952,11 @@ def_table_schema(
 
 # 12208: __all_virtual_ddl_task_status # removed (single-tenant: iterate VT mechanism deleted)
 
-# __all_virtual_deadlock_event_history: local virtual table (migrated from iterate)
-def_local_table(
-  table_name = '__all_deadlock_event_history',
+# __all_virtual_deadlock_event_history: SQLite virtual table (migrated from iterate)
+def_table_schema(**gen_sqlite_virtual_table_def(
   table_id = '12209',
-  virtual_table = True,
-  namespace = 'deadlock_history',
-  namespace_id = 2,
-  columns = [
-    ('event_id', 'int', 'false'),
-    ('detector_id', 'int', 'false'),
-    ('report_time', 'int', 'false'),
-    ('cycle_idx', 'int', 'false'),
-    ('cycle_size', 'int', 'false'),
-    ('role', 'varchar:256', 'true'),
-    ('priority_level', 'varchar:256', 'true'),
-    ('priority', 'int', 'false'),
-    ('create_time', 'int', 'false'),
-    ('start_delay', 'int', 'false'),
-    ('module', 'varchar:256', 'true'),
-    ('visitor', 'varchar:256', 'true'),
-    ('object', 'varchar:256', 'true'),
-    ('extra_name1', 'varchar:256', 'true'),
-    ('extra_value1', 'varchar:256', 'true'),
-    ('extra_name2', 'varchar:256', 'true'),
-    ('extra_value2', 'varchar:256', 'true'),
-    ('extra_name3', 'varchar:256', 'true'),
-    ('extra_value3', 'varchar:256', 'true'),
-  ],
-  primary_key = ['event_id', 'detector_id'],
-  indexes = ['report_time'],
-)
+  table_name = '__all_virtual_deadlock_event_history',
+  keywords = all_def_keywords['__all_deadlock_event_history']))
 
 # 12210: __all_virtual_column_usage # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -4810,7 +4976,8 @@ def_table_schema(
   ('hold', 'int'),
   ('used', 'int'),
   ('limit', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12212: __all_virtual_clog_agency_info # abandoned in 4.0
 
@@ -4870,7 +5037,8 @@ def_table_schema(
   ('peer_target_used', 'int'),
   ('local_target_used', 'int'),
   ('local_parallel_session_count', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12224: __all_virtual_monitor_modified # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -4892,26 +5060,11 @@ def_table_schema(
 
 # 12239: __all_virtual_ls_meta_table (abandoned)
 
-# 12240: __all_virtual_tablet_meta_table # migrated to local storage
-def_local_table(
-  table_name = '__all_tablet_meta_table',
+# 12240: __all_virtual_tablet_meta_table # migrated to SQLite
+def_table_schema(**gen_sqlite_virtual_table_def(
   table_id = '12240',
-  virtual_table = True,
-  namespace = 'tablet_meta',
-  namespace_id = 3,
-  columns = [
-    ('gmt_create', 'int', 'true'),
-    ('gmt_modified', 'int', 'true'),
-    ('tablet_id', 'int', 'false'),
-    ('compaction_scn', 'uint', 'false'),
-    ('data_size', 'int', 'false'),
-    ('required_size', 'int', 'false', '0'),
-    ('report_scn', 'uint', 'false', '0'),
-    ('status', 'int', 'false', '0'),
-  ],
-  primary_key = ['tablet_id'],
-  indexes = ['compaction_scn'],
-)
+  table_name = '__all_virtual_tablet_meta_table',
+  keywords = all_def_keywords['__all_tablet_meta_table']))
 
 # 12241: __all_virtual_tablet_to_table # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -4943,7 +5096,8 @@ def_table_schema(
     ('shuffle_rt_sum', 'int'),
     ('insert_rt_sum', 'int'),
     ('total_wait_secs', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12253: __all_virtual_tablet_to_table_history # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -4965,29 +5119,17 @@ def_table_schema(
   ('end_scn', 'uint'),
   ('max_lsn', 'uint'),
   ('max_scn', 'uint')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12255: __all_virtual_tenant_info (abandoned)
 # 12256: __all_virtual_ls_recovery_stat (abandoned)
 
-# __all_virtual_tablet_local_checksum: local virtual table (migrated from iterate)
-def_local_table(
-  table_name = '__all_tablet_local_checksum',
+# __all_virtual_tablet_local_checksum: SQLite virtual table (migrated from iterate)
+def_table_schema(**gen_sqlite_virtual_table_def(
   table_id = '12258',
-  virtual_table = True,
-  namespace = 'tablet_checksum',
-  namespace_id = 4,
-  columns = [
-    ('tablet_id', 'int', 'false'),
-    ('compaction_scn', 'uint', 'false'),
-    ('row_count', 'int', 'false'),
-    ('data_checksum', 'int', 'false'),
-    ('column_checksums', 'varchar:256', 'true'),
-    ('b_column_checksums', 'varbinary:OB_MAX_VARBINARY_LENGTH', 'true'),
-    ('data_checksum_type', 'int', 'false', '0'),
-  ],
-  primary_key = ['tablet_id'],
-)
+  table_name = '__all_virtual_tablet_local_checksum',
+  keywords = all_def_keywords['__all_tablet_local_checksum']))
 
 # 12259: __all_virtual_ddl_checksum # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -5053,7 +5195,8 @@ def_table_schema(
       # role is the active boot profile; switchover_status is the transition
       # status. Keep both legacy names and expose the pending profile clearly.
       ('pending_role', 'varchar:64')
-                     ],  )
+                     ],  vtable_route_policy = 'local'
+  )
 
 # 12277: __all_virtual_ls_election_reference_info (abandoned)
 
@@ -5082,7 +5225,8 @@ def_table_schema(
     ('sqc_id', 'int'),
     ('batch_id', 'int'),
     ('max_hold_memory', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 
 def_table_schema(
@@ -5097,7 +5241,8 @@ def_table_schema(
   normal_columns = [
     ('end_lsn', 'uint'),
     ('pending_cnt', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'keqing.llt',
@@ -5114,7 +5259,8 @@ def_table_schema(
     ('unsubmitted_lsn', 'uint'),
     ('unsubmitted_log_scn', 'uint'),
     ('pending_cnt', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12282: __all_virtual_proxy_routine (abandoned in seekdb)
 
@@ -5135,7 +5281,8 @@ def_table_schema(
   ('checkpoint_lsn', 'uint'),
   ('tablet_change_checkpoint_scn', 'uint'),
   ('tx_blocked', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'yanyuan.cxf',
@@ -5157,7 +5304,8 @@ def_table_schema(
   ('tablet_status', 'int'),
   ('is_committed', 'int'),
   ('is_empty_shell', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'yanyuan.cxf',
@@ -5185,29 +5333,14 @@ def_table_schema(
   ('owner_type', 'int'),
   ('priority', 'varchar:MAX_LOCK_OP_PRIORITY_BUF_LENGTH'),
   ('wait_seq', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 
-def_local_table(
-  table_name = '__all_merge_info',
+def_table_schema(**gen_sqlite_virtual_table_def(
   table_id = '12291',
-  virtual_table = True,
-  namespace = 'merge_info',
-  namespace_id = 0,
-  columns = [
-    ('id', 'int', 'false'),
-    ('frozen_scn', 'uint', 'false'),
-    ('global_broadcast_scn', 'uint', 'false'),
-    ('is_merge_error', 'int', 'false'),
-    ('last_merged_scn', 'uint', 'false'),
-    ('merge_status', 'int', 'false'),
-    ('error_type', 'int', 'false'),
-    ('suspend_merging', 'int', 'false'),
-    ('merge_start_time', 'int', 'false'),
-    ('last_merged_time', 'int', 'false'),
-  ],
-  primary_key = ['id'],
-)
+  table_name = '__all_virtual_merge_info',
+  keywords = all_def_keywords['__all_merge_info']))
 
 def_table_schema(
   owner = 'gengli.wzy',
@@ -5225,7 +5358,8 @@ def_table_schema(
   ('tx_data_count', 'int'),
   ('min_tx_log_scn', 'uint'),
   ('max_tx_log_scn', 'uint')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'chunrun.ct',
@@ -5241,7 +5375,8 @@ def_table_schema(
   ('rec_log_scn', 'uint'),
   ('location', 'varchar:MAX_FREEZE_CHECKPOINT_LOCATION_BUF_LENGTH'),
   ('rec_log_scn_is_stable', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'chunrun.ct',
@@ -5257,7 +5392,8 @@ def_table_schema(
   ('rec_log_scn', 'uint'),
   ('checkpoint_type', 'varchar:MAX_CHECKPOINT_TYPE_BUF_LENGTH'),
   ('is_flushing', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'chunrun.ct',
@@ -5271,7 +5407,8 @@ def_table_schema(
   normal_columns = [
   ('service_type', 'varchar:MAX_SERVICE_TYPE_BUF_LENGTH'),
   ('rec_log_scn', 'uint')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 
 # 12302: __all_virtual_ash # removed
@@ -5290,7 +5427,8 @@ def_table_schema(
   ('insert_row_count', 'int'),
   ('update_row_count', 'int'),
   ('delete_row_count', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 # 12304: abandoned
 
 def_table_schema(
@@ -5309,7 +5447,8 @@ def_table_schema(
     ('min_log_scn', 'uint'),
     ('macro_block_cnt', 'int'),
     ('ref_cnt', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
     owner = 'liuqifan.lqf',
@@ -5346,7 +5485,7 @@ def_table_schema(
       ('old_chain', 'varchar:128'),
       ('occupy_size', 'bigint', 'false', '0'),
       ('required_size', 'bigint', 'false', '0')
-  ],
+  ],  vtable_route_policy = 'local',
   )
 
 def_table_schema(
@@ -5364,7 +5503,8 @@ def_table_schema(
       ('used_obj_cnt', 'int'),
       ('free_obj_cnt', 'int'),
       ('each_obj_size', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'zhaoruizhe.zrz',
@@ -5384,7 +5524,7 @@ def_table_schema(
     ('score', 'number:38:6'),
     ('align_size', 'int')
                    ],
-  )
+  vtable_route_policy = 'local',)
 
 # 12320: __all_virtual_mock_fk_parent_table # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -5399,26 +5539,11 @@ def_table_schema(
 # 12328: __all_virtual_tenant_datafile
 # 12329: __all_virtual_tenant_datafile_history
 
-# __all_virtual_column_checksum_error_info: local virtual table (migrated from iterate)
-def_local_table(
-  table_name = '__all_column_checksum_error_info',
+# __all_virtual_column_checksum_error_info: SQLite virtual table (migrated from iterate)
+def_table_schema(**gen_sqlite_virtual_table_def(
   table_id = '12330',
-  virtual_table = True,
-  namespace = 'checksum_error',
-  namespace_id = 1,
-  columns = [
-    ('frozen_scn', 'uint', 'false'),
-    ('index_type', 'int', 'false'),
-    ('data_table_id', 'int', 'false'),
-    ('index_table_id', 'int', 'false'),
-    ('data_tablet_id', 'int', 'false'),
-    ('index_tablet_id', 'int', 'false'),
-    ('column_id', 'int', 'false'),
-    ('data_column_checksum', 'int', 'false'),
-    ('index_column_checksum', 'int', 'false'),
-  ],
-  primary_key = ['frozen_scn', 'index_type', 'data_table_id', 'index_table_id', 'data_tablet_id', 'index_tablet_id'],
-)
+  table_name = '__all_virtual_column_checksum_error_info',
+  keywords = all_def_keywords['__all_column_checksum_error_info']))
 
 # 12331: __all_virtual_kvcache_handle_leak_info
 # 12332: abandoned
@@ -5438,7 +5563,8 @@ def_table_schema(
       ('wait_check_scn', 'int'),
       ('max_received_scn', 'int'),
       ('serialize_scn_list', 'varchar:OB_MAX_VARCHAR_LENGTH')
-                     ],    )
+                     ],    vtable_route_policy = 'local'
+  )
 
 # 12335: __all_virtual_ls_replica_task_plan (abandoned)
 
@@ -5458,7 +5584,8 @@ def_table_schema(
     ('mem_used', 'int'),
     ('mem_total', 'int'),
     ('allocator_idx', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'xingrui.cwh',
@@ -5476,7 +5603,8 @@ def_table_schema(
     ('total_ref_cnt', 'int'),
     ('ref_info','varchar:OB_MAX_SCHEMA_REF_INFO'),
     ('allocator_idx', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'handora.qc',
@@ -5497,7 +5625,8 @@ def_table_schema(
   ('state', 'varchar:OB_MAX_CHAR_LENGTH'),
   ('diagnose_info', 'varchar:OB_MAX_CHAR_LENGTH'),
   ('memtables_info', 'varchar:OB_MAX_CHAR_LENGTH')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'guoyun.lgy',
@@ -5584,7 +5713,8 @@ def_table_schema(
     ('qblock_name','varchar:128'),
     ('remarks', 'varchar:4000'),
     ('other_xml', 'varchar:4000')
-  ],  )
+  ],  vtable_route_policy = 'local'
+)
 # 12360: abandoned
 # 12361: abandoned
 
@@ -5606,7 +5736,7 @@ def_table_schema(
   ('alloc_count', 'int'),
   ('alloc_bytes', 'int')
   ],
-  )
+  vtable_route_policy = 'local',)
 
 # 12364: legacy ls arb replica task table (abandoned)
 # 12365: legacy ls arb replica task history table (abandoned)
@@ -5640,7 +5770,8 @@ def_table_schema(
     ('state',         'longtext'),
     ('position',      'longtext'),
     ('user_data',     'longtext')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner             = 'zk250686',
@@ -5667,7 +5798,8 @@ def_table_schema(
     ('trans_version', 'uint'),# node info
     ('node_type',     'longtext'),# node info
     ('state',         'longtext')# node info
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 # 12375: __all_virtual_time_guard_slow_history
 
 def_table_schema(
@@ -5687,7 +5819,8 @@ def_table_schema(
   ('commit_version', 'uint'),
   ('undo_status', 'varchar:MAX_UNDO_LIST_CHAR_LENGTH'),
   ('tx_op', 'varchar:MAX_TX_OP_CHAR_LENGTH')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12381: __all_virtual_task_opt_stat_gather_history # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -5714,7 +5847,8 @@ def_table_schema(
   ('running_table_duration_time', 'int'),
   ('spare1', 'int', 'true'),
   ('spare2', 'varchar:MAX_VALUE_LENGTH', 'true')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12384: __all_virtual_thread # removed
 
@@ -5742,7 +5876,8 @@ def_table_schema(
   normal_columns = [
     ('ts_value', 'int'),
     ('ts_type', 'varchar:100')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12396: __all_virtual_resource_pool_mysql_sys_agent (abandoned)
 
@@ -5760,7 +5895,8 @@ def_table_schema(
     ('hold_size', 'bigint'),
     ('timeout_ts', 'timestamp'),
     ('start_time', 'timestamp')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12398: removed virtual table
 
@@ -5789,7 +5925,7 @@ def_table_schema(
 )
 
 # 12414: __all_virtual_wr_control # removed
-# 12415: __all_virtual_event_history # removed
+# 12415: __all_virtual_event_history - migrated to SQLite, see gen_sqlite_virtual_table_def above
 
 # 12418: removed (legacy resource isolation deleted)
 # 12419: removed (legacy resource isolation deleted)
@@ -5858,7 +5994,8 @@ def_table_schema(
     ('credential_owner', 'varchar:30', 'true'),
     ('credential_name', 'varchar:30', 'true'),
     ('job_class', 'varchar:128', 'true')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12443: __all_virtual_routine_privilege # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -5927,7 +6064,8 @@ def_table_schema(
     ('FIRST_LOAD_TIME', 'timestamp', 'true'),
     ('PLAN_CACHE_HIT_TOTAL', 'bigint', 'false', '0'),
     ('PLAN_CACHE_HIT_DELTA', 'bigint', 'false', '0')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 # 12446: __all_virtual_wr_sqlstat # removed
 # 12447: __all_virtual_aux_stat # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -6004,7 +6142,8 @@ def_table_schema(
     ('param_types', 'longtext'),
     ('ref_count', 'int'),
     ('checksum', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'fy373789',
@@ -6022,7 +6161,8 @@ def_table_schema(
     ('tp_error_code', 'int'),
     ('tp_occur', 'int'),
     ('tp_match', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12470: __all_virtual_ls_compaction_status
 # 12471: __all_virtual_tablet_compaction_status
@@ -6050,7 +6190,8 @@ def_table_schema(
   ('reserved_value', 'bigint'),
   ('limit_value', 'bigint'),
   ('effective_limit_type', 'varchar:MAX_CONSTRAINT_NAME_LEN')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner = 'yanyuan.cxf',
@@ -6065,7 +6206,8 @@ def_table_schema(
   ('resource_name', 'varchar:MAX_RESOURCE_NAME_LEN'),
   ('limit_type', 'varchar:MAX_CONSTRAINT_NAME_LEN'),
   ('limit_value', 'bigint')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 def_table_schema(
   owner      = 'wyh329796',
@@ -6083,7 +6225,8 @@ def_table_schema(
     ('max_iops', 'int'),
     ('real_iops', 'int'),
     ('norm_iops', 'int')
-                   ],  )
+                   ],  vtable_route_policy = 'local'
+  )
 
 # 21485: __all_virtual_storage_io_usage (abandoned)
 # 12486: __all_virtual_zone_storage (abandoned)
@@ -6097,7 +6240,8 @@ def_table_schema(
   rowkey_columns    = [],
   normal_columns    = [
     ('speed_Mbps', 'int')
-                      ],  )
+                      ],  vtable_route_policy = 'local'
+  )
 
 # 12488: __all_virtual_scheduler_job_run_detail_v2 # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -6136,7 +6280,8 @@ def_table_schema(
     ('statistics', 'varchar:MAX_COLUMN_COMMENT_LENGTH'),
     # sync snapshot...
     ('sync_info', 'varchar:OB_INNER_TABLE_DEFAULT_KEY_LENTH')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12497: __all_virtual_pkg_type # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -6203,7 +6348,8 @@ def_table_schema(
     ('aggregate_read_io_cnt', 'int'),
     ('total_wbp_page_read_cnt', 'int'),
     ('wbp_page_hits', 'int')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12513: removed
 
@@ -6247,7 +6393,8 @@ def_table_schema(
   ('vector_mem_limit', 'int'),
   ('tx_share_limit', 'int'),
   ('vector_mem_detail_info', 'varchar:OB_MAX_MYSQL_VARCHAR_LENGTH')
-  ],  )
+  ],  vtable_route_policy = 'local'
+  )
 
 # 12551: __all_virtual_ai_model # removed (single-tenant: iterate VT mechanism deleted)
 
@@ -6260,22 +6407,18 @@ def_table_schema(
 # 12557: __all_virtual_objauth_mysql_history # removed (single-tenant: iterate VT mechanism deleted)
 # 12559: __tenant_virtual_list_file # abandoned in seekdb
 
-def_local_table(
-  table_name = '__all_rootservice_job',
-  table_id = '12563',
-  virtual_table = True,
-  namespace = 'admin_job',
-  namespace_id = 5,
-  columns = [
-    ('job_id', 'int', 'false', '0'),
-    ('gmt_create', 'int', 'true'),
-    ('gmt_modified', 'int', 'true'),
-    ('job_type', 'varchar:256', 'false', "''"),
-    ('job_status', 'varchar:256', 'false', "''"),
-    ('result_code', 'int', 'true'),
-  ],
-  primary_key = ['job_id'],
-)
+# __all_virtual_reserved_snapshot: SQLite virtual table
+# Note: Using table_id 12447 (next available after 12444-12446)
+
+# __all_virtual_server_event_history: SQLite virtual table
+# Note: Using table_id 12155 (next available after 12154 which is abandoned)
+
+
+def_table_schema(**gen_sqlite_virtual_table_def(
+    table_id = '12563',
+    table_name = '__all_virtual_rootservice_job',
+    keywords = all_def_keywords['__all_rootservice_job']
+  ))
 
 # 12564: __all_virtual_change_stream_refresh_stat
 def_table_schema(
@@ -6294,66 +6437,6 @@ def_table_schema(
     ('fetch_scn', 'int'),
   ],
 )
-
-def_local_table(
-  table_name = '__all_storage_runtime',
-  namespace = 'storage_runtime',
-  namespace_id = 6,
-  columns = [
-    ('id', 'int', 'false'),
-    ('initialized', 'int', 'false'),
-    ('payload', 'varbinary:65536', 'false'),
-  ],
-  primary_key = ['id'],
-)
-
-def_local_table(
-  table_name = '__all_storage_ls',
-  namespace = 'storage_ls',
-  namespace_id = 7,
-  columns = [
-    ('id', 'int', 'false'),
-    ('payload', 'varbinary:65536', 'false'),
-  ],
-  primary_key = ['id'],
-)
-
-def_local_table(
-  table_name = '__all_storage_tablet',
-  namespace = 'storage_tablet',
-  namespace_id = 8,
-  columns = [
-    ('tablet_id', 'int', 'false'),
-    ('kind', 'int', 'false'),
-    ('payload', 'varbinary:1048576', 'false'),
-  ],
-  primary_key = ['tablet_id'],
-)
-
-def_local_table(
-  table_name = '__all_palf_meta',
-  namespace = 'palf_meta',
-  namespace_id = 9,
-  columns = [
-    ('id', 'int', 'false'),
-    ('payload', 'varbinary:65536', 'false'),
-    ('expected_next_block_id', 'int', 'false'),
-  ],
-  primary_key = ['id'],
-)
-
-def_local_table(
-  table_name = '__all_telemetry',
-  namespace = 'telemetry',
-  namespace_id = 10,
-  columns = [
-    ('id', 'int', 'false'),
-    ('payload', 'varchar:65536', 'false'),
-    ('sent', 'int', 'false'),
-  ],
-  primary_key = ['id'],
-)
-
 
 # Reserved position (placeholder before this line)
 # Placeholder suggestion for this section: Use actual table names for placeholders
@@ -8140,6 +8223,8 @@ def_table_schema(
 # 21165: DBA_OB_TENANT_JOBS (abandoned)
 # 21166: DBA_OB_UNIT_JOBS (abandoned)
 # 21167: DBA_OB_SERVER_JOBS (abandoned)
+# 21168: DBA_OB_LS_LOCATIONS (abandoned)
+# 21169: CDB_OB_LS_LOCATIONS (abandoned)
 
 
 
@@ -10606,6 +10691,8 @@ def_table_schema(
 
 # 21318: DBA_OB_LS (abandoned)
 # 21319: CDB_OB_LS (abandoned)
+# 21320: DBA_OB_TABLE_LOCATIONS (abandoned)
+# 21321: CDB_OB_TABLE_LOCATIONS (abandoned)
 
 # 21322: GV$OB_TENANTS
 # 21323: V$OB_TENANTS

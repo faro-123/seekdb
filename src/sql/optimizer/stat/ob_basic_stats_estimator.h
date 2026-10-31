@@ -19,6 +19,7 @@
 
 #include "sql/optimizer/stat/ob_stats_estimator.h"
 #include "sql/optimizer/stat/ob_stat_item.h"
+#include "sql/optimizer/ob_phy_table_location_info.h"
 
 namespace oceanbase
 {
@@ -102,6 +103,12 @@ public:
                                                    const ObIArray<ObObjectID> &partition_ids,
                                                    ObIArray<EstimateBlockRes> &estimate_res);
 
+  static int get_tablet_locations(ObExecContext &ctx,
+                                  const uint64_t ref_table_id,
+                                  const ObIArray<ObTabletID> &tablet_ids,
+                                  const ObIArray<ObObjectID> &partition_ids,
+                                  ObCandiTabletLocIArray &candi_tablet_locs);
+
   static int get_all_tablet_id_and_object_id(const ObTableStatParam &param,
                                              ObIArray<ObTabletID> &tablet_ids,
                                              ObIArray<ObObjectID> &partition_ids);
@@ -131,6 +138,7 @@ public:
       // do nothing
     } else if (OB_ISNULL(cpy = copy_stat_item(allocator_, item))) {
       ret = OB_ALLOCATE_MEMORY_FAILED;
+      LOG_WARN("failed to copy stat item", K(ret));
     } else if (OB_FAIL(stat_items_.push_back(cpy))) {
     }
     return ret;

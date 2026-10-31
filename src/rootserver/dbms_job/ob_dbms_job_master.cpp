@@ -43,8 +43,10 @@ int ObDBMSJobTask::init(ObDBMSJobQueue *ready_queue)
   int ret = OB_SUCCESS;
   if (inited_) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("init twice", K(ret), K(inited_));
   } else if (OB_ISNULL(ready_queue)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("NULL ptr", K(ret), K(ready_queue));
   } else if (OB_FAIL(timer_.init())) {
   } else {
     ready_queue_ = ready_queue;
@@ -58,6 +60,7 @@ int ObDBMSJobTask::start()
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("dbms job task not inited", K(ret), K(inited_));
   }
   OZ (timer_.start());
   return ret;
@@ -68,6 +71,7 @@ int ObDBMSJobTask::stop()
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("dbms job task not inited", K(ret), K(inited_));
   } else {
     timer_.cancel(*this);
     timer_.stop();
@@ -85,6 +89,7 @@ int ObDBMSJobTask::destroy()
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("scheduler task not inited", K(ret), K(inited_));
   } else {
     timer_.destroy();
   }
@@ -97,9 +102,11 @@ void ObDBMSJobTask::runTimerTask()
   ObSpinLockGuard guard(lock_);
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("dbms job task not init", K(ret), K(inited_));
   } else if (OB_ISNULL(job_key_)
           || OB_ISNULL(ready_queue_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("null ptr", K(ret), K(job_key_), K(ready_queue_));
   } else if (OB_FAIL(ready_queue_->push(job_key_, 0))) {
   } else {
     job_key_ = NULL;
@@ -107,8 +114,10 @@ void ObDBMSJobTask::runTimerTask()
       job_key_ = wait_vector_[0];
       if (OB_FAIL(wait_vector_.remove(wait_vector_.begin()))) {
         job_key_ = NULL;
+        LOG_WARN("fail to remove job_id from sorted vector", K(ret));
       } else if (OB_ISNULL(job_key_)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("NULL ptr", K(ret), K(job_key_));
       } else if (OB_FAIL(timer_.schedule(*this, job_key_->get_adjust_delay()))) {
       }
     }
@@ -127,10 +136,13 @@ int ObDBMSJobTask::scheduler(ObDBMSJobKey *job_key)
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("dbms job task not init", K(ret));
   } else if (OB_ISNULL(job_key)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("NULL ptr for job id", K(ret), KPC(job_key));
   } else if (!job_key->is_valid()) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("job id is invalid", K(ret), KPC(job_key));
   } else if (0 == job_key->get_delay()) {
     OZ (immediately(job_key), KPC(job_key));
   } else {
@@ -145,8 +157,10 @@ int ObDBMSJobTask::add_new_job(ObDBMSJobKey *new_job_key)
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("dbms job not init", K(ret));
   } else if (OB_ISNULL(new_job_key)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("NULL ptr", K(ret), KPC(new_job_key));
   } else {
     ObSpinLockGuard guard(lock_);
     if (OB_ISNULL(job_key_)) {
@@ -172,8 +186,10 @@ int ObDBMSJobTask::immediately(ObDBMSJobKey *job_key)
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("dbms job not init", K(ret), K(inited_));
   } else if (OB_ISNULL(job_key) || OB_ISNULL(ready_queue_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("NULL ptr", K(ret), K(job_key), K(ready_queue_));
   } else {
     ObSpinLockGuard guard(lock_);
     if (OB_FAIL(ready_queue_->push(job_key, 0))) {
@@ -218,10 +234,12 @@ int ObDBMSJobMaster::init(ObISQLClient *sql_client,
   int ret = OB_SUCCESS;
   if (inited_) {
     ret = OB_INIT_TWICE;
+    LOG_WARN("dbms job master already inited", K(ret), K(inited_));
   } else if (OB_ISNULL(sql_client)
           || OB_ISNULL(schema_service)
           ) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("null ptr", K(ret), K(sql_client), K(schema_service));
   } else if (FALSE_IT(ready_queue_.set_limit(MAX_READY_JOBS_CAPACITY))) {
     // do-nothing
   } else if (OB_FAIL(scheduler_task_.init(&ready_queue_))) {
@@ -230,6 +248,7 @@ int ObDBMSJobMaster::init(ObISQLClient *sql_client,
   } else if (OB_FAIL(alive_jobs_.create(1024))) {
   } else if (OB_ISNULL(ObCurTraceId::get())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("trace id is null", K(ret));
   } else {
     trace_id_ = ObCurTraceId::get();
     inited_ = true;
@@ -243,12 +262,14 @@ int ObDBMSJobMaster::start()
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_NOT_INIT;
+    LOG_WARN("not init yet!", K(ret), K(inited_));
   } else if (running_) {
     // alreay running , do nothing ...
   } else if (OB_FAIL(scheduler_thread_.push(static_cast<void *>(this)))) {
   } else if (OB_FAIL(scheduler_task_.start())) {
   } else if (OB_FAIL(load_and_register_new_jobs())) {
   }
+  LOG_WARN("dbms job master started", K(ret));
   return ret;
 }
 
@@ -274,8 +295,10 @@ int ObDBMSJobMaster::scheduler()
   int ret = OB_SUCCESS;
   if (!inited_) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("not init yet", K(ret));
   } else if (OB_ISNULL(trace_id_)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("null trace_id_ ptr", K(ret), K(trace_id_));
   } else {
     ObCurTraceId::set(trace_id_);
     running_ = true;
@@ -384,11 +407,13 @@ int ObDBMSJobMaster::alloc_job_key(
   job_key = NULL;
   if (OB_ISNULL(ptr = allocator_.alloc(sizeof(ObDBMSJobKey)))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
+    LOG_WARN("fail to alloc memory", K(ret), K(ptr));
   } else if (OB_ISNULL(job_key =
     new(ptr)ObDBMSJobKey(job_id,
                          execute_at, delay,
                          check_job, check_new))) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("fail to init scheduler job id", K(ret));
   }
   return ret;
 }

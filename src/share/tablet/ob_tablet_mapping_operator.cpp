@@ -16,7 +16,6 @@
 
 #define USING_LOG_PREFIX SHARE
 
-#include <inttypes.h>
 #include "share/tablet/ob_tablet_mapping_operator.h"
 #include "common/mysqlclient/ob_isql_client.h"
 #include "common/mysqlclient/ob_mysql_result.h"
@@ -37,7 +36,7 @@ namespace share
         ret = OB_INVALID_ARGUMENT; \
         LOG_WARN("invalid argument", KR(ret), K(range_size)); \
       } else if (OB_FAIL(sql.append_fmt( \
-          "SELECT * FROM %s WHERE tablet_id > %" PRIu64 " ORDER BY tablet_id LIMIT %" PRId64, \
+          "SELECT * FROM %s WHERE tablet_id > %lu ORDER BY tablet_id LIMIT %ld", \
           OB_ALL_TABLET_TO_TABLE_TNAME, \
           start_tablet_id.id(), \
           range_size))) { \
@@ -80,7 +79,7 @@ namespace share
               ret = OB_INVALID_ARGUMENT; \
               LOG_WARN("invalid tablet_id with runtime", KR(ret), K(tablet_id)); \
             } else if (OB_FAIL(tablet_list.append_fmt( \
-                "%s%" PRIu64, \
+                "%s%lu", \
                 start_idx == idx ? "" : ",", \
                 tablet_id.id()))) { \
               LOG_WARN("fail to assign sql", KR(ret), K(tablet_id)); \
@@ -160,6 +159,7 @@ int ObTabletMappingTableOperator::batch_update(
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(infos.empty())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", KR(ret), K(infos));
   } else {
     int64_t start_idx = 0;
     int64_t end_idx = min(MAX_BATCH_COUNT, infos.count());
@@ -182,16 +182,19 @@ int ObTabletMappingTableOperator::update_table_to_tablet_id_mapping(common::ObIS
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(OB_INVALID_ID == table_id || !tablet_id.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", K(ret), K(tablet_id), K(tablet_id));
   } else {
     ObSqlString sql;
     ObDMLSqlSplicer dml_splicer;
     int64_t affected_rows = 0;
     if (OB_FAIL(dml_splicer.add_pk_column("tablet_id", tablet_id.id()))
        || OB_FAIL(dml_splicer.add_column("table_id", table_id))) {
+      LOG_WARN("fail to add column", K(ret), K(tablet_id), K(table_id));
     } else if (OB_FAIL(dml_splicer.splice_update_sql(OB_ALL_TABLET_TO_TABLE_TNAME, sql))) {
     } else if (OB_FAIL(sql_proxy.write(sql.ptr(), affected_rows))) {
     } else if(!is_single_row(affected_rows)) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("expect one row", K(ret), K(sql), K(affected_rows));
     } else {
     }
   }
@@ -210,6 +213,7 @@ int ObTabletMappingTableOperator::inner_batch_update_by_sql_(
       || start_idx >= end_idx
       || end_idx > infos.count())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", KR(ret), K(infos), K(start_idx), K(end_idx));
   } else {
     ObSqlString sql;
     ObDMLSqlSplicer dml_splicer;
@@ -219,12 +223,15 @@ int ObTabletMappingTableOperator::inner_batch_update_by_sql_(
       if (OB_UNLIKELY(!info.is_valid()
           || !info.get_tablet_id().is_valid())) {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("invalid tablet-table pair", KR(ret), K(info));
       } else if (OB_FAIL(dml_splicer.add_pk_column("tablet_id", info.get_tablet_id().id()))
           || OB_FAIL(dml_splicer.add_column("table_id", info.get_table_id()))) {
+        LOG_WARN("fail to add column", KR(ret), K(info));
       } else if (OB_FAIL(dml_splicer.finish_row())) {
       }
     }
     if (FAILEDx(dml_splicer.splice_batch_insert_update_sql(OB_ALL_TABLET_TO_TABLE_TNAME, sql))) {
+      LOG_WARN("fail to splice batch insert update sql", KR(ret), K(sql));
     } else if (OB_FAIL(sql_proxy.write(sql.ptr(), affected_rows))) {
     } else {
     }
@@ -239,6 +246,7 @@ int ObTabletMappingTableOperator::batch_remove(
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(tablet_ids.empty())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", KR(ret), K(tablet_ids));
   } else {
     int64_t start_idx = 0;
     int64_t end_idx = min(MAX_BATCH_COUNT, tablet_ids.count());
@@ -272,6 +280,8 @@ int ObTabletMappingTableOperator::inner_batch_remove_by_sql_(
       || start_idx >= end_idx
       || end_idx > tablet_ids.count())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("invalid argument", KR(ret),
+        K(tablet_ids), K(start_idx), K(end_idx));
   } else if (OB_FAIL(sql.append_fmt(
       "DELETE FROM %s WHERE tablet_id IN (",
       OB_ALL_TABLET_TO_TABLE_TNAME))) {
@@ -281,10 +291,12 @@ int ObTabletMappingTableOperator::inner_batch_remove_by_sql_(
       const ObTabletID &tablet_id = tablet_ids.at(idx);
       if (OB_UNLIKELY(!tablet_id.is_valid())) {
         ret = OB_INVALID_ARGUMENT;
-      } else if (OB_FAIL(sql.append_fmt("%s %" PRIu64, start_idx == idx ? "" : ",", tablet_id.id()))) {
+        LOG_WARN("invalid tablet_id with runtime", KR(ret), K(tablet_id));
+      } else if (OB_FAIL(sql.append_fmt("%s %lu", start_idx == idx ? "" : ",", tablet_id.id()))) {
       }
     }
     if (FAILEDx(sql.append_fmt(")"))) {
+      LOG_WARN("fail to assign sql", KR(ret));
     } else if (OB_FAIL(sql_proxy.write(sql.ptr(), affected_rows))) {
     }
   }
@@ -339,7 +351,9 @@ int ObTabletMappingTableOperator::construct_results_(
 
     if (OB_UNLIKELY(!ObTabletID(tablet_id).is_valid())) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("invalid runtime tablet id in mapping table", KR(ret), K(tablet_id));
     } else if (FAILEDx(info.init(ObTabletID(tablet_id), table_id))) {
+      LOG_WARN("init failed", KR(ret), K(tablet_id), K(table_id));
     } else if (OB_FAIL(infos.push_back(info))) {
     }
   }
@@ -349,6 +363,7 @@ int ObTabletMappingTableOperator::construct_results_(
     if (OB_SUCC(ret)) {
       ret = OB_ERR_UNEXPECTED;
     }
+    LOG_WARN("construct_results failed", KR(ret), K(infos));
   }
   return ret;
 }

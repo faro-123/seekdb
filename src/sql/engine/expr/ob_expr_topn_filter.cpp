@@ -223,6 +223,7 @@ int ObExprTopNFilterContext::check_filter_ready()
       if (OB_HASH_NOT_EXIST == ret) {
         ret = OB_SUCCESS;
       } else {
+        LOG_WARN("fail to get msg", K(ret));
       }
     } else {
       topn_filter_msg_ = static_cast<ObPushDownTopNFilterMsg *>(basic_msg);
@@ -347,6 +348,7 @@ int ObExprTopNFilter::update_storage_white_filter_data(const ObExpr &expr,
   if (OB_ISNULL(topn_filter_ctx)) {
     // in update stage, means prepare succ, topn_filter_ctx must not null
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("topn_filter_ctx must not null during update stage");
   } else if (OB_FAIL(topn_filter_ctx->topn_filter_msg_->update_storage_white_filter_data(
                  dynamic_filter, params, is_update))) {
   }

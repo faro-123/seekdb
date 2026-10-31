@@ -69,6 +69,7 @@ int err_stmt_type_priv(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should not be NULL", K(ret));
   } else {
     ret = OB_ERR_UNEXPECTED;
     LOG_ERROR("Stmt type should not be here", K(ret), "stmt type", basic_stmt->get_stmt_type());
@@ -98,9 +99,11 @@ int expr_has_col_in_tab(
   bool is_stack_overflow = false;
   if (OB_ISNULL(expr)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("expr is null", K(ret));
   } else if (OB_FAIL(check_stack_overflow(is_stack_overflow))) {
   } else if (is_stack_overflow) {
     ret = OB_SIZE_OVERFLOW;
+    LOG_WARN("too deep recursive", K(ret), K(is_stack_overflow));
   } else if (expr->is_column_ref_expr()) {
     if (rel_ids.is_superset(expr->get_relation_ids())) {
       exists = true;
@@ -135,9 +138,11 @@ int add_col_priv_to_need_priv(
   bool has_dml_info = false;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("basic_stmt is NULL", K(ret));
   } else if (basic_stmt->is_dml_write_stmt() &&
              OB_FAIL(static_cast<const ObDelUpdStmt*>(basic_stmt)->has_dml_table_info(
                                                             table_item.table_id_, has_dml_info))) {
+    LOG_WARN("failed to check has dml table info", K(ret));
   } else if (has_dml_info) {
     stmt::StmtType stmt_type = basic_stmt->get_stmt_type();
     switch (stmt_type) {
@@ -154,6 +159,7 @@ int add_col_priv_to_need_priv(
         insert_stmt = static_cast<const ObInsertStmt*>(basic_stmt);
         if (OB_ISNULL(insert_stmt)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("insert_stmt is NULL", K(ret));
         } else {
           ObColumnRefRawExpr *value_desc = NULL;
           if (insert_stmt->is_replace()) {
@@ -165,6 +171,7 @@ int add_col_priv_to_need_priv(
           for (int i = 0; OB_SUCC(ret) && i < insert_stmt->get_values_desc().count(); ++i) {
             if (OB_ISNULL(value_desc = insert_stmt->get_values_desc().at(i))) {
               ret = OB_ERR_UNEXPECTED;
+              LOG_WARN("value_desc is null", K(ret));
             } else if (table_id == value_desc->get_table_id()
                       && value_desc->get_column_id() >= OB_APP_MIN_COLUMN_ID) {
               OZ (need_priv.columns_.push_back(value_desc->get_column_name()));
@@ -185,6 +192,7 @@ int add_col_priv_to_need_priv(
                 const ObRawExpr *expr = assigns.at(j).expr_;
                 if (OB_ISNULL(col_expr) || OB_ISNULL(expr)) {
                   ret = OB_ERR_UNEXPECTED;
+                  LOG_WARN("col_expr is null");
                 } else if (OB_FAIL(ObRawExprUtils::extract_column_exprs(expr, col_exprs))) {
                 } else if (col_expr->get_table_id() == table_id 
                         && col_expr->get_column_id() >= OB_APP_MIN_COLUMN_ID) {
@@ -212,11 +220,13 @@ int add_col_priv_to_need_priv(
         update_stmt = static_cast<const ObUpdateStmt*>(basic_stmt);
         if (OB_ISNULL(update_stmt)) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("update_stmt is null", K(ret));
         } else {
           for (int i = 0; OB_SUCC(ret) && i < update_stmt->get_update_table_info().count(); ++i) {
             ObUpdateTableInfo* table_info = update_stmt->get_update_table_info().at(i);
             if (OB_ISNULL(table_info)) {
               ret = OB_ERR_UNEXPECTED;
+              LOG_WARN("get null table info", K(ret));
             } else if (table_info->table_id_ == table_id) {
               const ObAssignments &assigns = table_info->assignments_;
               for (int j = 0; OB_SUCC(ret) && j < assigns.count(); ++j) {
@@ -225,6 +235,7 @@ int add_col_priv_to_need_priv(
                   const ObRawExpr *value_expr = assigns.at(j).expr_;
                   if (OB_ISNULL(col_expr)) {
                     ret = OB_ERR_UNEXPECTED;
+                    LOG_WARN("col_expr is null");
                   } else if (col_expr->get_table_id() == table_id 
                           && col_expr->get_column_id() >= OB_APP_MIN_COLUMN_ID) {
                     OZ (need_priv.columns_.push_back(col_expr->get_column_name()));
@@ -255,10 +266,12 @@ int add_col_priv_to_need_priv(
       for (int64_t i = 0; OB_SUCC(ret) && i < col_exprs.count(); i++) {
         if (OB_ISNULL(col_exprs.at(i)) || OB_UNLIKELY(!col_exprs.at(i)->is_column_ref_expr())) {
           ret = OB_ERR_UNEXPECTED;
+          LOG_WARN("unexpected error", K(ret));
         } else {
           ObColumnRefRawExpr *col_expr = static_cast<ObColumnRefRawExpr *>(col_exprs.at(i));
           if (OB_ISNULL(col_expr)) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("unexpected error", K(ret));
           } else if (col_expr->get_table_id() == table_id && col_expr->get_column_id() >= OB_APP_MIN_COLUMN_ID) {
             OZ (need_priv.columns_.push_back(col_expr->get_column_name()));
           }
@@ -289,6 +302,7 @@ int get_dml_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should not be NULL", K(ret));
   } else {
     ObNeedPriv need_priv;
     stmt::StmtType stmt_type = basic_stmt->get_stmt_type();
@@ -340,6 +354,7 @@ int get_dml_stmt_need_privs(
           const TableItem *table_item = dml_stmt->get_table_item(i);
           if (OB_ISNULL(table_item)) {
             ret = OB_ERR_UNEXPECTED;
+            LOG_WARN("table item is null");
           } else if (TableItem::BASE_TABLE == table_item->type_
             || TableItem::ALIAS_TABLE == table_item->type_
             || table_item->is_view_table_) {
@@ -386,6 +401,7 @@ int get_dml_stmt_need_privs(
       }
       default: {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("Stmt type error, should be DML stmt", K(ret), K(stmt_type));
       }
     }
   }
@@ -400,8 +416,11 @@ int get_alter_table_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_ALTER_TABLE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_ALTER_TABLE",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObAlterTableStmt *stmt = static_cast<const ObAlterTableStmt*>(basic_stmt);
@@ -447,8 +466,11 @@ int get_create_database_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_CREATE_DATABASE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_CREATE_DATABASE",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObCreateDatabaseStmt *stmt = static_cast<const ObCreateDatabaseStmt*>(basic_stmt);
@@ -471,8 +493,11 @@ int get_alter_database_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_ALTER_DATABASE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_ALTER_DATABASE",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObAlterDatabaseStmt *stmt = static_cast<const ObAlterDatabaseStmt*>(basic_stmt);
@@ -501,8 +526,11 @@ int get_drop_database_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_DROP_DATABASE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_DROP_DATABASE",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObDropDatabaseStmt *stmt = static_cast<const ObDropDatabaseStmt*>(basic_stmt);
@@ -525,8 +553,10 @@ int get_create_table_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_CREATE_TABLE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_CREATE_TABLE", K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObCreateTableStmt *stmt = static_cast<const ObCreateTableStmt*>(basic_stmt);
@@ -575,8 +605,11 @@ int get_drop_table_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_DROP_TABLE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_DROP_TABLE",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObDropTableStmt *stmt = static_cast<const ObDropTableStmt*>(basic_stmt);
@@ -602,8 +635,10 @@ int get_create_outline_stmt_need_privs(
   ObNeedPriv need_priv;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_CREATE_OUTLINE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_CREATE_OUTLINE", K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     const ObCreateOutlineStmt *stmt = static_cast<const ObCreateOutlineStmt*>(basic_stmt);
     need_priv.db_ = stmt->get_create_outline_arg().db_name_;
@@ -623,8 +658,10 @@ int get_alter_outline_stmt_need_privs(
   ObNeedPriv need_priv;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_ALTER_OUTLINE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_ALTER_OUTLINE", K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     const ObAlterOutlineStmt *stmt = static_cast<const ObAlterOutlineStmt*>(basic_stmt);
     need_priv.db_ = stmt->get_alter_outline_arg().db_name_;
@@ -644,8 +681,10 @@ int get_drop_outline_stmt_need_privs(
   ObNeedPriv need_priv;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_DROP_OUTLINE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_DROP_OUTLINE", K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     const ObDropOutlineStmt *stmt = static_cast<const ObDropOutlineStmt*>(basic_stmt);
     need_priv.db_ = stmt->get_drop_outline_arg().db_name_;
@@ -664,8 +703,11 @@ int get_create_index_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_CREATE_INDEX != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_CREATE_INDEX",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObCreateIndexStmt *stmt = static_cast<const ObCreateIndexStmt*>(basic_stmt);
@@ -686,8 +728,11 @@ int get_drop_index_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_DROP_INDEX != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_DROP_INDEX",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObDropIndexStmt *stmt = static_cast<const ObDropIndexStmt*>(basic_stmt);
@@ -708,8 +753,11 @@ int get_grant_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_GRANT != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_GRANT",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObGrantStmt *stmt = static_cast<const ObGrantStmt *>(basic_stmt);
@@ -783,8 +831,11 @@ int get_revoke_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_REVOKE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_REVOKE",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else if (is_root_user(session_priv.user_id_)) {
     // not necessary
   } else {
@@ -884,6 +935,7 @@ int get_create_user_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else {
     ObNeedPriv need_priv;
     stmt::StmtType stmt_type = basic_stmt->get_stmt_type();
@@ -908,6 +960,7 @@ int get_create_user_privs(
       }
       default: {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("Stmt type not in types dealt in this function", K(ret), K(stmt_type));
         break;
       }
     }
@@ -924,6 +977,7 @@ int get_role_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else {
     ObNeedPriv need_priv;
     stmt::StmtType stmt_type = basic_stmt->get_stmt_type();
@@ -956,6 +1010,7 @@ int get_role_privs(
       }
       default: {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("Stmt type not in types dealt in this function", K(ret), K(stmt_type));
         break;
       }
     }
@@ -972,8 +1027,11 @@ int get_variable_set_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_VARIABLE_SET != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_VARIABLE_SET",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObVariableSetStmt *stmt = static_cast<const ObVariableSetStmt *>(basic_stmt);
@@ -995,10 +1053,13 @@ int get_routine_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_CREATE_ROUTINE != basic_stmt->get_stmt_type() 
                         && stmt::T_DROP_ROUTINE != basic_stmt->get_stmt_type()
                         && stmt::T_ALTER_ROUTINE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be routine stmt",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else if (stmt::T_CREATE_ROUTINE == basic_stmt->get_stmt_type()) {
     const ObCreateRoutineStmt *stmt = static_cast<const ObCreateRoutineStmt*>(basic_stmt); 
     if (stmt->get_routine_arg().routine_info_.get_routine_type() == ObRoutineType::ROUTINE_PROCEDURE_TYPE 
@@ -1047,9 +1108,12 @@ int get_trigger_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_CREATE_TRIGGER != basic_stmt->get_stmt_type()
                         && stmt::T_DROP_TRIGGER != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be trigger stmt",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     if (stmt::T_CREATE_TRIGGER == basic_stmt->get_stmt_type()) {
       const ObCreateTriggerStmt *stmt = static_cast<const ObCreateTriggerStmt*>(basic_stmt);
@@ -1082,8 +1146,11 @@ int get_truncate_table_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_TRUNCATE_TABLE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_TRUNCATE_TABLE",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObTruncateTableStmt *stmt = static_cast<const ObTruncateTableStmt *>(basic_stmt);
@@ -1104,8 +1171,11 @@ int get_rename_table_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_RENAME_TABLE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_RENAME_TABLE",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObRenameTableStmt *stmt = static_cast<const ObRenameTableStmt *>(basic_stmt);
@@ -1137,8 +1207,11 @@ int get_create_table_like_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_CREATE_TABLE_LIKE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_CREATE_TABLE_LIKE",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObCreateTableLikeStmt *stmt = static_cast<const ObCreateTableLikeStmt *>(basic_stmt);
@@ -1167,8 +1240,11 @@ int get_fork_table_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_FORK_TABLE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_FORK_TABLE",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObForkTableStmt *stmt = static_cast<const ObForkTableStmt *>(basic_stmt);
@@ -1200,8 +1276,11 @@ int get_fork_database_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_FORK_DATABASE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_FORK_DATABASE",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     const ObForkDatabaseStmt *stmt = static_cast<const ObForkDatabaseStmt *>(basic_stmt);
@@ -1231,6 +1310,7 @@ int get_server_super_priv(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else {
     ObNeedPriv need_priv;
     need_priv.priv_set_ = OB_PRIV_SUPER;
@@ -1248,6 +1328,7 @@ int get_server_alter_system_priv(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else {
     ObNeedPriv need_priv;
     need_priv.priv_set_ = OB_PRIV_ALTER_SYSTEM;
@@ -1265,6 +1346,7 @@ int get_boot_strap_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_BOOTSTRAP != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
     LOG_WARN("Stmt type should be T_BOOTSTRAP",
@@ -1287,8 +1369,11 @@ int get_load_data_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_LOAD_DATA != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_LOAD_DATA",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     const ObLoadDataStmt *load_data_stmt = static_cast<const ObLoadDataStmt *>(basic_stmt);
     if (OB_SUCC(ret)) {
@@ -1321,6 +1406,7 @@ int get_restore_table_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (stmt::T_RECYCLEBIN_RESTORE_TABLE != basic_stmt->get_stmt_type()) {
     ret = OB_INVALID_ARGUMENT;
     LOG_WARN("Stmt type should be T_RECYCLEBIN_RESTORE_TABLE",
@@ -1343,8 +1429,11 @@ int get_purge_recyclebin_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (stmt::T_PURGE_RECYCLEBIN != basic_stmt->get_stmt_type()) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_PURGE_RECYCLEBIN",
+             K(ret), "stmt type", basic_stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     need_priv.priv_set_ = OB_PRIV_DROP;
@@ -1363,6 +1452,7 @@ int get_restore_database_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_RECYCLEBIN_RESTORE_DATABASE != basic_stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
     LOG_WARN("Stmt type should be T_RECYCLEBIN_RESTORE_DATABASE",
@@ -1385,8 +1475,11 @@ int get_purge_table_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_PURGE_TABLE != stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_PURGE_TABLE",
+             K(ret), "stmt type", stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     need_priv.priv_set_ = OB_PRIV_SUPER;
@@ -1405,8 +1498,11 @@ int get_purge_index_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_PURGE_INDEX != stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be T_PURGE_INDEX",
+             K(ret), "stmt type", stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     need_priv.priv_set_ = OB_PRIV_SUPER;
@@ -1425,8 +1521,11 @@ int get_purge_database_stmt_need_privs(
   int ret = OB_SUCCESS;
   if (OB_ISNULL(stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_PURGE_DATABASE != stmt->get_stmt_type())) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt type should be PURGE_DATABASE",
+             K(ret), "stmt type", stmt->get_stmt_type());
   } else {
     ObNeedPriv need_priv;
     need_priv.priv_set_ = OB_PRIV_SUPER;
@@ -1446,8 +1545,10 @@ int get_lock_table_priv(
   ObNeedPriv need_priv;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Basic stmt should be not be NULL", K(ret));
   } else if (OB_UNLIKELY(stmt::T_LOCK_TABLE != basic_stmt->get_stmt_type())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected stmt type", K(basic_stmt->get_stmt_type()), K(ret));
   } else {
     const ObLockTableStmt *stmt = static_cast<const ObLockTableStmt*>(basic_stmt);
     int64_t table_size = stmt->get_table_size();
@@ -1455,6 +1556,7 @@ int get_lock_table_priv(
       const TableItem *table_item = stmt->get_table_item(i);
       if (OB_ISNULL(table_item)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("table item is null");
       } else {
         need_priv.db_ = table_item->database_name_;
         need_priv.priv_set_ = OB_PRIV_LOCK_TABLE;
@@ -1485,8 +1587,10 @@ int get_merge_table_stmt_need_privs(
   UNUSED(session_priv);
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("basic_stmt should not be NULL", K(ret));
   } else if (stmt::T_MERGE_TABLE != basic_stmt->get_stmt_type()) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("unexpected stmt type", K(ret), K(basic_stmt->get_stmt_type()));
   } else {
     const ObMergeTableStmt *merge_stmt = static_cast<const ObMergeTableStmt *>(basic_stmt);
     ObNeedPriv need_priv;
@@ -1521,12 +1625,14 @@ int ObPrivilegeCheck::check_read_only(const ObSqlCtx &ctx,
   int ret = OB_SUCCESS;
   if (OB_ISNULL(ctx.session_info_) || OB_ISNULL(ctx.schema_guard_)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Session is NULL");
   } else if (ctx.session_info_->has_user_super_privilege()) {
     // super priv check
   } else {
     if (ObStmt::is_write_stmt(stmt_type, has_global_variable) &&
         OB_FAIL(ctx.schema_guard_->verify_read_only(
                                                     stmt_need_privs))) {
+      LOG_WARN("database or table is read only, cannot execute this stmt", K(ret));
     }
   }
   return ret;
@@ -1556,10 +1662,14 @@ int ObPrivilegeCheck::check_privilege(
         || OB_ISNULL(ctx.session_info_)
         || OB_ISNULL(ctx.schema_guard_)) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("basic_stmt, ctx.session_info or ctx.schema_manager is NULL",
+          K(ret), K(basic_stmt), "session_info", ctx.session_info_,
+          "schema manager", ctx.schema_guard_);
     } else if (basic_stmt->is_explain_stmt()) {
       basic_stmt = static_cast<const ObExplainStmt*>(basic_stmt)->get_explain_query_stmt();
       if (OB_ISNULL(basic_stmt)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("Explain query stmt is NULL", K(ret));
       }
     } else {
       //do nothing
@@ -1591,6 +1701,7 @@ int adjust_session_priv(ObSchemaGetterGuard &schema_guard,
   const ObUserInfo *user_info = NULL;
   if (OB_ISNULL(user_info = schema_guard.get_user_info(session_priv.user_id_))) {
     ret = OB_USER_NOT_EXIST;
+    LOG_WARN("fail to get user_info", K(ret));
   } else {
     session_priv.user_name_ = user_info->get_user_name_str();
     session_priv.host_name_ = user_info->get_host_name_str();
@@ -1609,12 +1720,16 @@ int ObPrivilegeCheck::check_privilege(
     ObSessionPrivInfo session_priv;
     if (OB_ISNULL(ctx.session_info_) || OB_ISNULL(ctx.schema_guard_)) {
       ret = OB_INVALID_ARGUMENT;
+      LOG_WARN("Session is NULL");
     } else {
       if (OB_FAIL(ctx.session_info_->get_session_priv_info(session_priv))) {
       } else if (ctx.session_info_->get_user_id() != ctx.session_info_->get_priv_user_id()
           && OB_FAIL(adjust_session_priv(*ctx.schema_guard_, session_priv))) {
+        LOG_WARN("fail to assign enable role id array", K(ret));
       } else if (OB_UNLIKELY(!session_priv.is_valid())) {
         ret = OB_INVALID_ARGUMENT;
+        LOG_WARN("Session priv is invalid", 
+                 "user_id", session_priv.user_id_, K(ret));
       } else if (OB_FAIL(const_cast<ObSchemaGetterGuard *>(ctx.schema_guard_)->check_priv(
                session_priv, ctx.session_info_->get_enable_role_array(), stmt_need_priv))) {
       } else {
@@ -1636,6 +1751,7 @@ int ObPrivilegeCheck::get_stmt_need_privs(const ObSessionPrivInfo &session_priv,
   const ObDMLStmt *dml_stmt = NULL;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt is NULL", K(ret));
   } else if (OB_FAIL(one_level_stmt_need_priv(session_priv, basic_stmt, need_privs))) {
   } else if (basic_stmt->is_show_stmt()
              || (stmt::T_SELECT == basic_stmt->get_stmt_type()
@@ -1649,6 +1765,7 @@ int ObPrivilegeCheck::get_stmt_need_privs(const ObSessionPrivInfo &session_priv,
       const ObSelectStmt *sub_stmt = child_stmts.at(i);
       if (OB_ISNULL(sub_stmt)) {
         ret = OB_ERR_UNEXPECTED;
+        LOG_WARN("Sub-stmt is NULL", K(ret));
       } else if (sub_stmt->is_view_stmt() && ObStmt::is_dml_stmt(basic_stmt->get_stmt_type())) {
         //do not check privilege of view stmt
       } else if (OB_FAIL(get_stmt_need_privs(session_priv, sub_stmt, need_privs))) {
@@ -1668,13 +1785,16 @@ int ObPrivilegeCheck::one_level_stmt_need_priv(const ObSessionPrivInfo &session_
   int ret = OB_SUCCESS;
   if (OB_ISNULL(basic_stmt)) {
     ret = OB_INVALID_ARGUMENT;
+    LOG_WARN("Stmt is NULL", K(basic_stmt), K(ret));
   } else if (OB_UNLIKELY(!session_priv.is_valid())) {
     ret = OB_ERR_UNEXPECTED;
+    LOG_WARN("Session priv is invalid", K(ret), K(session_priv));
   } else {
     stmt::StmtType stmt_type = basic_stmt->get_stmt_type();
     if (stmt_type < 0
         || stmt::get_stmt_type_idx(stmt_type) >= static_cast<int64_t>(sizeof(priv_check_funcs_) / sizeof(ObGetStmtNeedPrivsFunc))) {
       ret = OB_ERR_UNEXPECTED;
+      LOG_WARN("Stmt type is error", K(ret), K(stmt_type));
     } else if (OB_ISNULL(priv_check_funcs_[stmt::get_stmt_type_idx(stmt_type)])) {
       ret = OB_ERR_UNEXPECTED;
       LOG_WARN("No stmt privilege check function", K(ret), K(stmt_type));
@@ -1736,6 +1856,7 @@ int ObPrivilegeCheck::check_password_expired(const ObSqlCtx &ctx, const stmt::St
     // do nothing
   } else if (OB_ISNULL(ctx.session_info_)) {
     ret = OB_NOT_INIT;
+    LOG_WARN("params's session info is null", K(ret));
   } else if (ctx.session_info_->is_password_expired()) {
     ret = OB_ERR_MUST_CHANGE_PASSWORD;
     LOG_WARN("the password is out of date, please change the password", K(ret));
@@ -1768,6 +1889,7 @@ int ObPrivilegeCheck::check_password_life_time_mysql(const uint64_t user_id,
     if (OB_FAIL(schema_guard.get_user_info(user_id, user_info))) {
     } else if (NULL == user_info) {
       ret = OB_USER_NOT_EXIST;
+      LOG_WARN("user is not exist", K(user_id), K(ret));
     } else if (check_password_expired_time(user_info->get_password_last_changed(),
                                                   password_life_time)) {
       session.set_password_expired(true);
