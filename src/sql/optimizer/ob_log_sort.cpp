@@ -546,6 +546,13 @@ int ObLogSort::try_allocate_pushdown_topn_runtime_filter()
     // can not pushdown topn filter
     can_allocate = false;
     OPT_TRACE("[TopN Filter] block path, or no tsc node");
+  } else if (LOG_TABLE_SCAN == node->get_type()
+             && static_cast<ObLogTableScan *>(node)->is_text_retrieval_scan()
+             && !static_cast<ObLogTableScan *>(node)->get_text_retrieval_info().need_calc_relevance_) {
+    // A retrieval scan without relevance may emit documents in token order
+    // rather than doc-id order, which makes the topn threshold unsound.
+    can_allocate = false;
+    OPT_TRACE("[TopN Filter] text retrieval scan without relevance");
   } else if (tsc_has_px_coord) {
     // not support
     can_allocate = false;
