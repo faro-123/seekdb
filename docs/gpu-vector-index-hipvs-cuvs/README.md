@@ -1,5 +1,15 @@
 # hipVS/cuVS GPU vector backend
 
+This branch starts at the officially successful submission `556065c6...` and
+isolates GPU bridge optimization while retaining that commit's server source.
+See [FROM_SUCCESSFUL_SUBMISSION.md](FROM_SUCCESSFUL_SUBMISSION.md) for the exact
+scope, comparison baselines, and remaining full-server validation requirements.
+
+The V5-based optimization candidate and its current verification limits are
+documented in [BUILD_REPORT.md](BUILD_REPORT.md) and [V5_READINESS.md](V5_READINESS.md).
+GPU bounded-graph screening results are documented in
+[BOUNDED_GRAPH_RESULTS.md](BOUNDED_GRAPH_RESULTS.md).
+
 Status: **Phase 1 implemented and review-gated** on AMD `gfx1100` with ROCm
 7.2.4. This directory documents the current integration and its reproducible
 validation assets. Historical feasibility experiments remain available in Git
