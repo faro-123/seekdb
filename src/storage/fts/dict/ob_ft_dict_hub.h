@@ -167,18 +167,6 @@ private:
 
   int put_dict_info(const ObFTDictInfoKey &key, const ObFTDictInfo &info);
 
-  int build_ik_dict_bundle(const ObIKDictBundle *&bundle);
-
-  int load_or_build_cache(const ObFTDictDesc &desc, ObFTCacheRangeContainer &container);
-
-  int open_range_dict(const ObFTDictDesc &desc,
-                      ObFTCacheRangeContainer &container,
-                      ObIFTDict *&dict);
-
-  void destroy_ik_dict_bundle();
-
-  void free_ik_dict_bundle(ObIKDictBundle *bundle);
-
 private:
   bool is_inited_;
   // holds info of dict
