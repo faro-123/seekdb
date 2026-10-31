@@ -20,14 +20,17 @@ OUTPUT=${1:-$SCRIPT_DIR/libseekdb_cuvs_bridge.so}
 
 mkdir -p "$(dirname "$OUTPUT")"
 
+# The contest runs on gfx1100; compilation must not depend on a visible GPU.
 "$HIPCC" \
   -shared \
   -fPIC \
   -O2 \
+  --offload-arch=gfx1100 \
   -D__HIP_PLATFORM_AMD__ \
   -I"$HIPVS_ROOT/include" \
   -I"$ROCM_ROOT/include" \
-  "$SCRIPT_DIR/seekdb_cuvs_bridge.c" \
+  -x c "$SCRIPT_DIR/seekdb_cuvs_bridge.c" \
+  -x hip "$SCRIPT_DIR/seekdb_cuvs_graph.hip" \
   -L"$HIPVS_ROOT/lib" \
   -Wl,-soname,libseekdb_cuvs_bridge.so \
   -Wl,-rpath,"$HIPVS_ROOT/lib:$ROCM_ROOT/lib" \
